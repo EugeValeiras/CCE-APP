@@ -118,7 +118,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
 
       _alarmSub = _socket.onAlarm.listen(_onAlarmTriggered);
       _armedSub = _socket.onArmedChanged.listen((armed) {
-        if (mounted) setState(() => _isArmed = armed);
+        if (!mounted) return;
+        setState(() => _isArmed = armed);
+        if (!armed && _activeAlarm != null) {
+          _dismissAlarm();
+        }
       });
       _connSub = _socket.onConnectionChanged.listen((connected) {
         if (!mounted) return;
