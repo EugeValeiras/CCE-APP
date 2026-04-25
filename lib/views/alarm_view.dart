@@ -186,8 +186,16 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     }
   }
 
+  void _ackAlarm(String? alarmId) {
+    if (alarmId == null || alarmId.isEmpty || _api == null) return;
+    _api!.ackAlarm(alarmId).catchError((e) {
+      debugPrint('📱 [Flutter] Error acking alarm: $e');
+    });
+  }
+
   void _showPushAsInApp(Map<String, dynamic> data) {
     if (!mounted) return;
+    _ackAlarm(data['automationId'] as String?);
     final title = data['title'] as String? ?? '';
     final body = data['body'] as String? ?? '';
 
@@ -215,11 +223,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   }
 
   void _handlePushTapped(Map<String, dynamic> data) {
-    // If it's an alarm trigger push, fetch latest state
+    _ackAlarm(data['automationId'] as String?);
     _fetchAlarmState();
   }
 
   void _onAlarmTriggered(AlarmEvent event) {
+    _ackAlarm(event.automationId);
     setState(() => _activeAlarm = event);
     _siren.startSiren(sound: event.sound);
     HapticFeedback.heavyImpact();
@@ -236,6 +245,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   }
 
   void _dismissAlarm() {
+    _ackAlarm(_activeAlarm?.automationId);
     _siren.stop();
     setState(() => _activeAlarm = null);
   }
@@ -377,13 +387,20 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     final label = _isArmed ? 'ARMADA' : 'DESARMADA';
     final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
 
+    final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
+    final buttonSize = isTablet ? 340.0 : 200.0;
+    final iconSize = isTablet ? 110.0 : 64.0;
+    final labelSize = isTablet ? 28.0 : 18.0;
+    final hintSize = isTablet ? 20.0 : 14.0;
+    final hostSize = isTablet ? 16.0 : 12.0;
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         if (_error != null) ...[
           Text(
             _error!,
-            style: const TextStyle(color: Colors.orange, fontSize: 14),
+            style: TextStyle(color: Colors.orange, fontSize: hintSize),
           ),
           const SizedBox(height: 16),
         ],
@@ -391,12 +408,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
           onTap: _toggleArmed,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            width: 200,
-            height: 200,
+            width: buttonSize,
+            height: buttonSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: color.withValues(alpha: 0.15),
-              border: Border.all(color: color, width: 4),
+              border: Border.all(color: color, width: isTablet ? 6 : 4),
               boxShadow: [
                 BoxShadow(
                   color: color.withValues(alpha: 0.3),
@@ -408,13 +425,13 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 64, color: color),
-                const SizedBox(height: 8),
+                Icon(icon, size: iconSize, color: color),
+                SizedBox(height: isTablet ? 14 : 8),
                 Text(
                   label,
                   style: TextStyle(
                     color: color,
-                    fontSize: 18,
+                    fontSize: labelSize,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 2,
                   ),
@@ -423,15 +440,15 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             ),
           ),
         ),
-        const SizedBox(height: 32),
+        SizedBox(height: isTablet ? 48 : 32),
         Text(
           'Toca para ${_isArmed ? 'desarmar' : 'armar'}',
-          style: const TextStyle(color: Colors.white38, fontSize: 14),
+          style: TextStyle(color: Colors.white38, fontSize: hintSize),
         ),
         const SizedBox(height: 8),
         Text(
           _config.host,
-          style: const TextStyle(color: Colors.white24, fontSize: 12),
+          style: TextStyle(color: Colors.white24, fontSize: hostSize),
         ),
       ],
     );

@@ -73,11 +73,14 @@ class _SettingsViewState extends State<SettingsView> {
         backgroundColor: const Color(0xFF16213E),
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
             const Text(
               'Servidor CCE',
               style: TextStyle(
@@ -199,7 +202,9 @@ class _SettingsViewState extends State<SettingsView> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

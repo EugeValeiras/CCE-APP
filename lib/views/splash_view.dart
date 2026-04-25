@@ -56,6 +56,9 @@ class _SplashViewState extends State<SplashView>
 
   @override
   Widget build(BuildContext context) {
+    final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
+    final buildingWidth = isTablet ? 520.0 : 320.0;
+    final buildingHeight = isTablet ? 163.0 : 100.0;
     return Scaffold(
       backgroundColor: const Color(0xFF1B3A6B),
       body: Center(
@@ -63,8 +66,8 @@ class _SplashViewState extends State<SplashView>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             SizedBox(
-              width: 320,
-              height: 100,
+              width: buildingWidth,
+              height: buildingHeight,
               child: AnimatedBuilder(
                 animation: _lightController,
                 builder: (context, child) {
@@ -72,22 +75,22 @@ class _SplashViewState extends State<SplashView>
                     painter: _BuildingPainter(
                       lightValues: _lightAnimations.map((a) => a.value).toList(),
                     ),
-                    size: const Size(320, 100),
+                    size: Size(buildingWidth, buildingHeight),
                   );
                 },
               ),
             ),
-            const SizedBox(height: 32),
+            SizedBox(height: isTablet ? 48 : 32),
             AnimatedBuilder(
               animation: _textController,
               builder: (context, child) {
                 return Opacity(
                   opacity: 0.5 + _textController.value * 0.5,
-                  child: const Text(
+                  child: Text(
                     'Preparando tu hogar...',
                     style: TextStyle(
-                      color: Color(0xFF8BACC8),
-                      fontSize: 18,
+                      color: const Color(0xFF8BACC8),
+                      fontSize: isTablet ? 26 : 18,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 0.5,
                     ),

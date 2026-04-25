@@ -44,63 +44,67 @@ class _ActiveAlarmViewState extends State<ActiveAlarmView>
     return AnimatedBuilder(
       animation: _pulseAnimation,
       builder: (context, child) {
+        final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
         return Scaffold(
           backgroundColor:
               Color.lerp(const Color(0xFF8B0000), const Color(0xFFFF0000), _pulseAnimation.value),
           body: SafeArea(
             child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 100,
-                      color: Colors.white.withValues(alpha: _pulseAnimation.value),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      widget.event.automationName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Padding(
+                  padding: EdgeInsets.all(isTablet ? 48 : 32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        size: isTablet ? 150 : 100,
+                        color: Colors.white.withValues(alpha: _pulseAnimation.value),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.event.message,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 18,
+                      SizedBox(height: isTablet ? 32 : 24),
+                      Text(
+                        widget.event.automationName,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: isTablet ? 40 : 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 48),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 64,
-                      child: ElevatedButton(
-                        onPressed: widget.onDismiss,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.red.shade900,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                      SizedBox(height: isTablet ? 20 : 16),
+                      Text(
+                        widget.event.message,
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: isTablet ? 24 : 18,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: isTablet ? 64 : 48),
+                      SizedBox(
+                        width: double.infinity,
+                        height: isTablet ? 80 : 64,
+                        child: ElevatedButton(
+                          onPressed: widget.onDismiss,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.red.shade900,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: Text(
+                            'DESACTIVAR ALARMA',
+                            style: TextStyle(
+                              fontSize: isTablet ? 24 : 20,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'DESACTIVAR ALARMA',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

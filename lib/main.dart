@@ -1,10 +1,10 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'models/server_config.dart';
 import 'views/alarm_view.dart';
+import 'views/phone_home_view.dart';
 import 'views/settings_view.dart';
 import 'views/splash_view.dart';
+import 'views/tablet_home_view.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -86,6 +86,12 @@ class _AppEntryState extends State<_AppEntry> {
           },
         );
       case _AppState.alarm:
+        final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
+        if (_config != null && _config!.isConfigured) {
+          return isTablet
+              ? TabletHomeView(config: _config!)
+              : PhoneHomeView(config: _config!);
+        }
         return AlarmView(initialConfig: _config);
     }
   }

@@ -1,7 +1,7 @@
 name: cce_app
 description: "CCE Home - Alarm Control"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+16
 
 environment:
   sdk: ^3.11.4
@@ -15,6 +15,9 @@ dependencies:
   shared_preferences: ^2.5.3
   audioplayers: ^6.4.0
   flutter_local_notifications: ^18.0.1
+  flutter_svg: ^2.0.10+1
+  flutter_colorpicker: ^1.1.0
+  material_design_icons_flutter: ^7.0.7296
 
 dev_dependencies:
   flutter_test:
