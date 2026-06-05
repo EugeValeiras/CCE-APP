@@ -1,0 +1,107 @@
+# Codemagic CI/CD — build iOS y publicación a TestFlight
+# App: CCE Home - Alarm Control (Flutter) · Bundle ID: com.eugeniovaleiras.cce
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-flutter-app/
+#
+# Requisitos en la UI de Codemagic:
+#  - App Store Connect API key cargada con el nombre: EUGENIO_VALEIRAS_STORE
+#    (rol App Manager o Admin, para poder crear certificados/profiles)
+#  - Repo conectado: EugeValeiras/CCE-APP
+#  - Grupo de variables "ios_signing" con CERTIFICATE_PRIVATE_KEY (mismo team
+#    XR693653J9 que Exchange Monitor, así que la misma key sirve).
+#
+# App ya creada en App Store Connect: Apple ID 6762290628 (APP_STORE_APP_ID).
+# Push Notifications ya habilitada en el App ID del Developer Portal.
+
+workflows:
+  ios-testflight:
+    name: iOS → TestFlight (CCE Home)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    # Dispara el build automáticamente en cada push a main
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+      cancel_previous_builds: true
+
+    integrations:
+      app_store_connect: EUGENIO_VALEIRAS_STORE
+
+    environment:
+      groups:
+        - ios_signing          # contiene CERTIFICATE_PRIVATE_KEY (var segura, cargada en la UI)
+      vars:
+        APP_STORE_APP_ID: "6762290628"
+        BUNDLE_ID: "com.eugeniovaleiras.cce"
+      flutter: 3.41.9
+      xcode: latest
+      cocoapods: default
+
+    cache:
+      cache_paths:
+        - $HOME/.pub-cache
+        - $CM_BUILD_DIR/ios/Pods
+
+    scripts:
+      - name: Flutter pub get
+        script: flutter pub get
+
+      # --- Code signing manual (crea cert + profile si faltan) ---
+      - name: Inicializar keychain
+        script: keychain initialize
+
+      - name: Fetch/crear signing files
+        script: |
+          set -e
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --platform IOS --type IOS_APP_STORE --create
+
+      - name: Agregar certificados al keychain
+        script: keychain add-certificates
+
+      - name: Aplicar provisioning profiles al proyecto Xcode
+        script: xcode-project use-profiles
+      # ------------------------------------------------------------
+
+      - name: Pod install
+        script: |
+          find . -name "Podfile" -execdir pod install \; || true
+
+      - name: Calcular build number (último de TestFlight + 1)
+        script: |
+          set -e
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APP_ID" || echo 0)
+          BUILD_NUMBER=$(( LATEST + 1 ))
+          BUILD_NAME=$(grep '^version:' pubspec.yaml | sed 's/version: *//' | cut -d'+' -f1)
+          echo "Último en TestFlight: $LATEST  ->  nuevo build: $BUILD_NUMBER (v$BUILD_NAME)"
+          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$CM_ENV"
+          echo "BUILD_NAME=$BUILD_NAME" >> "$CM_ENV"
+
+      - name: Build IPA (release)
+        script: |
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --build-name="$BUILD_NAME" \
+            --export-options-plist=/Users/builder/export_options.plist
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        # beta_groups:
+        #   - Internal Testers
+      email:
+        recipients:
+          - eugenio.valeiras@gmail.com
+        notify:
+          success: true
+          failure: true
