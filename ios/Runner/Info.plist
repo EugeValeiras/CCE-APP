@@ -28,6 +28,11 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>CCE Home necesita acceso a la red local para comunicarse con el servidor de domótica</string>
 	<key>UIApplicationSceneManifest</key>

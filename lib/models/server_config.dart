@@ -4,7 +4,7 @@ class ServerConfig {
   String host;
   int port;
 
-  ServerConfig({this.host = '', this.port = 3000});
+  ServerConfig({this.host = '100.79.196.98', this.port = 3000});
 
   String get baseUrl => 'http://$host:$port/api';
   String get socketUrl => 'http://$host:$port';
@@ -13,7 +13,7 @@ class ServerConfig {
   static Future<ServerConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
     return ServerConfig(
-      host: prefs.getString('server_host') ?? '',
+      host: prefs.getString('server_host') ?? '100.79.196.98',
       port: prefs.getInt('server_port') ?? 3000,
     );
   }

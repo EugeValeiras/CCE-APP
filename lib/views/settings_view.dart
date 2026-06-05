@@ -95,7 +95,7 @@ class _SettingsViewState extends State<SettingsView> {
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
                 labelText: 'IP del servidor',
-                hintText: '192.168.0.100',
+                hintText: '100.79.196.98',
                 labelStyle: const TextStyle(color: Colors.white54),
                 hintStyle: const TextStyle(color: Colors.white24),
                 filled: true,
