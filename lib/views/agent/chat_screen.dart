@@ -90,19 +90,29 @@ class _ChatScreenState extends State<ChatScreen> {
           return Column(
             children: [
               Expanded(
-                child: _service.loadingThread
-                    ? const Center(
-                        child: CircularProgressIndicator(color: Colors.white54),
-                      )
-                    : _service.messages.isEmpty
-                        ? _EmptyChat(onPick: _onSuggestion)
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                            itemCount: _service.messages.length,
-                            itemBuilder: (context, i) =>
-                                MessageBubble(message: _service.messages[i]),
-                          ),
+                // Tap anywhere on the chat area to dismiss the keyboard
+                // (otherwise the multiline field traps it and covers the tabs).
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  child: _service.loadingThread
+                      ? const Center(
+                          child:
+                              CircularProgressIndicator(color: Colors.white54),
+                        )
+                      : _service.messages.isEmpty
+                          ? _EmptyChat(onPick: _onSuggestion)
+                          : ListView.builder(
+                              controller: _scrollController,
+                              // Swipe the messages down to close the keyboard.
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                              itemCount: _service.messages.length,
+                              itemBuilder: (context, i) =>
+                                  MessageBubble(message: _service.messages[i]),
+                            ),
+                ),
               ),
               InputBar(service: _service),
             ],
