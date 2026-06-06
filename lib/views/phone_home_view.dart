@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
+import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'history_screen.dart';
 import 'rooms_list_screen.dart';
@@ -72,6 +73,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
               },
             ),
             HistoryScreen(config: widget.config, devices: _devices),
+            ChatScreen(config: widget.config),
             AlarmView(initialConfig: widget.config),
           ],
         ),
@@ -95,6 +97,11 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
               icon: Icon(Icons.history_outlined, color: Colors.white70),
               selectedIcon: Icon(Icons.history, color: Colors.white),
               label: 'Historial',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.smart_toy_outlined, color: Colors.white70),
+              selectedIcon: Icon(Icons.smart_toy, color: Colors.white),
+              label: 'Agente',
             ),
             NavigationDestination(
               icon: Icon(Icons.shield_outlined, color: Colors.white70),

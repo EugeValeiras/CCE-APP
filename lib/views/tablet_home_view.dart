@@ -3,6 +3,7 @@ import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
 import '../services/ui_settings_service.dart';
+import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'floor_plan_tab.dart';
 import 'history_screen.dart';
@@ -81,11 +82,12 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           ),
           FloorPlanTab(service: _devices, tileSize: tileSize),
           HistoryScreen(config: widget.config, devices: _devices),
+          ChatScreen(config: widget.config),
           AlarmView(initialConfig: widget.config),
         ];
 
-        // AppBar belongs to tabs 1 (Planos). Casa (0), Historial (2), Alarma (3)
-        // manage their own app bars.
+        // AppBar belongs to tab 1 (Planos). Casa (0), Historial (2), Agente (3)
+        // and Alarma (4) manage their own app bars.
         return Scaffold(
           backgroundColor: const Color(0xFF0B1D38),
           appBar: _tab == 1
@@ -137,6 +139,11 @@ class _TabletHomeViewState extends State<TabletHomeView> {
                 icon: Icon(Icons.history_outlined, color: Colors.white70),
                 selectedIcon: Icon(Icons.history, color: Colors.white),
                 label: 'Historial',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.smart_toy_outlined, color: Colors.white70),
+                selectedIcon: Icon(Icons.smart_toy, color: Colors.white),
+                label: 'Agente',
               ),
               NavigationDestination(
                 icon: Icon(Icons.shield_outlined, color: Colors.white70),

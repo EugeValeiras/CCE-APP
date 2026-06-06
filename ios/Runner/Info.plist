@@ -35,6 +35,14 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>CCE Home necesita acceso a la red local para comunicarse con el servidor de domótica</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CCE usa la cámara para enviarle fotos al asistente.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CCE accede a tus fotos para enviárselas al asistente.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CCE usa el micrófono para dictar mensajes al asistente.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>CCE transcribe tu voz en el dispositivo para escribirle al asistente.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
