@@ -35,6 +35,9 @@ class _LightColorScreenState extends State<LightColorScreen> {
   late Color _color; // color actual (modo color)
   late double _ct; // mireds 153..500 (modo blanco)
   late double _bri; // 0..254
+  // Posición libre del marcador en modo blanco (fracción 0..1 del disco);
+  // null = centrado a la altura que corresponde al CT actual.
+  Offset? _whiteMarker;
 
   Timer? _debounce;
 
@@ -53,6 +56,7 @@ class _LightColorScreenState extends State<LightColorScreen> {
     _color = r.isWhite ? CceColors.warm : r.color;
     _ct = (s.ct ?? 350).clamp(_ctMin, _ctMax).toDouble();
     _bri = s.bri.toDouble().clamp(0, 254);
+    _whiteMarker = null; // re-centra el marcador al CT de la luz cargada
     // Modo inicial: blanco si la luz está en CT, o si no soporta color.
     final whiteMode = (r.isWhite && d.supportsCT) || !d.supportsColor;
     _mode = whiteMode && d.supportsCT ? _Mode.white : _Mode.color;
@@ -102,8 +106,13 @@ class _LightColorScreenState extends State<LightColorScreen> {
     });
   }
 
-  void _onCtChanged(double ct) {
-    setState(() => _ct = ct.clamp(_ctMin, _ctMax));
+  /// Modo blanco: el marcador sigue el dedo en 2D (frac 0..1) y el CT sale de
+  /// la posición vertical (arriba = cálido).
+  void _onWhitePos(Offset frac) {
+    setState(() {
+      _whiteMarker = frac;
+      _ct = (_ctMax - frac.dy * (_ctMax - _ctMin)).clamp(_ctMin, _ctMax);
+    });
   }
 
   void _commitCt() => widget.service.setCt(_live, _ct.round());
@@ -144,13 +153,14 @@ class _LightColorScreenState extends State<LightColorScreen> {
                             ct: _ct,
                             ctMin: _ctMin,
                             ctMax: _ctMax,
+                            whiteMarker: _whiteMarker,
                             iconData: IconResolver.resolve(
                               d,
                               configuredIcon: widget.service.iconFor(d.id),
                               displayName: widget.service.displayName(d),
                             ),
                             onColor: _onColorChanged,
-                            onCt: _onCtChanged,
+                            onWhitePos: _onWhitePos,
                             onCtEnd: _commitCt,
                           ),
                           const SizedBox(height: 28),
@@ -278,9 +288,10 @@ class _ColorDisk extends StatelessWidget {
   final _Mode mode;
   final Color color;
   final double ct, ctMin, ctMax;
+  final Offset? whiteMarker; // posición libre del marcador en modo blanco
   final IconData iconData;
   final ValueChanged<Color> onColor;
-  final ValueChanged<double> onCt;
+  final ValueChanged<Offset> onWhitePos; // frac 0..1 del disco
   final VoidCallback onCtEnd;
 
   const _ColorDisk({
@@ -290,9 +301,10 @@ class _ColorDisk extends StatelessWidget {
     required this.ct,
     required this.ctMin,
     required this.ctMax,
+    required this.whiteMarker,
     required this.iconData,
     required this.onColor,
-    required this.onCt,
+    required this.onWhitePos,
     required this.onCtEnd,
   });
 
@@ -307,19 +319,32 @@ class _ColorDisk extends StatelessWidget {
     Color(0xFFFF0000),
   ];
 
-  void _handle(Offset local) {
+  /// Restringe [local] al interior del disco (centro, radio size/2).
+  Offset _clampToCircle(Offset local) {
     final c = size / 2;
     final dx = local.dx - c;
     final dy = local.dy - c;
-    if (mode == _Mode.white) {
-      // Vertical: arriba = cálido (ctMax), abajo = frío (ctMin).
-      final frac = (local.dy / size).clamp(0.0, 1.0);
-      onCt(ctMax - frac * (ctMax - ctMin));
-      return;
-    }
     final r = math.sqrt(dx * dx + dy * dy);
     final maxR = size / 2;
-    final sat = (r / maxR).clamp(0.0, 1.0).toDouble();
+    if (r <= maxR || r == 0) return local;
+    final k = maxR / r;
+    return Offset(c + dx * k, c + dy * k);
+  }
+
+  void _handle(Offset local) {
+    final c = size / 2;
+    if (mode == _Mode.white) {
+      // El marcador sigue el dedo en 2D (clampeado al disco); la temperatura
+      // sale de la posición vertical (arriba = cálido, abajo = frío).
+      final p = _clampToCircle(local);
+      onWhitePos(Offset(p.dx / size, p.dy / size));
+      return;
+    }
+    final p = _clampToCircle(local);
+    final dx = p.dx - c;
+    final dy = p.dy - c;
+    final r = math.sqrt(dx * dx + dy * dy);
+    final sat = (r / (size / 2)).clamp(0.0, 1.0).toDouble();
     var hue = math.atan2(dy, dx) * 180.0 / math.pi;
     hue = (hue + 360.0) % 360.0;
     onColor(HSVColor.fromAHSV(1.0, hue, sat, 1.0).toColor());
@@ -328,6 +353,10 @@ class _ColorDisk extends StatelessWidget {
   Offset _markerPos() {
     final c = size / 2;
     if (mode == _Mode.white) {
+      if (whiteMarker != null) {
+        return Offset(whiteMarker!.dx * size, whiteMarker!.dy * size);
+      }
+      // Sin posición libre aún: centrado a la altura del CT actual.
       final frac = ((ctMax - ct) / (ctMax - ctMin)).clamp(0.0, 1.0);
       return Offset(c, frac * size);
     }
