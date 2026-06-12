@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
+import '../services/jbl_service.dart';
 import '../services/socket_service.dart';
 import '../theme/cce_icons.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'history_screen.dart';
 import 'rooms_list_screen.dart';
+import 'soundbar/soundbar_screen.dart';
 
 /// iPhone root: "Casa" tab (rooms → room detail with color control) + "Alarma" tab.
 class PhoneHomeView extends StatefulWidget {
@@ -20,6 +22,7 @@ class PhoneHomeView extends StatefulWidget {
 class _PhoneHomeViewState extends State<PhoneHomeView> {
   late SocketService _socket;
   late DevicesService _devices;
+  late final JblService _jbl;
   int _tab = 0;
   final _casaNavKey = GlobalKey<NavigatorState>();
 
@@ -30,10 +33,12 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     _socket.connect(widget.config);
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
+    _jbl = JblService(config: widget.config);
   }
 
   @override
   void dispose() {
+    _jbl.dispose();
     _devices.dispose();
     _socket.dispose();
     super.dispose();
@@ -75,6 +80,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             HistoryScreen(config: widget.config, devices: _devices),
             ChatScreen(config: widget.config),
             AlarmView(initialConfig: widget.config),
+            SoundbarScreen(service: _jbl),
           ],
         ),
         bottomNavigationBar: NavigationBar(
@@ -83,6 +89,12 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             if (i == _tab && i == 0) {
               _casaNavKey.currentState?.popUntil((r) => r.isFirst);
             }
+            // El shell posee el ciclo de polling del soundbar: solo pollea
+            // mientras Sonido (idx 4) es el destino activo.
+            final wasSound = _tab == 4;
+            final isSound = i == 4;
+            if (isSound && !wasSound) _jbl.startPolling();
+            if (!isSound && wasSound) _jbl.stopPolling();
             setState(() => _tab = i);
           },
           // El tinte selected/unselected lo provee el IconTheme del tema —
@@ -103,6 +115,10 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             NavigationDestination(
               icon: CceIcon(CceIcons.alarmShield, size: 26),
               label: 'Alarma',
+            ),
+            NavigationDestination(
+              icon: CceIcon(CceIcons.speaker, size: 26),
+              label: 'Sonido',
             ),
           ],
         ),

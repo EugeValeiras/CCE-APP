@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/server_config.dart';
 import '../models/device.dart';
+import '../models/jbl_status.dart';
 import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
@@ -222,5 +223,185 @@ class ApiService {
     } catch (_) {
       return false;
     }
+  }
+
+  // ── JBL Soundbar ───────────────────────────────────────────────────────────
+  // El soundbar NO emite por socket: el estado se obtiene por polling de
+  // getJblStatus. GET /jbl/status NUNCA falla por barra inalcanzable (devuelve
+  // 200 con online:false); el resto de los comandos SÍ fallan (502) ante barra
+  // inalcanzable y devuelven un {error} semántico que parseamos como en
+  // recallHueScene.
+
+  Future<JblStatus> getJblStatus() async {
+    // Timeout 8s: el server hace SSDP discovery (throttle 30s) antes de
+    // responder offline; 5s daría timeouts espurios.
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/jbl/status'))
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return JblStatus.fromJson(
+        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<List<JblRadio>> getJblRadios() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/jbl/radios'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    final list = data is List ? data : (data is Map ? data['radios'] : null);
+    if (list is! List) return const [];
+    final radios = <JblRadio>[];
+    for (final it in list) {
+      if (it is String) {
+        radios.add(JblRadio(name: it));
+      } else if (it is Map) {
+        radios.add(JblRadio.fromJson(Map<String, dynamic>.from(it)));
+      }
+    }
+    return radios;
+  }
+
+  Future<int> setJblVolume(int volume) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/jbl/volume'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'volume': volume}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['volume'] as num).toInt();
+  }
+
+  Future<int> jblVolumeUp({int? step}) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/volume/up'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({if (step != null) 'step': step}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['volume'] as num).toInt();
+  }
+
+  Future<int> jblVolumeDown({int? step}) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/volume/down'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({if (step != null) 'step': step}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['volume'] as num).toInt();
+  }
+
+  Future<bool> setJblMute(bool muted) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/jbl/mute'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'muted': muted}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return data['muted'] as bool;
+  }
+
+  Future<bool> toggleJblMute() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/jbl/mute/toggle'))
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return data['muted'] as bool;
+  }
+
+  Future<void> jblPowerToggle() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/jbl/power/toggle'))
+        .timeout(const Duration(seconds: 5));
+    _jblOk(resp);
+  }
+
+  Future<String> setJblPower(bool on, {bool resume = true}) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/jbl/power'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'on': on, 'resume': resume}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['power'] ?? '').toString();
+  }
+
+  Future<String> playJblRadio({String? name}) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/radio/play'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({if (name != null) 'name': name}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['name'] ?? '').toString();
+  }
+
+  Future<String> saveJblRadio() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/jbl/radio/save'))
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['name'] ?? '').toString();
+  }
+
+  Future<void> deleteJblRadio(String name) async {
+    final resp = await http
+        .delete(Uri.parse(
+            '${config.baseUrl}/jbl/radios/${Uri.encodeComponent(name)}'))
+        .timeout(const Duration(seconds: 5));
+    _jblOk(resp);
+  }
+
+  Future<String> getJblConfig() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/jbl/config'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return (data is Map ? data['ip'] ?? '' : '').toString();
+  }
+
+  Future<String> setJblIp(String ip) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/jbl/config'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'ip': ip}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return (data['ip'] ?? '').toString();
+  }
+
+  /// Valida la respuesta de un comando JBL (acepta 200 y 201). Ante fallo
+  /// parsea el {error} semántico del body (502/400/404), igual que
+  /// recallHueScene. Devuelve el body decodificado como Map.
+  Map<String, dynamic> _jblOk(http.Response resp) {
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      String msg = 'Error ${resp.statusCode}';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) msg = data['error'].toString();
+      } catch (_) {}
+      throw Exception(msg);
+    }
+    final data = jsonDecode(resp.body);
+    return data is Map<String, dynamic>
+        ? data
+        : Map<String, dynamic>.from(data as Map);
   }
 }

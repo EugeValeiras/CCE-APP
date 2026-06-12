@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/room_ref.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
+import '../services/jbl_service.dart';
 import '../services/socket_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
@@ -17,6 +18,7 @@ import 'automations/automations_view.dart';
 import 'floor_plan_tab.dart';
 import 'history_screen.dart';
 import 'settings_view.dart';
+import 'soundbar/soundbar_screen.dart';
 import 'tablet/room_panel.dart';
 import 'tablet/rooms_sidebar.dart';
 
@@ -36,6 +38,7 @@ class TabletHomeView extends StatefulWidget {
 class _TabletHomeViewState extends State<TabletHomeView> {
   late SocketService _socket;
   late DevicesService _devices;
+  late final JblService _jbl;
   final UiSettingsService _ui = UiSettingsService();
   int _tab = 0;
 
@@ -46,11 +49,13 @@ class _TabletHomeViewState extends State<TabletHomeView> {
     _socket.connect(widget.config);
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
+    _jbl = JblService(config: widget.config);
     _ui.load();
   }
 
   @override
   void dispose() {
+    _jbl.dispose();
     _devices.dispose();
     _socket.dispose();
     _ui.dispose();
@@ -85,6 +90,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           HistoryScreen(config: widget.config, devices: _devices),
           ChatScreen(config: widget.config),
           AlarmView(initialConfig: widget.config),
+          SoundbarScreen(service: _jbl),
         ];
 
         return Scaffold(
@@ -96,7 +102,15 @@ class _TabletHomeViewState extends State<TabletHomeView> {
                 ),
                 _HueBottomNav(
                   selected: _tab,
-                  onSelect: (i) => setState(() => _tab = i),
+                  onSelect: (i) {
+                    // El shell posee el ciclo de polling del soundbar:
+                    // solo pollea mientras Sonido (idx 5) es la tab activa.
+                    final wasSound = _tab == 5;
+                    final isSound = i == 5;
+                    if (isSound && !wasSound) _jbl.startPolling();
+                    if (!isSound && wasSound) _jbl.stopPolling();
+                    setState(() => _tab = i);
+                  },
                   onSettings: _openSettings,
                 ),
               ],
@@ -127,6 +141,7 @@ class _HueBottomNav extends StatelessWidget {
     (CceIcons.history, 'Historial'),
     (CceIcons.agent, 'Agente'),
     (CceIcons.alarmShield, 'Alarma'),
+    (CceIcons.speaker, 'Sonido'),
     (CceIcons.settings, 'Ajustes'),
   ];
 
