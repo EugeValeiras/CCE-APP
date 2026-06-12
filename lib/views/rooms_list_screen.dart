@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
+import '../services/jbl_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/room_card.dart';
@@ -10,12 +11,15 @@ import '../utils/icon_resolver.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'room_detail_screen.dart';
+import 'soundbar/soundbar_home_card.dart';
 
 /// Lista de habitaciones estilo Hue (phone). Las habitaciones y sus stats
 /// salen SIEMPRE de DevicesService (rooms / statsFor) — acá no se deriva nada.
+/// [jbl] != null agrega la card del JBL Soundbar (accionable desde la home).
 class RoomsListScreen extends StatelessWidget {
   final DevicesService service;
-  const RoomsListScreen({super.key, required this.service});
+  final JblService? jbl;
+  const RoomsListScreen({super.key, required this.service, this.jbl});
 
   /// Ícono de la habitación: el configurado (iconName) resuelto vía
   /// IconResolver con un device representativo, o el genérico de sala.
@@ -67,20 +71,25 @@ class RoomsListScreen extends StatelessWidget {
                   onRefresh: service.refresh,
                   color: CceColors.textPrimary,
                   backgroundColor: CceColors.surfaceHigh,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    itemCount: rooms.length + 1,
-                    separatorBuilder: (context, idx) =>
-                        const SizedBox(height: 12),
-                    itemBuilder: (context, i) {
-                      if (i == 0) {
-                        // Resumen de clima de toda la casa (se auto-oculta
-                        // si no hay sensores de temperatura/humedad).
-                        return TemperatureSummaryCard(service: service);
-                      }
-                      final room = rooms[i - 1];
-                      return _buildRoomCard(context, room);
+                  child: Builder(
+                    builder: (context) {
+                      // Items líder: clima (0) + soundbar (1, si hay JBL).
+                      final lead = <Widget>[
+                        TemperatureSummaryCard(service: service),
+                        if (jbl != null) SoundbarHomeCard(service: jbl!),
+                      ];
+                      return ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        itemCount: rooms.length + lead.length,
+                        separatorBuilder: (context, idx) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, i) {
+                          if (i < lead.length) return lead[i];
+                          final room = rooms[i - lead.length];
+                          return _buildRoomCard(context, room);
+                        },
+                      );
                     },
                   ),
                 ),

@@ -34,6 +34,9 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
     _jbl = JblService(config: widget.config);
+    // La tab inicial es Casa (0), que ahora muestra la card del soundbar →
+    // arrancamos el polling para que su estado esté fresco.
+    _jbl.startPolling();
   }
 
   @override
@@ -73,7 +76,8 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
               onGenerateRoute: (routeSettings) {
                 return MaterialPageRoute(
                   settings: routeSettings,
-                  builder: (_) => RoomsListScreen(service: _devices),
+                  builder: (_) =>
+                      RoomsListScreen(service: _devices, jbl: _jbl),
                 );
               },
             ),
@@ -89,12 +93,11 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             if (i == _tab && i == 0) {
               _casaNavKey.currentState?.popUntil((r) => r.isFirst);
             }
-            // El shell posee el ciclo de polling del soundbar: solo pollea
-            // mientras Sonido (idx 4) es el destino activo.
-            final wasSound = _tab == 4;
-            final isSound = i == 4;
-            if (isSound && !wasSound) _jbl.startPolling();
-            if (!isSound && wasSound) _jbl.stopPolling();
+            // Polla mientras se ve el soundbar: Casa (idx 0, card) o Sonido
+            // (idx 4, pantalla completa).
+            bool pollFor(int t) => t == 0 || t == 4;
+            if (pollFor(i) && !pollFor(_tab)) _jbl.startPolling();
+            if (!pollFor(i) && pollFor(_tab)) _jbl.stopPolling();
             setState(() => _tab = i);
           },
           // El tinte selected/unselected lo provee el IconTheme del tema —
