@@ -10,6 +10,11 @@ import '../theme/components/section_header.dart';
 /// Sección "Mis escenas": grilla de escenas Hue nativas + escenas CCE.
 /// [room] == null = "Toda la casa" (todas las Hue + CCE con planId == null).
 /// Gestiona busy + anti doble-tap; se auto-oculta si no hay escenas.
+///
+/// Si la sala tiene plano (planId != null) las escenas se muestran en el
+/// orden unificado de `actionOrder` (el MISMO que usa el dashboard web) y
+/// se reordenan con long-press + drag, persistiendo vía
+/// [DevicesService.reorderSceneKey].
 class ScenesSection extends StatefulWidget {
   const ScenesSection({
     super.key,
@@ -30,6 +35,7 @@ class ScenesSection extends StatefulWidget {
 
 class _ScenesSectionState extends State<ScenesSection> {
   String? _busyId;
+  bool _dragging = false;
 
   Future<void> _run(String id, Future<void> Function() action) async {
     if (_busyId != null) return; // anti doble-tap
@@ -70,14 +76,52 @@ class _ScenesSectionState extends State<ScenesSection> {
     return Icon(data ?? Icons.auto_awesome);
   }
 
+  Future<void> _reorder(String planId, String fromKey, String toKey) async {
+    final ok = await widget.service.reorderSceneKey(planId, fromKey, toKey);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo reordenar la escena')),
+      );
+    }
+  }
+
+  /// Envuelve la card para drag&drop (solo salas con plano).
+  Widget _draggable(String planId, String key, Widget card) {
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (d) => d.data != key,
+      onAcceptWithDetails: (d) => _reorder(planId, d.data, key),
+      builder: (context, candidates, _) {
+        final hovering = candidates.isNotEmpty;
+        return LongPressDraggable<String>(
+          data: key,
+          onDragStarted: () => setState(() => _dragging = true),
+          onDragEnd: (_) => setState(() => _dragging = false),
+          feedback: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 170,
+              height: 100,
+              child: Opacity(opacity: 0.92, child: card),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.30, child: card),
+          child: AnimatedScale(
+            scale: hovering ? 1.06 : 1.0,
+            duration: const Duration(milliseconds: 120),
+            child: card,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: widget.service,
       builder: (context, _) {
         final room = widget.room;
-        // Orden: primero Hue (smart primero — ya vienen ordenadas por la API),
-        // luego las escenas CCE.
+        final planId = room?.planId;
         final hue = room == null
             ? widget.service.hueScenes
             : widget.service.hueScenesForRoom(room);
@@ -89,23 +133,60 @@ class _ScenesSectionState extends State<ScenesSection> {
 
         if (hue.isEmpty && cce.isEmpty) return const SizedBox.shrink();
 
-        final cards = <Widget>[
+        // Entradas con su key tipada (la misma del actionOrder del dashboard).
+        final entries = <(String, Widget)>[
           for (final s in hue)
-            SceneCard(
-              name: s.name,
-              colors: s.swatch,
-              active: s.isActive,
-              isSmart: s.isSmart,
-              busy: _busyId == s.id,
-              onTap: () => _run(s.id, () => widget.service.recallHueScene(s)),
+            (
+              'hueScene:${s.id}',
+              SceneCard(
+                name: s.name,
+                colors: s.swatch,
+                active: s.isActive,
+                isSmart: s.isSmart,
+                busy: _busyId == s.id,
+                onTap: () =>
+                    _run(s.id, () => widget.service.recallHueScene(s)),
+              ),
             ),
           for (final s in cce)
-            SceneCard(
-              name: s.name,
-              icon: _cceIcon(s),
-              busy: _busyId == s.id,
-              onTap: () => _run(s.id, () => widget.service.applyScene(s)),
+            (
+              'scene:${s.id}',
+              SceneCard(
+                name: s.name,
+                icon: _cceIcon(s),
+                busy: _busyId == s.id,
+                onTap: () => _run(s.id, () => widget.service.applyScene(s)),
+              ),
             ),
+        ];
+
+        // Orden del dashboard si la sala tiene plano: índice en actionOrder;
+        // lo que no figura conserva el orden por defecto al final (sort
+        // estable vía decorate con índice original).
+        if (planId != null) {
+          final orderKeys = widget.service.actionOrderFor(planId);
+          final decorated = [
+            for (var i = 0; i < entries.length; i++)
+              (
+                orderKeys.indexOf(entries[i].$1) >= 0
+                    ? orderKeys.indexOf(entries[i].$1)
+                    : orderKeys.length + i,
+                i,
+                entries[i],
+              ),
+          ];
+          decorated.sort((a, b) {
+            final byOrder = a.$1.compareTo(b.$1);
+            return byOrder != 0 ? byOrder : a.$2.compareTo(b.$2);
+          });
+          entries
+            ..clear()
+            ..addAll(decorated.map((d) => d.$3));
+        }
+
+        final cards = <Widget>[
+          for (final e in entries)
+            planId != null ? _draggable(planId, e.$1, e.$2) : e.$2,
         ];
 
         return Column(
@@ -113,6 +194,15 @@ class _ScenesSectionState extends State<ScenesSection> {
           mainAxisSize: MainAxisSize.min,
           children: [
             SectionHeader(title: widget.title),
+            // Hint sutil mientras se arrastra.
+            if (_dragging)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 6),
+                child: Text(
+                  'Soltá sobre otra escena para reordenar',
+                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+              ),
             GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),

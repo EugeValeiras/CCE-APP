@@ -25,21 +25,21 @@ class TemperatureSummaryCard extends StatelessWidget {
     final primaryHum = primaryHumDevice.sensor?.humidity;
     final primaryTemp = primary?.sensor?.temperature;
 
+    // Nombre del sensor UNA sola vez, como contexto chico a la derecha
+    // (antes salía "Office thermometer" duplicado como label de ambas
+    // lecturas, sobre un gradiente marrón).
+    final sensorName = primary != null
+        ? service.displayName(primary)
+        : (primaryHumDevice.id.isEmpty
+            ? null
+            : service.displayName(primaryHumDevice));
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: CceCard(
-        padding: const EdgeInsets.all(22),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         border: true,
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            // Pipeline de tint: nunca pintar el color de escala crudo.
-            CceTint.normalize(_desaturate(_colorForTemp(primaryTemp)))
-                .withValues(alpha: 0.45),
-            CceColors.surface,
-          ],
-        ),
+        color: CceColors.surface,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -49,14 +49,14 @@ class TemperatureSummaryCard extends StatelessWidget {
                   icon: MdiIcons.thermometer,
                   value: primaryTemp.toStringAsFixed(1),
                   unit: '°C',
-                  label: primary != null ? service.displayName(primary) : 'Temperatura',
+                  label: 'Temperatura',
                   color: _desaturate(_colorForTemp(primaryTemp)),
                 ),
               ),
             if (primaryTemp != null && primaryHum != null)
               Container(
                 width: 1,
-                height: 72,
+                height: 56,
                 color: CceColors.stroke,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
               ),
@@ -66,8 +66,17 @@ class TemperatureSummaryCard extends StatelessWidget {
                   icon: MdiIcons.waterPercent,
                   value: primaryHum.toStringAsFixed(0),
                   unit: '%',
-                  label: primaryHumDevice.id.isEmpty ? 'Humedad' : service.displayName(primaryHumDevice),
+                  label: 'Humedad',
                   color: CceColors.info,
+                ),
+              ),
+            if (sensorName != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Text(
+                  sensorName,
+                  style: CceText.caption
+                      .copyWith(color: CceColors.textTertiary),
                 ),
               ),
           ],
@@ -117,8 +126,8 @@ class _HeroReading extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(width: 8),
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 6),
             Flexible(
               child: Text(
                 label,
@@ -128,7 +137,7 @@ class _HeroReading extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
@@ -136,9 +145,9 @@ class _HeroReading extends StatelessWidget {
             Text(
               value,
               style: CceText.display.copyWith(
-                fontSize: 48,
+                fontSize: 38,
                 height: 1.0,
-                letterSpacing: -1.5,
+                letterSpacing: -1.2,
               ),
             ),
             const SizedBox(width: 4),
@@ -146,7 +155,7 @@ class _HeroReading extends StatelessWidget {
               unit,
               style: TextStyle(
                 color: color,
-                fontSize: 22,
+                fontSize: 16,
                 fontWeight: FontWeight.w700,
               ),
             ),

@@ -9,13 +9,13 @@ import 'cce_card.dart';
 import 'status_dot.dart';
 
 /// Card de habitacion (sidebar tablet y lista phone), estilo Hue:
-/// gradiente tintado si hay luces encendidas (con glow), dots de estado
-/// (puerta/movimiento) integrados al subtítulo, switch a la derecha y
-/// slider de brillo embebido (solo tablet, cuando [brightness] != null).
+/// gradiente ámbar uniforme si hay luces encendidas (texto oscuro), dots de
+/// estado integrados al subtítulo, switch a la derecha y slider de brillo
+/// FINO embebido al pie (solo tablet, cuando [brightness] != null).
 ///
 /// Layout congelado (anti-overflow):
-///  - compact == true (phone): altura FIJA 96, NUNCA renderiza slider.
-///  - compact == false (tablet): 116 sin slider; 156 con slider (height 44).
+///  - compact == true (phone): altura FIJA 84, NUNCA renderiza slider.
+///  - compact == false (tablet): 84 sin slider; 110 con slider thin (24).
 class RoomCard extends StatefulWidget {
   const RoomCard({
     super.key,
@@ -43,7 +43,8 @@ class RoomCard extends StatefulWidget {
   final int lightsTotal;
   final bool anyOn;
 
-  /// Tint YA normalizado (CceTint.normalize lo aplica DevicesService).
+  /// Aceptado por compatibilidad; la card ya NO se tiñe con el color de
+  /// las luces (ámbar uniforme estilo Hue).
   final Color? tint;
   final double? brightness; // 0..1; null = sin slider
   final bool selected; // resaltado en sidebar tablet
@@ -113,20 +114,18 @@ class _RoomCardState extends State<RoomCard> {
   @override
   Widget build(BuildContext context) {
     final showSlider = !widget.compact && widget.brightness != null;
-    final height = widget.compact ? 96.0 : (showSlider ? 156.0 : 116.0);
+    final height = widget.compact ? 84.0 : (showSlider ? 110.0 : 84.0);
 
     final gradient = widget.anyOn
-        ? CceGradients.roomOn(widget.tint)
+        ? CceGradients.roomOn()
         : (widget.selected ? null : CceGradients.roomOff);
-    final glowColor = widget.anyOn
-        ? CceGradients.roomOn(widget.tint).colors.last
-        : Colors.transparent;
-    final fgBase = widget.anyOn
-        ? CceGradients.roomOn(widget.tint).colors.first
-        : CceColors.surface;
-    final fg = widget.anyOn ? CceTint.textOn(fgBase) : CceColors.textPrimary;
-    final fgSub =
-        widget.anyOn ? CceTint.subTextOn(fgBase) : CceColors.textSecondary;
+    final glowColor =
+        widget.anyOn ? CceColors.amberLo : Colors.transparent;
+    final fg =
+        widget.anyOn ? CceColors.inkOnAmber : CceColors.textPrimary;
+    final fgSub = widget.anyOn
+        ? CceColors.inkOnAmber.withValues(alpha: 0.65)
+        : CceColors.textSecondary;
 
     final subtitleRow = Row(
       children: [
@@ -160,22 +159,15 @@ class _RoomCardState extends State<RoomCard> {
 
     final headerRow = Row(
       children: [
-        Container(
-          width: widget.compact ? 42 : 48,
-          height: widget.compact ? 42 : 48,
-          decoration: BoxDecoration(
-            color: widget.anyOn
-                ? Colors.white.withValues(alpha: 0.28)
-                : CceColors.surfaceHigh,
-            shape: BoxShape.circle,
-          ),
-          alignment: Alignment.center,
+        // Ícono plano, sin contenedor circular (look Hue).
+        SizedBox(
+          width: 30,
           child: IconTheme.merge(
-            data: IconThemeData(color: fg, size: widget.compact ? 22 : 24),
+            data: IconThemeData(color: fg, size: 24),
             child: widget.icon,
           ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -186,31 +178,33 @@ class _RoomCardState extends State<RoomCard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: widget.compact ? 17 : 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: -0.2,
                   color: fg,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               subtitleRow,
             ],
           ),
         ),
         const SizedBox(width: 8),
         SizedBox(
-          width: 48,
-          height: 48,
-          child: Center(
+          width: 52,
+          height: 36,
+          child: FittedBox(
+            fit: BoxFit.contain,
             child: Switch.adaptive(
               value: widget.anyOn,
               onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
                   ? null
                   : widget.onToggle,
-              activeTrackColor:
-                  widget.anyOn ? Colors.white.withValues(alpha: 0.45) : null,
+              activeTrackColor: widget.anyOn
+                  ? CceColors.inkOnAmber.withValues(alpha: 0.30)
+                  : null,
               thumbColor:
-                  widget.anyOn ? WidgetStatePropertyAll<Color>(fg) : null,
+                  const WidgetStatePropertyAll<Color>(Colors.white),
             ),
           ),
         ),
@@ -221,10 +215,7 @@ class _RoomCardState extends State<RoomCard> {
       gradient: gradient,
       color:
           widget.selected && !widget.anyOn ? CceColors.surfaceHigh : null,
-      padding: EdgeInsets.symmetric(
-        horizontal: widget.compact ? 14 : 16,
-        vertical: widget.compact ? 10 : 8,
-      ),
+      padding: EdgeInsets.fromLTRB(16, showSlider ? 10 : 8, 14, 8),
       onTap: () {
         HapticFeedback.selectionClick();
         widget.onTap();
@@ -233,16 +224,22 @@ class _RoomCardState extends State<RoomCard> {
           ? Column(
               children: [
                 Expanded(child: headerRow),
-                CceBrightnessSlider(
-                  height: 44,
-                  value: (_dragValue ?? widget.brightness!)
-                      .clamp(0.0, 1.0)
-                      .toDouble(),
-                  activeColor: widget.anyOn
-                      ? Colors.white.withValues(alpha: 0.85)
-                      : CceColors.warm,
-                  onChanged: _onSliderChanged,
-                  onChangeEnd: _onSliderEnd,
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: CceBrightnessSlider(
+                    height: 24,
+                    thin: true,
+                    showPercent: false,
+                    value: (_dragValue ?? widget.brightness!)
+                        .clamp(0.0, 1.0)
+                        .toDouble(),
+                    activeColor: Colors.white.withValues(alpha: 0.85),
+                    thinTrackColor: widget.anyOn
+                        ? CceColors.inkOnAmber.withValues(alpha: 0.18)
+                        : Colors.white.withValues(alpha: 0.22),
+                    onChanged: _onSliderChanged,
+                    onChangeEnd: _onSliderEnd,
+                  ),
                 ),
               ],
             )
@@ -265,7 +262,8 @@ class _RoomCardState extends State<RoomCard> {
             ),
             child: card,
           ),
-          // Borde de selección animado (200 ms).
+          // Selección: hairline blanco sutil (el accent violeta chocaba
+          // contra el ámbar).
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedContainer(
@@ -275,9 +273,9 @@ class _RoomCardState extends State<RoomCard> {
                   borderRadius: BorderRadius.circular(CceRadii.card),
                   border: Border.all(
                     color: widget.selected
-                        ? CceColors.accent
+                        ? Colors.white.withValues(alpha: 0.80)
                         : Colors.transparent,
-                    width: 2,
+                    width: 1.4,
                   ),
                 ),
               ),

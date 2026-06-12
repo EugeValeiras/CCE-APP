@@ -21,9 +21,9 @@ import 'settings_view.dart';
 import 'tablet/room_panel.dart';
 import 'tablet/rooms_sidebar.dart';
 
-/// Shell tablet estilo Hue: NavigationRail fino a la izquierda (Casa,
-/// Automatizaciones, Historial, Agente, Alarma + ajustes al pie) y la tab
-/// Casa como split view
+/// Shell tablet estilo Hue: barra de navegación ABAJO (Casa,
+/// Automatizaciones, Historial, Agente, Alarma, Ajustes — labels en
+/// mayúsculas chicas como Hue) y la tab Casa como split view:
 /// sidebar de habitaciones + panel derecho (plano de toda la casa o detalle
 /// de la habitacion seleccionada).
 class TabletHomeView extends StatefulWidget {
@@ -90,59 +90,112 @@ class _TabletHomeViewState extends State<TabletHomeView> {
 
         return Scaffold(
           body: SafeArea(
-            child: Row(
+            child: Column(
               children: [
-                NavigationRail(
-                  minWidth: 72,
-                  selectedIndex: _tab,
-                  groupAlignment: -1,
-                  labelType: NavigationRailLabelType.all,
-                  onDestinationSelected: (i) => setState(() => _tab = i),
-                  destinations: const [
-                    NavigationRailDestination(
-                      icon: CceIcon(CceIcons.allHouse),
-                      label: Text('Casa'),
-                    ),
-                    NavigationRailDestination(
-                      icon: CceIcon(CceIcons.automations),
-                      label: Text('Automatizaciones'),
-                    ),
-                    NavigationRailDestination(
-                      icon: CceIcon(CceIcons.history),
-                      label: Text('Historial'),
-                    ),
-                    NavigationRailDestination(
-                      icon: CceIcon(CceIcons.agent),
-                      label: Text('Agente'),
-                    ),
-                    NavigationRailDestination(
-                      icon: CceIcon(CceIcons.alarmShield),
-                      label: Text('Alarma'),
-                    ),
-                  ],
-                  trailing: Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: IconButton(
-                          tooltip: 'Ajustes',
-                          icon: const CceIcon(CceIcons.settings),
-                          onPressed: _openSettings,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const VerticalDivider(),
                 Expanded(
                   child: IndexedStack(index: _tab, children: tabs),
+                ),
+                _HueBottomNav(
+                  selected: _tab,
+                  onSelect: (i) => setState(() => _tab = i),
+                  onSettings: _openSettings,
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+/// Barra de navegación inferior estilo Hue: íconos + labels en MAYÚSCULAS
+/// chicas, activo blanco / inactivos gris, fondo surface con hairline arriba.
+class _HueBottomNav extends StatelessWidget {
+  const _HueBottomNav({
+    required this.selected,
+    required this.onSelect,
+    required this.onSettings,
+  });
+
+  final int selected;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onSettings;
+
+  static const _items = <(String, String)>[
+    (CceIcons.allHouse, 'Casa'),
+    (CceIcons.automations, 'Automatizaciones'),
+    (CceIcons.history, 'Historial'),
+    (CceIcons.agent, 'Agente'),
+    (CceIcons.alarmShield, 'Alarma'),
+    (CceIcons.settings, 'Ajustes'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      decoration: const BoxDecoration(
+        color: CceColors.surface,
+        border: Border(top: BorderSide(color: CceColors.stroke)),
+      ),
+      child: Row(
+        children: [
+          for (var i = 0; i < _items.length; i++)
+            Expanded(
+              child: _NavItem(
+                svg: _items[i].$1,
+                label: _items[i].$2,
+                // Ajustes (último) no es tab: abre la pantalla y no queda
+                // marcado como activo.
+                active: i == selected && i < _items.length - 1,
+                onTap: i == _items.length - 1
+                    ? onSettings
+                    : () => onSelect(i),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  const _NavItem({
+    required this.svg,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String svg;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = active ? Colors.white : CceColors.textTertiary;
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CceIcon(svg, size: 22, color: color),
+          const SizedBox(height: 4),
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -235,12 +288,13 @@ class _CasaSplitState extends State<_CasaSplit> {
         children: [
           Row(
             children: [
+              // "Mi casa" ya es el header de la sidebar: acá jerarquía menor.
               const Expanded(
                 child: Text(
-                  'Mi casa',
+                  'Toda la casa',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: CceText.display,
+                  style: CceText.title,
                 ),
               ),
               SizedBox(

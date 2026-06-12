@@ -58,6 +58,23 @@ class ApiService {
     return data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map);
   }
 
+  /// Persiste el orden de acciones por plano (mismo mecanismo que el
+  /// dashboard web): Record completo planId -> keys tipadas
+  /// ('scene:<id>', 'hueScene:<id>', 'group:<id>', 'automation:<id>').
+  /// SIEMPRE mandar el record entero — el backend lo reemplaza completo.
+  Future<void> setActionOrder(Map<String, List<String>> order) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/config/action-order'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(order),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Error ${resp.statusCode}');
+    }
+  }
+
   Future<FloorPlansData> getFloorPlans() async {
     final resp = await http
         .get(Uri.parse('${config.baseUrl}/config/floor-plans'))

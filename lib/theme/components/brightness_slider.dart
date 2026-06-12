@@ -4,8 +4,11 @@ import 'package:flutter/services.dart';
 
 import '../cce_tokens.dart';
 
-/// Slider de brillo estilo Hue: track grueso redondeado (pill) con fill
-/// proporcional. [value] en 0..1 — el caller garantiza no-NaN.
+/// Slider de brillo estilo Hue. Dos renders sobre la misma mecánica:
+///  - pill (default): track grueso redondeado con fill proporcional.
+///  - [thin]: línea de 5 px centrada + thumb circular blanco — el estilo
+///    integrado de las room cards de Hue.
+/// [value] en 0..1 — el caller garantiza no-NaN.
 ///
 /// Stateful: durante el drag muestra un readout "NN%" sobre el extremo del
 /// fill ([showPercent]) y dispara haptics (lightImpact al tocar 0%/100%,
@@ -20,6 +23,8 @@ class CceBrightnessSlider extends StatefulWidget {
     this.activeColor,
     this.height = 44,
     this.showPercent = true,
+    this.thin = false,
+    this.thinTrackColor,
   });
 
   final double value; // 0..1
@@ -28,6 +33,8 @@ class CceBrightnessSlider extends StatefulWidget {
   final Color? activeColor; // default CceColors.warm
   final double height;
   final bool showPercent;
+  final bool thin;
+  final Color? thinTrackColor; // resto del track en modo thin
 
   @override
   State<CceBrightnessSlider> createState() => _CceBrightnessSliderState();
@@ -122,57 +129,108 @@ class _CceBrightnessSliderState extends State<CceBrightnessSlider> {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(CceRadii.pill),
+                if (widget.thin)
+                  // Línea fina centrada + thumb circular (room cards Hue).
+                  Positioned.fill(
                     child: Stack(
-                      fit: StackFit.expand,
+                      alignment: Alignment.centerLeft,
                       children: [
-                        // Track
-                        const ColoredBox(color: CceColors.surfaceHigh),
-                        // Fill
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: FractionallySizedBox(
-                            widthFactor:
-                                v <= 0 ? 0.0 : v.clamp(0.06, 1.0).toDouble(),
-                            heightFactor: 1,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: [
-                                    Color.lerp(fill, Colors.white, 0.18) ??
-                                        fill,
-                                    fill,
-                                  ],
-                                ),
-                                borderRadius:
-                                    BorderRadius.circular(CceRadii.pill),
-                              ),
+                        // Track completo
+                        Container(
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: widget.thinTrackColor ??
+                                Colors.white.withValues(alpha: 0.30),
+                            borderRadius: BorderRadius.circular(2.5),
+                          ),
+                        ),
+                        // Fill hasta el thumb
+                        FractionallySizedBox(
+                          widthFactor: v,
+                          child: Container(
+                            height: 5,
+                            decoration: BoxDecoration(
+                              color: fill,
+                              borderRadius: BorderRadius.circular(2.5),
                             ),
                           ),
                         ),
-                        // Handle (barrita vertical cerca del borde del fill)
-                        if (v > 0)
+                        // Thumb circular blanco con sombra suave
+                        Align(
+                          alignment: Alignment(-1.0 + 2.0 * v, 0),
+                          child: Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color:
+                                      Colors.black.withValues(alpha: 0.25),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(CceRadii.pill),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Track
+                          const ColoredBox(color: CceColors.surfaceHigh),
+                          // Fill
                           Align(
-                            alignment:
-                                Alignment(-1.0 + 2.0 * v.clamp(0.06, 1.0), 0),
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Container(
-                                width: 4,
-                                height: widget.height * 0.45,
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor:
+                                  v <= 0 ? 0.0 : v.clamp(0.06, 1.0).toDouble(),
+                              heightFactor: 1,
+                              child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  borderRadius: BorderRadius.circular(2),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Color.lerp(fill, Colors.white, 0.18) ??
+                                          fill,
+                                      fill,
+                                    ],
+                                  ),
+                                  borderRadius:
+                                      BorderRadius.circular(CceRadii.pill),
                                 ),
                               ),
                             ),
                           ),
-                      ],
+                          // Handle (barrita vertical cerca del borde del fill)
+                          if (v > 0)
+                            Align(
+                              alignment: Alignment(
+                                  -1.0 + 2.0 * v.clamp(0.06, 1.0), 0),
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Container(
+                                  width: 4,
+                                  height: widget.height * 0.45,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.9),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
                 // Readout "NN%" sobre el extremo del fill durante el drag.
                 if (widget.showPercent && width > 72)
                   Positioned(

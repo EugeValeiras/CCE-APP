@@ -28,6 +28,9 @@ class DevicesService extends ChangeNotifier {
   List<ColorPreset> _colorPresets = const [];
   List<CceScene> _scenes = const [];
   List<HueScene> _hueScenes = const [];
+  // Orden unificado de acciones por plano (compartido con el dashboard web):
+  // planId -> ['scene:<id>', 'hueScene:<id>', 'group:<id>', ...].
+  Map<String, List<String>> _actionOrder = const {};
   bool _loading = false;
   String? _error;
 
@@ -144,6 +147,7 @@ class DevicesService extends ChangeNotifier {
               .map((s) => CceScene.fromJson(Map<String, dynamic>.from(s)))
               .toList()
           : const [];
+      _actionOrder = _parseActionOrder(cfg['actionOrder']);
       _hueScenes = await hueScenesFuture;
     } catch (e) {
       _error = 'Error cargando dispositivos';
@@ -426,6 +430,79 @@ class DevicesService extends ChangeNotifier {
     final planId = room.planId;
     if (planId == null) return const [];
     return _scenes.where((s) => s.planId == planId).toList();
+  }
+
+  static Map<String, List<String>> _parseActionOrder(dynamic raw) {
+    if (raw is! Map) return const {};
+    return {
+      for (final e in raw.entries)
+        e.key.toString(): e.value is List
+            ? (e.value as List).map((x) => x.toString()).toList()
+            : <String>[],
+    };
+  }
+
+  /// Orden unificado del plano (keys 'scene:<id>' / 'hueScene:<id>' / ...);
+  /// [] si el plano no tiene orden guardado.
+  List<String> actionOrderFor(String planId) =>
+      _actionOrder[planId] ?? const [];
+
+  /// Keys de las escenas visibles del plano, en el orden por defecto
+  /// (Hue primero, luego CCE) — para completar buckets incompletos.
+  List<String> _visibleSceneKeys(String planId) {
+    final keys = <String>[];
+    RoomRef? room;
+    for (final r in rooms) {
+      if (r.planId == planId) {
+        room = r;
+        break;
+      }
+    }
+    if (room != null) {
+      for (final s in hueScenesForRoom(room)) {
+        keys.add('hueScene:${s.id}');
+      }
+    }
+    for (final s in _scenes.where((s) => s.planId == planId)) {
+      keys.add('scene:${s.id}');
+    }
+    return keys;
+  }
+
+  /// Reordena una escena dentro del orden unificado del plano — MISMO
+  /// mecanismo y semántica que el drag&drop del dashboard web (PUT
+  /// /config/action-order). Merge defensivo: lee la config fresca y solo
+  /// modifica el bucket de [planId], preservando los demás planos y las
+  /// keys de grupos/automatizaciones que la app no muestra.
+  Future<bool> reorderSceneKey(
+      String planId, String fromKey, String toKey) async {
+    if (fromKey == toKey) return true;
+    try {
+      final cfg = await _api.getConfig();
+      final order = Map<String, List<String>>.from(
+          _parseActionOrder(cfg['actionOrder']));
+      final bucket = List<String>.from(order[planId] ?? const []);
+      // Completar con las escenas visibles que falten (al final, en el
+      // orden por defecto) para que ambos índices existan.
+      for (final k in _visibleSceneKeys(planId)) {
+        if (!bucket.contains(k)) bucket.add(k);
+      }
+      final from = bucket.indexOf(fromKey);
+      final to = bucket.indexOf(toKey);
+      if (from == -1 || to == -1) return false;
+      // Misma semántica que el dashboard: remove en from, insert en to
+      // (índices calculados sobre la lista original).
+      bucket.removeAt(from);
+      bucket.insert(to, fromKey);
+      order[planId] = bucket;
+      await _api.setActionOrder(order);
+      _actionOrder = order;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('reorderSceneKey error: $e');
+      return false;
+    }
   }
 
   /// Ejecuta una escena CCE client-side: optimista + N× setDeviceState.

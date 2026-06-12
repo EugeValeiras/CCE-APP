@@ -9,6 +9,12 @@ abstract final class CceColors {
   static const accent = Color(0xFF8A7CFF); // violeta Hue (seed, indicadores nav)
   static const warm = Color(0xFFFFB46B); // luz calida (default luces)
   static const warmDeep = Color(0xFFE8743D);
+
+  // Ámbar Hue de las room cards encendidas: pálido y uniforme para TODAS
+  // las habitaciones (el color real de las luces no tiñe la card).
+  static const amberHi = Color(0xFFF4D993);
+  static const amberLo = Color(0xFFE7BE69);
+  static const inkOnAmber = Color(0xFF211B10); // texto sobre ámbar
   static const info = Color(0xFF5AC8FA);
   static const ok = Color(0xFF34D399);
   static const danger = Color(0xFFFF4D5E);
@@ -120,29 +126,14 @@ abstract final class CceText {
 
 /// Gradientes compartidos.
 abstract final class CceGradients {
-  /// Card de habitacion encendida. Sin [tint] usa la base calida; con
-  /// [tint] (que llega YA normalizado por [CceTint.normalize] desde
-  /// DevicesService) deriva el gradiente del propio tint en HSL:
-  /// start = tint con L→0.62; end = hue −8°, S+0.06, L→0.46.
+  /// Card de habitacion encendida: ámbar pálido uniforme estilo Hue.
+  /// [tint] se acepta por compatibilidad pero NO tiñe la card — derivar el
+  /// gradiente del color de las luces producía naranjas saturados y verdes.
   static LinearGradient roomOn([Color? tint]) {
-    if (tint == null) {
-      return const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [CceColors.warm, CceColors.warmDeep],
-      );
-    }
-    final hsl = HSLColor.fromColor(tint);
-    final start = hsl.withLightness(0.62).toColor();
-    final end = hsl
-        .withHue((hsl.hue - 8 + 360) % 360)
-        .withSaturation((hsl.saturation + 0.06).clamp(0.0, 1.0).toDouble())
-        .withLightness(0.46)
-        .toColor();
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [start, end],
+    return const LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [CceColors.amberHi, CceColors.amberLo],
     );
   }
 
