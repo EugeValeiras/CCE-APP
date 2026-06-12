@@ -315,15 +315,16 @@ class _LightColorScreenState extends State<LightColorScreen> {
             }())
           : _fracForCt((live.state.ct ?? 350).clamp(_ctMin, _ctMax).toDouble());
       markers.add(Positioned(
-        left: frac.dx * size - 6,
-        top: frac.dy * size - 6,
+        left: frac.dx * size - 7,
+        top: frac.dy * size - 7,
         child: Container(
-          width: 12,
-          height: 12,
+          width: 14,
+          height: 14,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Colors.white.withValues(alpha: 0.55),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.15)),
+            color: Colors.white.withValues(alpha: 0.10),
+            border:
+                Border.all(color: Colors.white.withValues(alpha: 0.85), width: 2),
           ),
         ),
       ));
@@ -347,9 +348,9 @@ class _LightColorScreenState extends State<LightColorScreen> {
         );
       }
       markers.add(Positioned(
-        // Centro del círculo del pin en el punto de color (cola hacia abajo).
+        // El aro inferior (la punta) queda exactamente en el punto de color.
         left: cl.pos.dx * size - _Marker.w / 2,
-        top: cl.pos.dy * size - _Marker.w / 2,
+        top: cl.pos.dy * size - _Marker.tipY,
         child: _Marker(child: child, label: single ? null : '${cl.ids.length}'),
       ));
     }
@@ -439,16 +440,19 @@ class _LightColorScreenState extends State<LightColorScreen> {
         separatorBuilder: (_, __) => const SizedBox(width: 12),
         itemBuilder: (context, i) {
           final d = widget.service.byId(lights[i].id) ?? lights[i];
+          final r = resolveLightColor(d.state);
+          final tint = r.isWhite ? CceColors.warm : r.color;
           return _DeviceMiniCard(
             name: widget.service.displayName(d),
-            icon: IconResolver.widget(
+            iconBuilder: (c) => IconResolver.widget(
               d,
               configuredIcon: widget.service.iconFor(d.id),
               customIcons: widget.service.customIcons,
               displayName: widget.service.displayName(d),
               size: 22,
-              color: CceColors.textPrimary,
+              color: c,
             ),
+            tint: tint,
             on: d.state.on,
             reachable: d.state.reachable,
             selected: _selected.contains(d.id),
@@ -556,8 +560,10 @@ class _Marker extends StatelessWidget {
   final String? label; // contador (cluster > 1)
   const _Marker({this.child, this.label});
 
-  static const double w = 46; // diámetro del círculo
-  static const double h = 60; // alto total con la cola
+  static const double w = 48; // ancho del lozenge
+  static const double lozengeH = 40; // alto del lozenge (zona del ícono)
+  static const double h = 66; // alto total con cola + aro
+  static const double tipY = 58; // centro del aro inferior (la punta)
 
   @override
   Widget build(BuildContext context) {
@@ -565,8 +571,8 @@ class _Marker extends StatelessWidget {
       size: const Size(w, h),
       painter: _PinPainter(),
       child: Padding(
-        // Reserva la cola abajo → el contenido queda centrado en el círculo.
-        padding: const EdgeInsets.only(bottom: h - w),
+        // Reserva la cola/aro abajo → el contenido queda en el lozenge.
+        padding: const EdgeInsets.only(bottom: h - lozengeH),
         child: Center(
           child: label != null
               ? Text(
@@ -584,37 +590,49 @@ class _Marker extends StatelessWidget {
   }
 }
 
-/// Pin estilo Hue: gota (círculo + cola curva) blanca con sombra suave.
+/// Pin estilo Hue: lozenge blanco con el ícono, cuello fino y un aro chico que
+/// marca el punto exacto de color. Sombra suave.
 class _PinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    final r = w / 2;
-    final cx = w / 2, cy = r;
-    final tipY = size.height;
+    const lozengeH = _Marker.lozengeH;
+    const ringCy = _Marker.tipY;
+    const ringR = 6.0;
+    final cx = w / 2;
 
-    final circle = Path()
-      ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
-    // Unión de la cola con el círculo (~±42° desde abajo) hacia la punta.
-    final th = 42 * math.pi / 180;
-    final lx = cx - r * math.sin(th), ly = cy + r * math.cos(th);
-    final rx = cx + r * math.sin(th), ry = ly;
-    final tail = Path()
-      ..moveTo(lx, ly)
-      ..quadraticBezierTo(cx - r * 0.10, (ly + tipY) / 2, cx, tipY)
-      ..quadraticBezierTo(cx + r * 0.10, (ry + tipY) / 2, rx, ry)
+    // Lozenge (rounded rect) + cuello que baja hacia el aro.
+    final lozenge = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, w, lozengeH),
+        const Radius.circular(14),
+      ));
+    final neck = Path()
+      ..moveTo(cx - 7, lozengeH - 3)
+      ..lineTo(cx, ringCy - ringR + 1)
+      ..lineTo(cx + 7, lozengeH - 3)
       ..close();
-    final pin = Path.combine(PathOperation.union, circle, tail);
+    final body = Path.combine(PathOperation.union, lozenge, neck);
 
-    canvas.drawShadow(pin, Colors.black.withValues(alpha: 0.45), 4, false);
-    canvas.drawPath(pin, Paint()..color = Colors.white);
+    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.40), 4, false);
+    canvas.drawPath(body, Paint()..color = Colors.white);
+
+    // Aro de la punta (hueco) marcando el punto exacto.
     canvas.drawCircle(
-      Offset(cx, cy),
-      r - 1,
+      Offset(cx, ringCy),
+      ringR,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.06)
+        ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+        ..strokeWidth = 3,
+    );
+    canvas.drawCircle(
+      Offset(cx, ringCy),
+      ringR,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.12)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 0.5,
     );
   }
 
@@ -734,13 +752,15 @@ class _BrightnessPill extends StatelessWidget {
 
 class _DeviceMiniCard extends StatelessWidget {
   final String name;
-  final Widget icon;
+  final Widget Function(Color color) iconBuilder;
+  final Color tint; // color real de la luz (para teñir la card como Hue)
   final bool on, reachable, selected;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle;
   const _DeviceMiniCard({
     required this.name,
-    required this.icon,
+    required this.iconBuilder,
+    required this.tint,
     required this.on,
     required this.reachable,
     required this.selected,
@@ -750,16 +770,21 @@ class _DeviceMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Card teñida con el pastel del color de la luz cuando está encendida.
+    final mid = CceTint.pastel(tint);
+    final fg = on ? CceTint.textOn(mid) : CceColors.textPrimary;
+    final fgSub = on ? CceTint.subTextOn(mid) : CceColors.textTertiary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 116,
         decoration: BoxDecoration(
-          color: CceColors.surface,
+          color: on ? null : CceColors.surface,
+          gradient: on ? CceGradients.huePastel([tint]) : null,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
           border: Border.all(
             color: selected ? Colors.white : CceColors.stroke,
-            width: selected ? 1.6 : 1,
+            width: selected ? 1.8 : 1,
           ),
         ),
         clipBehavior: Clip.antiAlias,
@@ -771,15 +796,15 @@ class _DeviceMiniCard extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(height: 22, child: Center(child: icon)),
+                    SizedBox(height: 22, child: Center(child: iconBuilder(fg))),
                     const SizedBox(height: 6),
                     Text(
                       name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: CceColors.textPrimary,
+                      style: TextStyle(
+                        color: fg,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
                         height: 1.12,
@@ -787,11 +812,10 @@ class _DeviceMiniCard extends StatelessWidget {
                     ),
                     if (!reachable) ...[
                       const SizedBox(height: 2),
-                      const Text('Sin conexión',
+                      Text('Sin conexión',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: CceColors.textTertiary, fontSize: 11)),
+                          style: TextStyle(color: fgSub, fontSize: 11)),
                     ],
                   ],
                 ),
@@ -800,18 +824,69 @@ class _DeviceMiniCard extends StatelessWidget {
             SizedBox(
               height: 40,
               child: Center(
-                child: Transform.scale(
-                  scale: 0.85,
-                  child: Switch.adaptive(
-                    value: on,
-                    onChanged: onToggle,
-                    thumbColor:
-                        const WidgetStatePropertyAll<Color>(Colors.white),
-                  ),
+                child: _HueSwitch(
+                  value: on,
+                  onChanged: onToggle,
+                  onColor: on
+                      ? CceTint.inkOnPastel.withValues(alpha: 0.28)
+                      : null,
                 ),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Switch estilo Hue: pista pill + thumb circular blanco (reemplaza el Switch
+/// verde de iOS). [onColor] tiñe la pista cuando está encendido.
+class _HueSwitch extends StatelessWidget {
+  final bool value;
+  final ValueChanged<bool> onChanged;
+  final Color? onColor;
+  const _HueSwitch({required this.value, required this.onChanged, this.onColor});
+
+  @override
+  Widget build(BuildContext context) {
+    const w = 50.0, h = 30.0, thumb = 24.0;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onChanged(!value);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        width: w,
+        height: h,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          color: value
+              ? (onColor ?? Colors.white.withValues(alpha: 0.45))
+              : Colors.black.withValues(alpha: 0.30),
+          borderRadius: BorderRadius.circular(h / 2),
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: thumb,
+            height: thumb,
+            decoration: BoxDecoration(
+              color: value ? Colors.white : const Color(0xFFE6E6E6),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
