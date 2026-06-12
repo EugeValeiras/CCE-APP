@@ -10,6 +10,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_segmented.dart';
 import '../utils/icon_resolver.dart';
+import '../utils/light_color.dart';
 import '../utils/plan_svg_theme.dart';
 import '../widgets/light_detail_sheet.dart';
 
@@ -408,13 +409,8 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
   }
 
   Color _lightColor() {
-    final s = widget.device.state;
-    if (s.hue != null && s.sat != null && (s.sat ?? 0) > 40) {
-      final h = ((s.hue! / 65535) * 360.0).clamp(0.0, 360.0).toDouble();
-      final sat = (s.sat! / 254).clamp(0.0, 1.0).toDouble();
-      return HSVColor.fromAHSV(1.0, h, sat, 1.0).toColor();
-    }
-    return CceColors.warm;
+    final r = resolveLightColor(widget.device.state);
+    return r.isWhite ? CceColors.warm : r.color;
   }
 
   @override

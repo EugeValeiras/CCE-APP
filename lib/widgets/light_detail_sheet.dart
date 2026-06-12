@@ -8,6 +8,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/brightness_slider.dart';
 import '../utils/icon_resolver.dart';
+import '../utils/light_color.dart';
 
 class LightDetailSheet extends StatefulWidget {
   final Device device;
@@ -32,15 +33,9 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
     _color = _currentColor();
   }
 
-  Color _currentColor() {
-    final s = widget.device.state;
-    if (s.hue != null && s.sat != null) {
-      final h = (s.hue! / 65535) * 360.0;
-      final sat = (s.sat! / 254).clamp(0.0, 1.0);
-      return HSVColor.fromAHSV(1.0, h, sat, 1.0).toColor();
-    }
-    return Colors.amber;
-  }
+  // Si isWhite, r.color ya es el blanco real (ctToWhiteColor): mejor seed
+  // para el picker que un amber fijo.
+  Color _currentColor() => resolveLightColor(widget.device.state).color;
 
   @override
   void dispose() {

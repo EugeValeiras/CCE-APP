@@ -10,6 +10,7 @@ import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../models/server_config.dart';
 import '../theme/cce_tokens.dart';
+import '../utils/light_color.dart';
 import 'api_service.dart';
 import 'socket_service.dart';
 
@@ -187,7 +188,9 @@ class DevicesService extends ChangeNotifier {
   Future<void> setColor(Device d, {required int hue, required int sat}) async {
     final clampedHue = hue.clamp(0, 65535);
     final clampedSat = sat.clamp(0, 254);
-    d.state = d.state.copyWith(hue: clampedHue, sat: clampedSat, on: true, mode: 'colour');
+    // colormode: 'hs' explícito: pisa un xy/ct stale para que el tile pinte
+    // el color elegido al instante (copyWith con ?? no puede limpiarlo).
+    d.state = d.state.copyWith(hue: clampedHue, sat: clampedSat, on: true, mode: 'colour', colormode: 'hs');
     notifyListeners();
     try {
       await _api.setDeviceState(d.id, {'hue': clampedHue, 'sat': clampedSat, 'on': true});
@@ -198,7 +201,8 @@ class DevicesService extends ChangeNotifier {
 
   Future<void> setCt(Device d, int ct) async {
     final clamped = ct.clamp(153, 500);
-    d.state = d.state.copyWith(ct: clamped, on: true, mode: 'white');
+    // colormode: 'ct' explícito: pisa un xy/hs stale (ver nota en copyWith).
+    d.state = d.state.copyWith(ct: clamped, on: true, mode: 'white', colormode: 'ct');
     notifyListeners();
     try {
       await _api.setDeviceState(d.id, {'ct': clamped, 'on': true});
@@ -342,12 +346,12 @@ class DevicesService extends ChangeNotifier {
   Color? _tintForOnLights(List<Device> onLights) {
     final colored = <({double hue, double sat, int bri})>[];
     for (final d in onLights) {
-      final s = d.state;
-      if (s.hue == null || s.sat == null || (s.sat ?? 0) <= 40) continue;
+      final r = resolveLightColor(d.state);
+      if (r.isWhite) continue;
       colored.add((
-        hue: ((s.hue! / 65535) * 360.0) % 360.0,
-        sat: (s.sat! / 254).clamp(0.0, 1.0).toDouble(),
-        bri: s.bri,
+        hue: r.hueDeg! % 360.0,
+        sat: r.sat01!,
+        bri: d.state.bri,
       ));
     }
     if (colored.isEmpty) {
@@ -526,6 +530,15 @@ class DevicesService extends ChangeNotifier {
         hue: l.on ? l.hue : null,
         sat: l.on ? l.sat : null,
         ct: l.on ? l.ct : null,
+        // colormode derivado del payload de la escena: sin esto, una luz Hue
+        // en modo 'xy'/'ct' seguiría pintando el color stale y el update
+        // optimista quedaría invisible (ver nota en DeviceState.copyWith).
+        // null conserva el modo previo (correcto si la escena no toca color).
+        colormode: !l.on
+            ? null
+            : (l.hue != null && l.sat != null
+                ? 'hs'
+                : (l.ct != null ? 'ct' : null)),
       );
     }
     notifyListeners();
@@ -572,6 +585,8 @@ class DevicesService extends ChangeNotifier {
         'ct': ev.state!['ct'] ?? d.state.ct,
         'reachable': ev.state!['reachable'] ?? d.state.reachable,
         'mode': ev.state!['mode'] ?? d.state.mode,
+        'colormode': ev.state!['colormode'] ?? d.state.colormode,
+        'xy': ev.state!['xy'] ?? d.state.xy,
       });
       d.state = partial;
       changed = true;

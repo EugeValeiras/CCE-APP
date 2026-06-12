@@ -6,6 +6,8 @@ class DeviceState {
   final int? ct;
   final bool reachable;
   final String? mode;
+  final String? colormode; // 'hs' | 'xy' | 'ct' — solo provider hue
+  final List<double>? xy; // [x, y] CIE — solo provider hue
 
   DeviceState({
     this.on = false,
@@ -15,6 +17,8 @@ class DeviceState {
     this.ct,
     this.reachable = true,
     this.mode,
+    this.colormode,
+    this.xy,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -26,10 +30,18 @@ class DeviceState {
       ct: (json['ct'] as num?)?.toInt(),
       reachable: json['reachable'] != false,
       mode: json['mode'] as String?,
+      colormode: json['colormode'] as String?,
+      xy: (json['xy'] is List && (json['xy'] as List).length >= 2)
+          ? [(json['xy'][0] as num).toDouble(), (json['xy'][1] as num).toDouble()]
+          : null,
     );
   }
 
-  DeviceState copyWith({bool? on, int? bri, int? hue, int? sat, int? ct, bool? reachable, String? mode}) {
+  // NOTA: el patrón `??` NO puede limpiar un xy/colormode stale (pasar null
+  // conserva el valor previo); por eso los setters optimistas de
+  // DevicesService pisan `colormode` explícitamente ('hs' en setColor,
+  // 'ct' en setCt) para que resolveLightColor ignore el xy viejo.
+  DeviceState copyWith({bool? on, int? bri, int? hue, int? sat, int? ct, bool? reachable, String? mode, String? colormode, List<double>? xy}) {
     return DeviceState(
       on: on ?? this.on,
       bri: bri ?? this.bri,
@@ -38,6 +50,8 @@ class DeviceState {
       ct: ct ?? this.ct,
       reachable: reachable ?? this.reachable,
       mode: mode ?? this.mode,
+      colormode: colormode ?? this.colormode,
+      xy: xy ?? this.xy,
     );
   }
 }

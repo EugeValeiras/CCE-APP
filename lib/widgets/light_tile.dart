@@ -6,6 +6,7 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/light_card.dart';
 import '../utils/icon_resolver.dart';
+import '../utils/light_color.dart';
 import 'light_detail_sheet.dart';
 import 'pulse_on_update.dart';
 
@@ -39,20 +40,12 @@ class _LightTileState extends State<LightTile> {
 
   double get _displayBri => _dragging ? _currentBri : widget.device.state.bri.toDouble();
 
-  /// Color real que está mostrando la luz: hue/sat → HSV, default cálido.
+  /// Color real que está mostrando la luz (respeta colormode vía
+  /// resolveLightColor). Blancos/CT: champagne plateado como Hue.
   Color _activeColor() {
-    final s = widget.device.state;
-    if (s.hue != null && s.sat != null && (s.sat ?? 0) > 40) {
-      final h = (s.hue! / 65535) * 360.0;
-      final sat = (s.sat! / 254).clamp(0.0, 1.0);
-      return HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0), sat.toDouble(), 1.0).toColor();
-    }
-    // Luces blancas/CT (sin saturación de color): champagne plateado como
-    // Hue, no amarillo cálido.
-    if ((s.sat ?? 0) <= 40 && s.ct != null) {
-      return const Color(0xFFE7E2D8);
-    }
-    return CceColors.warm;
+    final r = resolveLightColor(widget.device.state);
+    if (r.isWhite) return widget.device.state.ct != null ? const Color(0xFFE7E2D8) : CceColors.warm;
+    return r.color;
   }
 
   void _onVerticalDragStart(DragStartDetails _) {
