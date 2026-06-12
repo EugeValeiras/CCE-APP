@@ -67,42 +67,7 @@ class RoomDetailScreen extends StatelessWidget {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                if (room != null)
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: ScenesSection(service: service, room: room),
-                    ),
-                  ),
-                if (sensors.isNotEmpty) ...[
-                  const SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverToBoxAdapter(
-                      child: SectionHeader(title: 'Sensores'),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        mainAxisExtent: TileSize.medium.sensorTileHeight,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, i) => ListenableBuilder(
-                          listenable: service,
-                          builder: (ctx, _) {
-                            final d = service.byId(sensors[i].id) ?? sensors[i];
-                            return SensorTile(device: d, service: service, size: TileSize.medium);
-                          },
-                        ),
-                        childCount: sensors.length,
-                      ),
-                    ),
-                  ),
-                ],
+                // Orden: Luces → Escenas → Sensores.
                 if (lights.isNotEmpty) ...[
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -113,7 +78,7 @@ class RoomDetailScreen extends StatelessWidget {
                     ),
                   ),
                   SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent: TileSize.medium.maxTileExtent,
@@ -130,6 +95,42 @@ class RoomDetailScreen extends StatelessWidget {
                           },
                         ),
                         childCount: lights.length,
+                      ),
+                    ),
+                  ),
+                ],
+                if (room != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ScenesSection(service: service, room: room),
+                    ),
+                  ),
+                if (sensors.isNotEmpty) ...[
+                  const SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(
+                      child: SectionHeader(title: 'Sensores'),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        mainAxisExtent: TileSize.medium.sensorTileHeight,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => ListenableBuilder(
+                          listenable: service,
+                          builder: (ctx, _) {
+                            final d = service.byId(sensors[i].id) ?? sensors[i];
+                            return SensorTile(device: d, service: service, size: TileSize.medium);
+                          },
+                        ),
+                        childCount: sensors.length,
                       ),
                     ),
                   ),

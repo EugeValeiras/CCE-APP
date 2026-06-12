@@ -137,8 +137,15 @@ class Device {
 
   bool _isSwitch() {
     final t = type.toLowerCase();
-    return t.contains('button') || t.contains('switch') || t.contains('remote');
+    return t.contains('button') ||
+        t.contains('switch') ||
+        t.contains('remote') ||
+        t.contains('dial');
   }
+
+  /// Device tipo switch/control (botón, switch, remote, dial). Pueden caer en
+  /// la lista de sensores; son clickeables para abrir su pantalla de switch.
+  bool get isSwitch => _isSwitch();
 
   bool _isSensor() {
     if (sensor != null) return true;

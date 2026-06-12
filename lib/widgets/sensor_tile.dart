@@ -5,9 +5,11 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
+import '../views/switch_detail_screen.dart';
 import 'pulse_on_update.dart';
 
-/// Tile de sensor (contacto, movimiento, temperatura, humedad), sin gestos.
+/// Tile de sensor (contacto, movimiento, temperatura, humedad). Los devices
+/// tipo switch muestran su estado on/off y abren su pantalla al tocarlos.
 class SensorTile extends StatelessWidget {
   final Device device;
   final DevicesService service;
@@ -27,7 +29,13 @@ class SensorTile extends StatelessWidget {
     Color color = CceColors.textTertiary;
     bool alert = false;
 
-    if (device.isContactSensor) {
+    // Switch/control: muestra encendido/apagado y es tocable.
+    final isSwitch = device.isSwitch;
+    if (isSwitch) {
+      final on = device.state.on;
+      stateLabel = on ? 'Encendido' : 'Apagado';
+      color = on ? CceColors.warm : CceColors.textSecondary;
+    } else if (device.isContactSensor) {
       final open = s?.contact == true;
       stateLabel = open ? 'Abierta' : 'Cerrada';
       color = open ? CceColors.contact : CceColors.textSecondary;
@@ -45,13 +53,14 @@ class SensorTile extends StatelessWidget {
       color = CceColors.info;
     }
 
-    // Lectura numérica grande para temp/humedad (los binarios ya comunican
-    // su estado en la franja inferior).
-    final String? bigReading = device.isContactSensor || device.isMotionSensor
-        ? null
-        : stateLabel;
+    // Lectura numérica grande para temp/humedad (los binarios y switches ya
+    // comunican su estado en la franja inferior).
+    final String? bigReading =
+        device.isContactSensor || device.isMotionSensor || isSwitch
+            ? null
+            : stateLabel;
 
-    return PulseOnUpdate(
+    final tile = PulseOnUpdate(
       triggerAt: device.lastEventAt,
       color: color,
       borderRadius: CceRadii.hueCard,
@@ -174,6 +183,19 @@ class SensorTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+
+    if (!isSwitch) return tile;
+    // Switch: tocá la card para abrir su pantalla con el switch grande.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              SwitchDetailScreen(device: device, service: service),
+        ),
+      ),
+      child: tile,
     );
   }
 }
