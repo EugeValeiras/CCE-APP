@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import '../models/color_preset.dart';
@@ -8,6 +9,7 @@ import '../models/light_group.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../models/server_config.dart';
+import '../theme/cce_tokens.dart';
 import 'api_service.dart';
 import 'socket_service.dart';
 
@@ -324,40 +326,77 @@ class DevicesService extends ChangeNotifier {
     );
   }
 
-  /// Promedio HSV de las luces encendidas que reportan color; null si ninguna.
+  /// Tint dominante de las luces encendidas que reportan color; null si
+  /// ninguna. La luz dominante es la de mayor brillo; si las dos más
+  /// brillantes tienen hues a ≤90° se promedia circularmente el hue
+  /// ponderado por brillo (jamás se promedian complementarios). El resultado
+  /// sale SIEMPRE normalizado por [CceTint.normalize].
   Color? _tintForOnLights(List<Device> onLights) {
-    double r = 0, g = 0, b = 0;
-    int count = 0;
+    final colored = <({double hue, double sat, int bri})>[];
     for (final d in onLights) {
       final s = d.state;
       if (s.hue == null || s.sat == null || (s.sat ?? 0) <= 40) continue;
-      final h = (s.hue! / 65535) * 360.0;
-      final sat = (s.sat! / 254).clamp(0.0, 1.0).toDouble();
-      final c = HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0), sat, 1.0).toColor();
-      r += c.r;
-      g += c.g;
-      b += c.b;
-      count++;
+      colored.add((
+        hue: ((s.hue! / 65535) * 360.0) % 360.0,
+        sat: (s.sat! / 254).clamp(0.0, 1.0).toDouble(),
+        bri: s.bri,
+      ));
     }
-    if (count == 0) return null;
-    return Color.from(alpha: 1.0, red: r / count, green: g / count, blue: b / count);
+    if (colored.isEmpty) return null;
+
+    colored.sort((a, b) => b.bri.compareTo(a.bri));
+    final dominant = colored.first;
+    var hue = dominant.hue;
+
+    if (colored.length >= 2) {
+      var diff = (dominant.hue - colored[1].hue).abs();
+      if (diff > 180) diff = 360 - diff;
+      if (diff <= 90) {
+        // Promedio circular del hue, ponderado por brillo.
+        double x = 0, y = 0;
+        for (final c in colored) {
+          final w = c.bri.clamp(1, 254).toDouble();
+          final rad = c.hue * math.pi / 180.0;
+          x += math.cos(rad) * w;
+          y += math.sin(rad) * w;
+        }
+        hue = (math.atan2(y, x) * 180.0 / math.pi + 360.0) % 360.0;
+      }
+    }
+
+    // Saturación de la dominante, atenuada por su brillo real (una luz
+    // tenue ya no tiñe como una a tope).
+    final briFactor = (dominant.bri / 254).clamp(0.35, 1.0).toDouble();
+    final sat = (dominant.sat * briFactor).clamp(0.0, 1.0).toDouble();
+    final base =
+        HSVColor.fromAHSV(1.0, hue.clamp(0.0, 360.0).toDouble(), sat, 1.0)
+            .toColor();
+    return CceTint.normalize(base);
   }
 
   /// Prende/apaga TODAS las luces de la sala (optimista, luz por luz).
-  Future<void> setRoomOn(RoomRef room, bool on) async {
+  /// Devuelve false si ALGUNA luz falló; el estado optimista de las luces
+  /// fallidas se revierte. El catch por luz se mantiene para no abortar la
+  /// ráfaga del resto.
+  Future<bool> setRoomOn(RoomRef room, bool on) async {
     final lights = _roomLights(room);
-    if (lights.isEmpty) return;
+    if (lights.isEmpty) return true;
     for (final d in lights) {
       d.state = d.state.copyWith(on: on);
     }
     notifyListeners();
+    var allOk = true;
     for (final d in lights) {
       try {
         await _api.setDeviceState(d.id, {'on': on});
       } catch (e) {
         debugPrint('setRoomOn error on ${d.id}: $e');
+        d.state = d.state.copyWith(on: !on);
+        allOk = false;
       }
     }
+    if (!allOk) notifyListeners();
+    return allOk;
   }
 
   /// Brillo de toda la sala: [value] 0..1 aplicado a cada luz ENCENDIDA.

@@ -3,6 +3,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum TileSize { small, medium, large }
 
+/// Modo del panel derecho de la tab Casa (Luces o Plano). Vive acá para que
+/// la preferencia por habitación persista en [UiSettingsService] y no se
+/// resetee al cambiar de sala.
+enum RoomPanelMode { lights, plan }
+
 extension TileSizeX on TileSize {
   double get tileHeight {
     switch (this) {
@@ -71,9 +76,48 @@ extension TileSizeX on TileSize {
 
 class UiSettingsService extends ChangeNotifier {
   static const _keyTileSize = 'ui.tileSize';
+  static const _keyLastPlanId = 'ui.lastPlanId';
+
   TileSize _tileSize = TileSize.medium;
+  final Map<String, RoomPanelMode> _panelModes = {};
+  String? _lastPlanId;
 
   TileSize get tileSize => _tileSize;
+
+  /// Modo Luces/Plano elegido para una sala (clave = room.id; '_all' para
+  /// "Toda la casa"). [fallback] permite que vistas plan-céntricas arranquen
+  /// en Plano sin pisar la preferencia explícita del usuario.
+  RoomPanelMode panelModeFor(String roomId,
+      {RoomPanelMode fallback = RoomPanelMode.lights}) {
+    return _panelModes[roomId] ?? fallback;
+  }
+
+  void setPanelMode(String roomId, RoomPanelMode mode) {
+    if (_panelModes[roomId] == mode) return;
+    _panelModes[roomId] = mode;
+    notifyListeners();
+  }
+
+  /// Último plano elegido explícitamente en "Toda la casa" (persistido).
+  String? get lastPlanId => _lastPlanId;
+
+  set lastPlanId(String? id) {
+    if (_lastPlanId == id) return;
+    _lastPlanId = id;
+    notifyListeners();
+    _persistLastPlanId(id);
+  }
+
+  Future<void> _persistLastPlanId(String? id) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (id == null) {
+        await prefs.remove(_keyLastPlanId);
+      } else {
+        await prefs.setString(_keyLastPlanId, id);
+      }
+    } catch (_) {}
+  }
 
   Future<void> load() async {
     try {
@@ -84,8 +128,9 @@ class UiSettingsService extends ChangeNotifier {
           (t) => t.name == raw,
           orElse: () => TileSize.medium,
         );
-        notifyListeners();
       }
+      _lastPlanId = prefs.getString(_keyLastPlanId);
+      notifyListeners();
     } catch (_) {}
   }
 

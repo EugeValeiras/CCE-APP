@@ -6,7 +6,6 @@ import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/room_card.dart';
-import '../theme/components/status_pill.dart';
 import '../utils/icon_resolver.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
@@ -106,20 +105,8 @@ class RoomsListScreen extends StatelessWidget {
         // compact nunca muestra slider; el brillo por sala vive en el detalle.
         brightness: null,
         compact: true,
-        statusChips: [
-          if (stats.anyContactOpen)
-            const StatusPill(
-              label: 'Abierta',
-              color: CceColors.contact,
-              foreground: Colors.white,
-            ),
-          if (stats.anyMotion)
-            const StatusPill(
-              label: 'Movimiento',
-              color: CceColors.motion,
-              foreground: Colors.white,
-            ),
-        ],
+        motion: stats.anyMotion,
+        contactOpen: stats.anyContactOpen,
         onTap: () {
           HapticFeedback.selectionClick();
           Navigator.of(context).push(MaterialPageRoute(

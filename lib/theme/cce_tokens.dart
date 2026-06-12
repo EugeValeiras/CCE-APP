@@ -17,6 +17,64 @@ abstract final class CceColors {
   static const textPrimary = Colors.white;
   static const textSecondary = Color(0xB3FFFFFF); // white70
   static const textTertiary = Color(0x8AFFFFFF); // white54
+
+  // Plano (canvas dark del floor plan recoloreado).
+  static const planWall = Color(0xFF9BA3B5);
+  static const planGrid = Color(0x0BFFFFFF); // blanco ~4.5%
+  static const planCanvasHi = Color(0xFF1E2029);
+  static const planCanvasLo = Color(0xFF14151B);
+
+  // Colores por tipo de trigger de automatizaciones (aliases).
+  static const triggerSensor = motion; // #5A8BFA
+  static const triggerSchedule = warm; // #FFB46B
+  static const triggerManual = accent; // #8A7CFF
+}
+
+/// Pipeline de tint estilo Hue: ningún color derivado de luces se pinta
+/// crudo — siempre pasa por [normalize] (clamp de saturación y luminosidad
+/// en HSL, conservando el hue).
+abstract final class CceTint {
+  static const double satMin = 0.38, satMax = 0.62;
+  static const double lightMin = 0.52, lightMax = 0.64;
+
+  /// Clamp en HSL: conserva hue, S→[satMin,satMax], L→[lightMin,lightMax].
+  static Color normalize(Color c) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl
+        .withSaturation(hsl.saturation.clamp(satMin, satMax).toDouble())
+        .withLightness(hsl.lightness.clamp(lightMin, lightMax).toDouble())
+        .toColor();
+  }
+
+  /// Foreground para superficies tintadas: si la base es clara, texto
+  /// casi-negro; si no, blanco.
+  static Color textOn(Color base) =>
+      base.computeLuminance() > 0.45 ? const Color(0xFF14161C) : Colors.white;
+
+  /// 70% alpha del resultado de [textOn] (para subtítulos).
+  static Color subTextOn(Color base) => textOn(base).withValues(alpha: 0.7);
+}
+
+/// Sombras/glow compartidos del design system.
+abstract final class CceShadows {
+  /// Glow suave bajo cards encendidas.
+  static List<BoxShadow> glowOn(Color c) => [
+        BoxShadow(
+          color: c.withValues(alpha: 0.35),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+          spreadRadius: -4,
+        ),
+      ];
+
+  /// Halo de dots de dispositivo en el plano.
+  static List<BoxShadow> glowDot(Color c) => [
+        BoxShadow(
+          color: c.withValues(alpha: 0.45),
+          blurRadius: 18,
+          spreadRadius: 2,
+        ),
+      ];
 }
 
 /// Radios de borde congelados del design system.
@@ -62,16 +120,25 @@ abstract final class CceText {
 
 /// Gradientes compartidos.
 abstract final class CceGradients {
-  /// Card de habitacion encendida: base calida; si [tint] != null (promedio
-  /// HSV de las luces ON, provisto por DevicesService.statsFor) se mezcla
-  /// 45% sobre la base.
+  /// Card de habitacion encendida. Sin [tint] usa la base calida; con
+  /// [tint] (que llega YA normalizado por [CceTint.normalize] desde
+  /// DevicesService) deriva el gradiente del propio tint en HSL:
+  /// start = tint con L→0.62; end = hue −8°, S+0.06, L→0.46.
   static LinearGradient roomOn([Color? tint]) {
-    var start = CceColors.warm;
-    var end = CceColors.warmDeep;
-    if (tint != null) {
-      start = Color.lerp(start, tint, 0.45) ?? start;
-      end = Color.lerp(end, tint, 0.45) ?? end;
+    if (tint == null) {
+      return const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [CceColors.warm, CceColors.warmDeep],
+      );
     }
+    final hsl = HSLColor.fromColor(tint);
+    final start = hsl.withLightness(0.62).toColor();
+    final end = hsl
+        .withHue((hsl.hue - 8 + 360) % 360)
+        .withSaturation((hsl.saturation + 0.06).clamp(0.0, 1.0).toDouble())
+        .withLightness(0.46)
+        .toColor();
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,

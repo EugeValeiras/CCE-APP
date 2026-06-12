@@ -34,7 +34,9 @@ class TemperatureSummaryCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            _desaturate(_colorForTemp(primaryTemp)).withValues(alpha: 0.45),
+            // Pipeline de tint: nunca pintar el color de escala crudo.
+            CceTint.normalize(_desaturate(_colorForTemp(primaryTemp)))
+                .withValues(alpha: 0.45),
             CceColors.surface,
           ],
         ),

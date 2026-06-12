@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../models/device.dart';
 import '../../models/room_ref.dart';
@@ -5,13 +7,15 @@ import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/room_card.dart';
-import '../../theme/components/status_pill.dart';
 import '../../utils/icon_resolver.dart';
 import '../../widgets/pulse_on_update.dart';
 
 /// Sidebar de habitaciones estilo Hue (tablet): entrada fija "Toda la casa"
 /// + una [RoomCard] por habitacion derivada de [DevicesService.rooms].
-class RoomsSidebar extends StatelessWidget {
+/// Los estados de puerta/movimiento van como dots integrados al subtítulo
+/// (motion/contactOpen de RoomCard); los toggles son optimistas con error
+/// real: si alguna luz falla, SnackBar con Reintentar.
+class RoomsSidebar extends StatefulWidget {
   const RoomsSidebar({
     super.key,
     required this.service,
@@ -23,41 +27,89 @@ class RoomsSidebar extends StatelessWidget {
   final String? selectedRoomId;
   final ValueChanged<String?> onSelect; // null = Toda la casa
 
+  @override
+  State<RoomsSidebar> createState() => _RoomsSidebarState();
+}
+
+class _RoomsSidebarState extends State<RoomsSidebar> {
+  // Toggle de "Toda la casa" deshabilitado durante la ráfaga (máx 1.5 s).
+  bool _allHouseBusy = false;
+  Timer? _allHouseTimer;
+
+  @override
+  void dispose() {
+    _allHouseTimer?.cancel();
+    super.dispose();
+  }
+
   Widget _roomIcon(RoomRef room) {
     final device =
-        room.deviceIds.map(service.byId).whereType<Device>().firstOrNull;
+        room.deviceIds.map(widget.service.byId).whereType<Device>().firstOrNull;
     if (device == null) return const CceIcon(CceIcons.room);
     return Icon(IconResolver.resolve(
       device,
-      configuredIcon: room.iconName ?? service.iconFor(device.id),
-      displayName: service.displayName(device),
+      configuredIcon: room.iconName ?? widget.service.iconFor(device.id),
+      displayName: widget.service.displayName(device),
     ));
   }
 
-  List<Widget> _chipsFor(RoomStats stats) {
-    return <Widget>[
-      if (stats.anyContactOpen)
-        const StatusPill(
-          label: 'Abierta',
-          color: CceColors.contact,
-          foreground: Color(0xFF2B1500),
-        ),
-      if (stats.anyMotion)
-        const StatusPill(
-          label: 'Movimiento',
-          color: CceColors.motion,
-        ),
-    ];
+  void _showRetrySnack(String message, VoidCallback retry) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: SnackBarAction(label: 'Reintentar', onPressed: retry),
+      ),
+    );
+  }
+
+  Future<void> _toggleRoom(RoomRef room, bool on) async {
+    final ok = await widget.service.setRoomOn(room, on);
+    if (ok) return;
+    _showRetrySnack(
+      "No se pudo ${on ? 'prender' : 'apagar'} ${room.name}",
+      () => _toggleRoom(room, on),
+    );
+  }
+
+  Future<void> _toggleAllHouse(bool on) async {
+    if (_allHouseBusy) return;
+    setState(() => _allHouseBusy = true);
+    // Tope duro de 1.5 s: si la ráfaga tarda más, el switch se rehabilita
+    // igual (sin spinner).
+    _allHouseTimer?.cancel();
+    _allHouseTimer = Timer(const Duration(milliseconds: 1500), () {
+      if (mounted && _allHouseBusy) setState(() => _allHouseBusy = false);
+    });
+
+    final rooms = widget.service.rooms;
+    final results = await Future.wait(
+      rooms.map((r) => widget.service.setRoomOn(r, on)),
+    );
+    _allHouseTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _allHouseBusy = false);
+    if (results.any((ok) => !ok)) {
+      _showRetrySnack(
+        "No se pudo ${on ? 'prender' : 'apagar'} toda la casa",
+        () => _toggleAllHouse(on),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: service,
+      animation: widget.service,
       builder: (context, _) {
+        final service = widget.service;
         final rooms = service.rooms;
         final allLights = service.lights;
         final allOnCount = allLights.where((l) => l.state.on).length;
+        final motionRooms =
+            rooms.where((r) => service.statsFor(r).anyMotion).length;
+        final allSubtitle = '$allOnCount/${allLights.length}'
+            '${motionRooms > 0 ? ' · $motionRooms con movimiento' : ''}';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -73,7 +125,7 @@ class RoomsSidebar extends StatelessWidget {
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, i) {
                   if (i == 0) {
-                    // Entrada fija: vista general de la casa (plano completo).
+                    // Entrada fija: vista general de la casa.
                     return RoomCard(
                       title: 'Toda la casa',
                       icon: const CceIcon(CceIcons.allHouse),
@@ -81,13 +133,11 @@ class RoomsSidebar extends StatelessWidget {
                       lightsTotal: allLights.length,
                       anyOn: allOnCount > 0,
                       brightness: null,
-                      selected: selectedRoomId == null,
-                      onTap: () => onSelect(null),
-                      onToggle: (v) {
-                        for (final r in rooms) {
-                          service.setRoomOn(r, v);
-                        }
-                      },
+                      selected: widget.selectedRoomId == null,
+                      subtitleOverride: allSubtitle,
+                      toggleEnabled: !_allHouseBusy,
+                      onTap: () => widget.onSelect(null),
+                      onToggle: _toggleAllHouse,
                     );
                   }
 
@@ -104,10 +154,11 @@ class RoomsSidebar extends StatelessWidget {
                       anyOn: stats.anyOn,
                       tint: stats.tint,
                       brightness: stats.avgBrightness,
-                      selected: selectedRoomId == room.id,
-                      statusChips: _chipsFor(stats),
-                      onTap: () => onSelect(room.id),
-                      onToggle: (v) => service.setRoomOn(room, v),
+                      selected: widget.selectedRoomId == room.id,
+                      motion: stats.anyMotion,
+                      contactOpen: stats.anyContactOpen,
+                      onTap: () => widget.onSelect(room.id),
+                      onToggle: (v) => _toggleRoom(room, v),
                       onBrightnessCommitted: (v) =>
                           service.setRoomBrightness(room, v),
                     ),

@@ -13,15 +13,16 @@ import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
 import '../floor_plan_tab.dart';
 
-enum RoomPanelMode { lights, plan }
-
 /// Panel derecho de la tab Casa cuando hay una habitacion seleccionada:
 /// escenas + grilla de luces/sensores, con vista alternable al plano de la
 /// habitacion (solo si deriva de un floor plan, es decir planId != null).
-class RoomPanel extends StatefulWidget {
+/// El modo Luces/Plano se persiste por habitacion en [UiSettingsService]
+/// (ya no se resetea al cambiar de sala).
+class RoomPanel extends StatelessWidget {
   const RoomPanel({
     super.key,
     required this.service,
+    required this.ui,
     required this.room,
     required this.tileSize,
     required this.onCycleTileSize,
@@ -29,26 +30,11 @@ class RoomPanel extends StatefulWidget {
   });
 
   final DevicesService service;
+  final UiSettingsService ui;
   final RoomRef room;
   final TileSize tileSize;
   final VoidCallback onCycleTileSize;
   final VoidCallback onRefresh;
-
-  @override
-  State<RoomPanel> createState() => _RoomPanelState();
-}
-
-class _RoomPanelState extends State<RoomPanel> {
-  RoomPanelMode _mode = RoomPanelMode.lights;
-
-  @override
-  void didUpdateWidget(covariant RoomPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Al cambiar de habitacion (o si la nueva no tiene plano) volver a Luces.
-    if (oldWidget.room.id != widget.room.id || widget.room.planId == null) {
-      _mode = RoomPanelMode.lights;
-    }
-  }
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -61,16 +47,30 @@ class _RoomPanelState extends State<RoomPanel> {
     }
   }
 
+  Future<void> _toggleRoom(BuildContext context, bool on) async {
+    final ok = await service.setRoomOn(room, on);
+    if (ok || !context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content:
+            Text("No se pudo ${on ? 'prender' : 'apagar'} ${room.name}"),
+        action: SnackBarAction(
+          label: 'Reintentar',
+          onPressed: () => _toggleRoom(context, on),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.service,
+      animation: Listenable.merge([service, ui]),
       builder: (context, _) {
-        final room = widget.room;
-        final stats = widget.service.statsFor(room);
+        final stats = service.statsFor(room);
         final showPlanToggle = room.planId != null;
         final mode =
-            showPlanToggle ? _mode : RoomPanelMode.lights;
+            showPlanToggle ? ui.panelModeFor(room.id) : RoomPanelMode.lights;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -89,7 +89,7 @@ class _RoomPanelState extends State<RoomPanel> {
                   ),
                   if (showPlanToggle) ...[
                     SizedBox(
-                      width: 220,
+                      width: 260,
                       child: CceSegmented<RoomPanelMode>(
                         value: mode,
                         segments: const [
@@ -104,7 +104,7 @@ class _RoomPanelState extends State<RoomPanel> {
                             icon: CceIcon(CceIcons.floorPlan),
                           ),
                         ],
-                        onChanged: (m) => setState(() => _mode = m),
+                        onChanged: (m) => ui.setPanelMode(room.id, m),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -114,21 +114,21 @@ class _RoomPanelState extends State<RoomPanel> {
                         ? null
                         : () {
                             HapticFeedback.mediumImpact();
-                            widget.service.setRoomOn(room, !stats.anyOn);
+                            _toggleRoom(context, !stats.anyOn);
                           },
                     child: Text(stats.anyOn ? 'Apagar todo' : 'Encender'),
                   ),
                   const SizedBox(width: 4),
                   Tooltip(
-                    message: 'Tamaño: ${widget.tileSize.label}',
+                    message: 'Tamaño: ${tileSize.label}',
                     child: IconButton(
-                      icon: Icon(_sizeIcon(widget.tileSize)),
-                      onPressed: widget.onCycleTileSize,
+                      icon: Icon(_sizeIcon(tileSize)),
+                      onPressed: onCycleTileSize,
                     ),
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh),
-                    onPressed: widget.onRefresh,
+                    onPressed: onRefresh,
                   ),
                 ],
               ),
@@ -136,12 +136,13 @@ class _RoomPanelState extends State<RoomPanel> {
             Expanded(
               child: mode == RoomPanelMode.plan
                   ? FloorPlanPanel(
-                      service: widget.service,
+                      service: service,
+                      ui: ui,
                       planId: room.planId,
                       showPlanChips: false,
-                      dotSize: widget.tileSize.floorPlanDotSize,
+                      dotSize: tileSize.floorPlanDotSize,
                     )
-                  : _buildLights(room),
+                  : _buildLights(),
             ),
           ],
         );
@@ -149,13 +150,12 @@ class _RoomPanelState extends State<RoomPanel> {
     );
   }
 
-  Widget _buildLights(RoomRef room) {
+  Widget _buildLights() {
     final devices =
-        room.deviceIds.map(widget.service.byId).whereType<Device>().toList();
+        room.deviceIds.map(service.byId).whereType<Device>().toList();
     final lights =
         devices.where((d) => d.isLight && !d.isSensorDevice).toList();
     final sensors = devices.where((d) => d.isSensorDevice).toList();
-    final tileSize = widget.tileSize;
 
     if (devices.isEmpty) {
       return const Center(
@@ -169,7 +169,7 @@ class _RoomPanelState extends State<RoomPanel> {
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           sliver: SliverToBoxAdapter(
-            child: ScenesSection(service: widget.service, room: room),
+            child: ScenesSection(service: service, room: room),
           ),
         ),
         if (lights.isNotEmpty) ...[
@@ -190,12 +190,12 @@ class _RoomPanelState extends State<RoomPanel> {
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => ListenableBuilder(
-                  listenable: widget.service,
+                  listenable: service,
                   builder: (context, _) {
-                    final d = widget.service.byId(lights[i].id) ?? lights[i];
+                    final d = service.byId(lights[i].id) ?? lights[i];
                     return LightTile(
                       device: d,
-                      service: widget.service,
+                      service: service,
                       size: tileSize,
                     );
                   },
@@ -223,12 +223,12 @@ class _RoomPanelState extends State<RoomPanel> {
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => ListenableBuilder(
-                  listenable: widget.service,
+                  listenable: service,
                   builder: (context, _) {
-                    final d = widget.service.byId(sensors[i].id) ?? sensors[i];
+                    final d = service.byId(sensors[i].id) ?? sensors[i];
                     return SensorTile(
                       device: d,
-                      service: widget.service,
+                      service: service,
                       size: tileSize,
                     );
                   },

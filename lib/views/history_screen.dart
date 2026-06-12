@@ -1,13 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/event_record.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
+import '../theme/components/cce_segmented.dart';
+import '../theme/components/section_header.dart';
+import '../theme/components/status_dot.dart';
+import '../utils/time_format.dart';
+import 'history/event_grouping.dart';
+import 'history/event_presenter.dart';
 
 enum HistoryFilter { all, lights, sensors, automations, alarm }
 
@@ -50,6 +56,15 @@ extension _HistoryFilterX on HistoryFilter {
   }
 }
 
+/// Entrada de la lista renderizada: header de día o grupo de eventos.
+class _Entry {
+  _Entry.header(this.headerLabel) : group = null;
+  _Entry.group(this.group) : headerLabel = null;
+
+  final String? headerLabel;
+  final EventGroup? group;
+}
+
 class HistoryScreen extends StatefulWidget {
   final ServerConfig config;
   final DevicesService devices;
@@ -64,22 +79,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final List<EventRecord> _items = [];
   bool _loading = false;
   bool _hasMore = true;
+  bool _eventsEnabled = true;
   String? _cursor;
   HistoryFilter _filter = HistoryFilter.all;
   bool _liveMode = false;
   StreamSubscription<LiveEvent>? _liveSub;
+  Timer? _ticker;
   final _scroll = ScrollController();
+
+  /// IDs (del evento más reciente del grupo) expandidos inline.
+  final Set<String> _expanded = {};
 
   @override
   void initState() {
     super.initState();
     _api = ApiService(widget.config);
     _scroll.addListener(_onScroll);
+    // Ticker de 30 s: re-renderiza los tiempos relativos ("hace 5 min").
+    _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _items.isNotEmpty) setState(() {});
+    });
     _refresh();
   }
 
   @override
   void dispose() {
+    _ticker?.cancel();
     _liveSub?.cancel();
     _scroll.dispose();
     super.dispose();
@@ -99,9 +124,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   void _onLiveEvent(LiveEvent ev) {
     if (!mounted) return;
-    debugPrint('[HistoryLive] ${ev.eventName} payload=${ev.payload}');
     final rec = EventRecord(
-      time: ev.time.toIso8601String(),
+      // ev.time es DateTime.now() LOCAL: sin .toUtc() el ISO sale sin 'Z' y
+      // parseEventTime lo reinterpreta como UTC (evento "hace 180 min").
+      time: ev.time.toUtc().toIso8601String(),
       id: 'live-${ev.time.microsecondsSinceEpoch}',
       channel: 'websocket',
       eventName: ev.eventName,
@@ -121,6 +147,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void _clearItems() {
     setState(() {
       _items.clear();
+      _expanded.clear();
       _cursor = null;
       _hasMore = false;
     });
@@ -131,6 +158,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     setState(() {
       _loading = true;
       _items.clear();
+      _expanded.clear();
       _cursor = null;
       _hasMore = true;
     });
@@ -139,6 +167,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (!mounted) return;
       setState(() {
         _items.addAll(page.items);
+        _eventsEnabled = page.enabled;
         _cursor = page.nextCursor;
         _hasMore = page.nextCursor != null;
       });
@@ -166,16 +195,135 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   void _onScroll() {
+    if (!_scroll.hasClients) return;
     if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) {
       _loadMore();
     }
   }
 
-  List<EventRecord> get _filtered => _items.where(_filter.accepts).toList();
+  /// Pipeline: items → filtro → grupos adyacentes → headers de día.
+  List<_Entry> _buildEntries() {
+    final filtered = _items.where(_filter.accepts).toList();
+    final groups = groupEvents(filtered, widget.devices);
+    final out = <_Entry>[];
+    String? currentDay;
+    final now = DateTime.now();
+    for (final g in groups) {
+      final label = TimeFormat.dayLabel(g.latest.timestamp, now: now);
+      if (label != currentDay) {
+        currentDay = label;
+        out.add(_Entry.header(label));
+      }
+      out.add(_Entry.group(g));
+    }
+    return out;
+  }
+
+  void _toggleExpanded(EventGroup g) {
+    setState(() {
+      final id = g.latest.id;
+      if (!_expanded.remove(id)) _expanded.add(id);
+    });
+  }
+
+  Widget _buildFilters() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 560) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            child: CceSegmented<HistoryFilter>(
+              value: _filter,
+              segments: HistoryFilter.values
+                  .map((f) => CceSegment(value: f, label: f.label))
+                  .toList(),
+              onChanged: (f) => setState(() => _filter = f),
+            ),
+          );
+        }
+        // Fallback angosto (phone): chips scrolleables.
+        return SizedBox(
+          height: 54,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            children: HistoryFilter.values.map((f) {
+              final selected = f == _filter;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(f.label),
+                  selected: selected,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _filter = f),
+                  shape: const StadiumBorder(),
+                  backgroundColor: CceColors.surfaceHigh,
+                  selectedColor: CceColors.accent.withValues(alpha: 0.24),
+                  labelStyle: TextStyle(
+                    color: selected
+                        ? CceColors.textPrimary
+                        : CceColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  side: BorderSide(
+                    color: selected ? CceColors.accent : CceColors.stroke,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmpty() {
+    if (_loading) {
+      return const SizedBox(
+        height: 400,
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+                strokeWidth: 2, color: CceColors.textTertiary),
+          ),
+        ),
+      );
+    }
+    if (!_eventsEnabled && _items.isEmpty) {
+      return _EmptyState(
+        icon: const CceIcon(CceIcons.history,
+            size: 48, color: CceColors.textTertiary),
+        title: 'El historial está desactivado en el servidor',
+        caption: 'Activá la página de eventos en la configuración del '
+            'servidor para ver la actividad de la casa.',
+      );
+    }
+    if (_items.isEmpty) {
+      return _EmptyState(
+        icon: const CceIcon(CceIcons.history,
+            size: 48, color: CceColors.textTertiary),
+        title: 'Sin actividad todavía',
+        caption: 'Los eventos de luces, sensores, automatizaciones y alarma '
+            'van a aparecer acá.',
+      );
+    }
+    // Hay eventos pero el filtro no matchea ninguno.
+    return _EmptyState(
+      icon: const CceIcon(CceIcons.history,
+          size: 48, color: CceColors.textTertiary),
+      title: 'Sin eventos de ${_filter.label.toLowerCase()} hoy',
+      action: TextButton(
+        onPressed: () => setState(() => _filter = HistoryFilter.all),
+        child: const Text('Ver todos'),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filtered;
+    final entries = _buildEntries();
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -204,79 +352,53 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
       body: Column(
         children: [
-          // Filter chips row
-          SizedBox(
-            height: 54,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              children: HistoryFilter.values.map((f) {
-                final selected = f == _filter;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(f.label),
-                    selected: selected,
-                    showCheckmark: false,
-                    onSelected: (_) => setState(() => _filter = f),
-                    shape: const StadiumBorder(),
-                    backgroundColor: CceColors.surfaceHigh,
-                    selectedColor: CceColors.accent.withValues(alpha: 0.24),
-                    labelStyle: TextStyle(
-                      color: selected
-                          ? CceColors.textPrimary
-                          : CceColors.textSecondary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    side: BorderSide(
-                      color: selected ? CceColors.accent : CceColors.stroke,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
+          _buildFilters(),
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refresh,
               color: CceColors.textPrimary,
               backgroundColor: CceColors.surfaceHigh,
-              child: filtered.isEmpty
+              child: entries.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        SizedBox(
-                          height: 400,
-                          child: Center(
-                            child: Text(
-                              _loading ? '' : 'Sin eventos',
-                              style: const TextStyle(
-                                  color: CceColors.textTertiary),
-                            ),
-                          ),
-                        ),
-                      ],
+                      children: [_buildEmpty()],
                     )
                   : ListView.separated(
                       controller: _scroll,
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                      itemCount: filtered.length + (_hasMore ? 1 : 0),
+                      itemCount: entries.length + (_hasMore ? 1 : 0),
                       separatorBuilder: (_, idx) => const SizedBox(height: 8),
                       itemBuilder: (context, i) {
-                        if (i >= filtered.length) {
+                        if (i >= entries.length) {
                           return const Padding(
                             padding: EdgeInsets.symmetric(vertical: 18),
                             child: Center(
                               child: SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: CceColors.textTertiary),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: CceColors.textTertiary),
                               ),
                             ),
                           );
                         }
-                        return _EventRow(event: filtered[i], devices: widget.devices);
+                        final entry = entries[i];
+                        final header = entry.headerLabel;
+                        if (header != null) {
+                          return SectionHeader(
+                            title: header,
+                            padding: const EdgeInsets.fromLTRB(4, 16, 4, 4),
+                          );
+                        }
+                        final g = entry.group!;
+                        return _GroupRow(
+                          group: g,
+                          devices: widget.devices,
+                          expanded: _expanded.contains(g.latest.id),
+                          onToggleExpand: () => _toggleExpanded(g),
+                        );
                       },
                     ),
             ),
@@ -287,203 +409,226 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-class _EventRow extends StatelessWidget {
-  final EventRecord event;
+/// Fila de grupo: presentación humanizada + pill ×N + chevron expandible.
+class _GroupRow extends StatelessWidget {
+  final EventGroup group;
   final DevicesService devices;
-  const _EventRow({required this.event, required this.devices});
+  final bool expanded;
+  final VoidCallback onToggleExpand;
 
-  ({IconData icon, Color color, String title, String? subtitle}) _render() {
-    final p = event.payload ?? {};
-
-    if (event.eventName == 'alarm:triggered') {
-      final name = (p['automationName'] ?? 'Alarma').toString();
-      final msg = (p['message'] ?? '').toString();
-      return (icon: MdiIcons.alarmLight, color: CceColors.danger, title: 'Alarma: $name', subtitle: msg.isEmpty ? null : msg);
-    }
-    if (event.eventName == 'alarm:armed-changed') {
-      final armed = p['armed'] == true;
-      return (
-        icon: armed ? MdiIcons.shield : MdiIcons.shieldOutline,
-        color: armed ? CceColors.danger : CceColors.ok,
-        title: armed ? 'Alarma ACTIVADA' : 'Alarma DESACTIVADA',
-        subtitle: null,
-      );
-    }
-    if (event.eventName.startsWith('automation:')) {
-      final rawName = (p['name'] ?? p['automationName']) as String?;
-      final autoId = (p['automationId'] ?? '').toString();
-      final name = (rawName != null && rawName.isNotEmpty) ? rawName : devices.automationName(autoId);
-      final trigger = p['trigger']?.toString();
-      return (
-        icon: MdiIcons.lightningBolt,
-        color: CceColors.warm,
-        title: 'Automatización: $name',
-        subtitle: trigger != null && trigger.isNotEmpty ? 'Trigger: $trigger' : null,
-      );
-    }
-
-    // device:state-changed / light:changed
-    final deviceId = (p['deviceId'] ?? p['lightId'] ?? event.globalId ?? '').toString();
-    var device = devices.byId(deviceId);
-    if (device == null) {
-      for (final d in devices.all) {
-        if (d.bindingIds.contains(deviceId)) {
-          device = d;
-          break;
-        }
-      }
-    }
-    final deviceName = device == null
-        ? (deviceId.isEmpty ? 'Dispositivo' : deviceId)
-        : devices.displayName(device);
-
-    final state = p['state'];
-    final sensor = p['sensor'];
-
-    if (sensor is Map) {
-      if (sensor['contact'] != null) {
-        final open = sensor['contact'] == true;
-        return (
-          icon: open ? MdiIcons.doorOpen : MdiIcons.doorClosed,
-          color: open ? CceColors.contact : CceColors.textSecondary,
-          title: '$deviceName → ${open ? 'Abierta' : 'Cerrada'}',
-          subtitle: null,
-        );
-      }
-      if (sensor['motion'] != null) {
-        final motion = sensor['motion'] == true;
-        return (
-          icon: motion ? MdiIcons.motionSensor : MdiIcons.motionSensorOff,
-          color: motion ? CceColors.motion : CceColors.textSecondary,
-          title: '$deviceName → ${motion ? 'Movimiento' : 'Sin movimiento'}',
-          subtitle: null,
-        );
-      }
-      if (sensor['temperature'] != null) {
-        final t = (sensor['temperature'] as num).toDouble();
-        return (
-          icon: MdiIcons.thermometer,
-          color: const Color(0xFFFF8A5C),
-          title: '$deviceName → ${t.toStringAsFixed(1)}°',
-          subtitle: null,
-        );
-      }
-      if (sensor['humidity'] != null) {
-        final h = (sensor['humidity'] as num).toDouble();
-        return (
-          icon: MdiIcons.waterPercent,
-          color: CceColors.info,
-          title: '$deviceName → ${h.toStringAsFixed(0)}%',
-          subtitle: null,
-        );
-      }
-      if (sensor['lastKey'] != null) {
-        final key = sensor['lastKey'];
-        final outlet = sensor['outlet'];
-        return (
-          icon: MdiIcons.gestureTap,
-          color: const Color(0xFF9575CD),
-          title: '$deviceName → botón',
-          subtitle: outlet != null ? 'outlet $outlet (key $key)' : 'key $key',
-        );
-      }
-    }
-
-    if (state is Map) {
-      final on = state['on'];
-      final bri = state['bri'];
-      if (on != null) {
-        final label = on == true ? 'encendida' : 'apagada';
-        return (
-          icon: on == true ? MdiIcons.lightbulbOn : MdiIcons.lightbulbOutline,
-          color: on == true ? CceColors.warm : CceColors.textTertiary,
-          title: '$deviceName $label',
-          subtitle: bri != null && on == true ? 'Brillo ${((bri as num) / 254 * 100).round()}%' : null,
-        );
-      }
-      if (bri != null) {
-        return (
-          icon: MdiIcons.brightness6,
-          color: CceColors.warm,
-          title: '$deviceName → ${((bri as num) / 254 * 100).round()}%',
-          subtitle: null,
-        );
-      }
-    }
-
-    return (
-      icon: MdiIcons.information,
-      color: CceColors.textTertiary,
-      title: deviceName.isEmpty ? event.eventName : '$deviceName (${event.eventName})',
-      subtitle: null,
-    );
-  }
-
-  String _relativeTime(DateTime ts) {
-    final now = DateTime.now();
-    final diff = now.difference(ts);
-    if (diff.inSeconds < 60) return 'ahora';
-    if (diff.inMinutes < 60) return 'hace ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'hace ${diff.inHours}h';
-    if (diff.inDays < 7) return 'hace ${diff.inDays}d';
-    final m = ts.month.toString().padLeft(2, '0');
-    final d = ts.day.toString().padLeft(2, '0');
-    return '$d/$m';
-  }
+  const _GroupRow({
+    required this.group,
+    required this.devices,
+    required this.expanded,
+    required this.onToggleExpand,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final r = _render();
+    final r = presentGroup(group, devices);
+    final isAlarm = group.latest.eventName == 'alarm:triggered';
+    final isLive = group.latest.id.startsWith('live-');
+    final grouped = group.count > 1;
+
     return CceCard(
       radius: CceRadii.tile,
       padding: const EdgeInsets.all(14),
       border: true,
-      child: Row(
+      onTap: grouped ? onToggleExpand : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: r.color.withValues(alpha: 0.18),
-            ),
-            child: Icon(r.icon, color: r.color, size: 22),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  r.title,
-                  style: const TextStyle(
-                      color: CceColors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 2,
-                ),
-                if (r.subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    r.subtitle!,
-                    style: const TextStyle(
-                        color: CceColors.textTertiary, fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: r.color.withValues(alpha: 0.18),
+                  border: Border.all(
+                    color: isAlarm
+                        ? CceColors.danger.withValues(alpha: 0.40)
+                        : r.color.withValues(alpha: 0.30),
                   ),
-                ],
+                ),
+                child: Center(
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: r.color, size: 22),
+                    child: r.icon,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            r.title,
+                            style: const TextStyle(
+                                color: CceColors.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2,
+                          ),
+                        ),
+                        if (grouped) ...[
+                          const SizedBox(width: 6),
+                          _CountPill(count: group.count, color: r.color),
+                        ],
+                      ],
+                    ),
+                    if (r.subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        r.subtitle!,
+                        style: const TextStyle(
+                            color: CceColors.textTertiary, fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isLive) ...[
+                const StatusDot(CceColors.ok,
+                    size: 6, pulse: true, semanticLabel: 'En vivo'),
+                const SizedBox(width: 6),
               ],
-            ),
+              Text(
+                TimeFormat.relative(group.latest.timestamp),
+                style: const TextStyle(
+                    color: CceColors.textTertiary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
+              ),
+              if (grouped) ...[
+                const SizedBox(width: 6),
+                AnimatedRotation(
+                  turns: expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const CceIcon(CceIcons.chevronDown,
+                      size: 16, color: CceColors.textTertiary),
+                ),
+              ],
+            ],
           ),
-          const SizedBox(width: 8),
-          Text(
-            _relativeTime(event.timestamp),
-            style: const TextStyle(
-                color: CceColors.textTertiary,
-                fontSize: 12,
-                fontWeight: FontWeight.w500),
-          ),
+          if (grouped && expanded) ...[
+            const SizedBox(height: 8),
+            for (final e in group.events)
+              Padding(
+                padding: const EdgeInsets.only(left: 52, top: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        presentEvent(e, devices).title,
+                        style: const TextStyle(
+                            color: CceColors.textSecondary, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      TimeFormat.hms(e.timestamp),
+                      style: const TextStyle(
+                          color: CceColors.textTertiary, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+/// Pill ×N (20 px, fondo color@0.18, texto 11 px w700).
+class _CountPill extends StatelessWidget {
+  final int count;
+  final Color color;
+  const _CountPill({required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 20,
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(CceRadii.pill),
+      ),
+      child: Text(
+        '×$count',
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final Widget icon;
+  final String title;
+  final String? caption;
+  final Widget? action;
+
+  const _EmptyState({
+    required this.icon,
+    required this.title,
+    this.caption,
+    this.action,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 400,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            icon,
+            const SizedBox(height: 16),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: CceColors.textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (caption != null) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  caption!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: CceColors.textTertiary, fontSize: 13),
+                ),
+              ),
+            ],
+            if (action != null) ...[
+              const SizedBox(height: 8),
+              action!,
+            ],
+          ],
+        ),
       ),
     );
   }

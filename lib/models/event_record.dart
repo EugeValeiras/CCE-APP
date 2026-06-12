@@ -1,3 +1,5 @@
+import '../utils/time_format.dart';
+
 class EventRecord {
   final String time;
   final String id;
@@ -32,7 +34,10 @@ class EventRecord {
     );
   }
 
-  DateTime get timestamp => DateTime.tryParse(time) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  /// Timestamp local del evento. El backend manda ISO en UTC (a veces sin
+  /// sufijo 'Z'): [TimeFormat.parseEventTime] lo trata como UTC y devuelve
+  /// hora local — fix del "ahora" eterno por diff negativo.
+  DateTime get timestamp => TimeFormat.parseEventTime(time);
 }
 
 class EventsPage {
