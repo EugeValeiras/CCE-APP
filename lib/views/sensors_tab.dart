@@ -39,8 +39,8 @@ class SensorsTab extends StatelessWidget {
                 sliver: SliverGrid(
                   gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                     maxCrossAxisExtent: tileSize.maxTileExtent,
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
                     mainAxisExtent: tileSize.sensorTileHeight,
                   ),
                   delegate: SliverChildBuilderDelegate(

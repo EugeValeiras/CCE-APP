@@ -10,11 +10,20 @@ abstract final class CceColors {
   static const warm = Color(0xFFFFB46B); // luz calida (default luces)
   static const warmDeep = Color(0xFFE8743D);
 
-  // Ámbar Hue de las room cards encendidas: pálido y uniforme para TODAS
-  // las habitaciones (el color real de las luces no tiñe la card).
+  // REGLA: Room cards ON usan el gradiente pastel del tint real de las
+  // luces (Hue-style); todo color derivado de luces pasa por CceTint.pastel,
+  // que vive SOLO en cce_tokens.dart.
+  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static const amberHi = Color(0xFFF4D993);
+  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static const amberLo = Color(0xFFE7BE69);
+  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static const inkOnAmber = Color(0xFF211B10); // texto sobre ámbar
+
+  // Cards estilo Hue (light/sensor tiles, room cards apagadas).
+  static const cardOff = Color(0xFF232327); // base apagada (gris neutro Hue, sin tinte azul)
+  static const cardOffHigh = Color(0xFF2F2F33); // círculo de ícono / fallback escena sin swatch
+  static const hueDim = Color(0x2E000000); // overlay de atenuación a la derecha del handle (zona "no llenada")
   static const info = Color(0xFF5AC8FA);
   static const ok = Color(0xFF34D399);
   static const danger = Color(0xFFFF4D5E);
@@ -59,6 +68,27 @@ abstract final class CceTint {
 
   /// 70% alpha del resultado de [textOn] (para subtítulos).
   static Color subTextOn(Color base) => textOn(base).withValues(alpha: 0.7);
+
+  // Pastel Hue: clamps del pastel de cards encendidas.
+  static const double pastelSatMin = 0.42;
+  static const double pastelSatMax = 0.58;
+  static const double pastelLightMin = 0.74;
+  static const double pastelLightMax = 0.82;
+
+  /// ÚNICA fuente del pastel Hue. Conserva hue; S→[0.42,0.58];
+  /// L→[0.74,0.82]; alpha forzado 1.0.
+  static Color pastel(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    return hsl
+        .withSaturation(hsl.saturation.clamp(pastelSatMin, pastelSatMax).toDouble())
+        .withLightness(hsl.lightness.clamp(pastelLightMin, pastelLightMax).toDouble())
+        .withAlpha(1.0)
+        .toColor();
+  }
+
+  /// Tinta sobre fondo pastel (el pastel garantiza L>=0.74, siempre legible).
+  static const Color inkOnPastel = Color(0xFF1A1A1E);
+  static const Color inkOnPastelSub = Color(0x991A1A1E); // 60%
 }
 
 /// Sombras/glow compartidos del design system.
@@ -90,6 +120,8 @@ abstract final class CceRadii {
   static const double sheet = 32;
   static const double control = 16;
   static const double pill = 999;
+  static const double hueCard = 24; // light/sensor tiles y room cards
+  static const double hueScene = 16; // scene cards
 }
 
 /// Tipografia (system font; display = bold + tracking negativo).
@@ -126,9 +158,27 @@ abstract final class CceText {
 
 /// Gradientes compartidos.
 abstract final class CceGradients {
-  /// Card de habitacion encendida: ámbar pálido uniforme estilo Hue.
-  /// [tint] se acepta por compatibilidad pero NO tiñe la card — derivar el
-  /// gradiente del color de las luces producía naranjas saturados y verdes.
+  /// centerLeft→centerRight. Cada color pasa por CceTint.pastel.
+  /// [] → [warm]; 1 color → duplicado; máx 5.
+  static LinearGradient huePastel(List<Color> colors) {
+    final src = (colors.isEmpty ? const <Color>[CceColors.warm] : colors).take(5).toList();
+    if (src.length == 1) {
+      // Un color: gradiente VERTICAL claro→profundo (look Hue real).
+      final hsl = HSLColor.fromColor(CceTint.pastel(src.first));
+      return LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          hsl.withLightness(0.78).toColor(),
+          hsl.withLightness(0.62).toColor(),
+        ],
+      );
+    }
+    final pastels = [for (final c in src) CceTint.pastel(c)];
+    return LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: pastels);
+  }
+
+  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static LinearGradient roomOn([Color? tint]) {
     return const LinearGradient(
       begin: Alignment.topCenter,
@@ -137,6 +187,7 @@ abstract final class CceGradients {
     );
   }
 
+  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static const LinearGradient roomOff = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,

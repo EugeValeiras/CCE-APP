@@ -185,8 +185,8 @@ class RoomPanel extends StatelessWidget {
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: tileSize.maxTileExtent,
                 mainAxisExtent: tileSize.tileHeight,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => ListenableBuilder(
@@ -218,8 +218,8 @@ class RoomPanel extends StatelessWidget {
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: tileSize.maxTileExtent,
                 mainAxisExtent: tileSize.sensorTileHeight,
-                crossAxisSpacing: 14,
-                mainAxisSpacing: 14,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => ListenableBuilder(

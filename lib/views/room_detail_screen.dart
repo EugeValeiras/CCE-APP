@@ -84,11 +84,11 @@ class RoomDetailScreen extends StatelessWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 220,
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        mainAxisExtent: 150,
+                        mainAxisExtent: TileSize.medium.sensorTileHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, i) => ListenableBuilder(
@@ -115,11 +115,11 @@ class RoomDetailScreen extends StatelessWidget {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
                     sliver: SliverGrid(
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 240,
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
                         mainAxisSpacing: 12,
                         crossAxisSpacing: 12,
-                        mainAxisExtent: 160,
+                        mainAxisExtent: TileSize.medium.tileHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, i) => ListenableBuilder(

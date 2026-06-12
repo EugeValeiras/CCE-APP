@@ -154,8 +154,8 @@ class _RoomSection extends StatelessWidget {
           padding: EdgeInsets.zero,
           gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: tileSize.maxTileExtent,
-            mainAxisSpacing: 14,
-            crossAxisSpacing: 14,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
             mainAxisExtent: tileSize.tileHeight,
           ),
           itemCount: section.lights.length,

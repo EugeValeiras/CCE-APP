@@ -9,30 +9,33 @@ enum TileSize { small, medium, large }
 enum RoomPanelMode { lights, plan }
 
 extension TileSizeX on TileSize {
+  // Cards VERTICALES estilo Hue (~150×200 en medium).
   double get tileHeight {
     switch (this) {
-      case TileSize.small: return 140;
-      case TileSize.medium: return 180;
-      case TileSize.large: return 220;
+      case TileSize.small: return 170;
+      case TileSize.medium: return 200;
+      case TileSize.large: return 230;
     }
   }
 
   double get sensorTileHeight {
     switch (this) {
-      case TileSize.small: return 130;
-      case TileSize.medium: return 160;
-      case TileSize.large: return 190;
+      case TileSize.small: return 170;
+      case TileSize.medium: return 200;
+      case TileSize.large: return 230;
     }
   }
 
   double get iconSize {
     switch (this) {
-      case TileSize.small: return 28;
-      case TileSize.medium: return 40;
-      case TileSize.large: return 52;
+      case TileSize.small: return 22;
+      case TileSize.medium: return 26;
+      case TileSize.large: return 30;
     }
   }
 
+  // LEGACY: sin consumidores tras el rediseño Hue — la tipografía de las
+  // cards Hue es fija (16/13).
   double get nameSize {
     switch (this) {
       case TileSize.small: return 14;
@@ -41,6 +44,7 @@ extension TileSizeX on TileSize {
     }
   }
 
+  // LEGACY: sin consumidores (dead code preexistente).
   double get stateSize {
     switch (this) {
       case TileSize.small: return 13;
@@ -49,11 +53,12 @@ extension TileSizeX on TileSize {
     }
   }
 
+  // Ancho máximo por card vertical (col count sale de acá).
   double get maxTileExtent {
     switch (this) {
-      case TileSize.small: return 200;
-      case TileSize.medium: return 260;
-      case TileSize.large: return 320;
+      case TileSize.small: return 150;
+      case TileSize.medium: return 175;
+      case TileSize.large: return 205;
     }
   }
 

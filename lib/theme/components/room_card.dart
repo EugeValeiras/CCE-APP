@@ -9,9 +9,9 @@ import 'cce_card.dart';
 import 'status_dot.dart';
 
 /// Card de habitacion (sidebar tablet y lista phone), estilo Hue:
-/// gradiente ámbar uniforme si hay luces encendidas (texto oscuro), dots de
-/// estado integrados al subtítulo, switch a la derecha y slider de brillo
-/// FINO embebido al pie (solo tablet, cuando [brightness] != null).
+/// gradiente pastel del tint real de las luces si hay encendidas (texto
+/// oscuro), dots de estado integrados al subtítulo, switch a la derecha y
+/// slider de brillo FINO embebido al pie (solo tablet, [brightness] != null).
 ///
 /// Layout congelado (anti-overflow):
 ///  - compact == true (phone): altura FIJA 84, NUNCA renderiza slider.
@@ -43,8 +43,8 @@ class RoomCard extends StatefulWidget {
   final int lightsTotal;
   final bool anyOn;
 
-  /// Aceptado por compatibilidad; la card ya NO se tiñe con el color de
-  /// las luces (ámbar uniforme estilo Hue).
+  /// tint SÍ tiñe la card encendida, vía CceTint.pastel (gradiente pastel
+  /// del color real de las luces, estilo Hue).
   final Color? tint;
   final double? brightness; // 0..1; null = sin slider
   final bool selected; // resaltado en sidebar tablet
@@ -116,15 +116,14 @@ class _RoomCardState extends State<RoomCard> {
     final showSlider = !widget.compact && widget.brightness != null;
     final height = widget.compact ? 84.0 : (showSlider ? 110.0 : 84.0);
 
-    final gradient = widget.anyOn
-        ? CceGradients.roomOn()
-        : (widget.selected ? null : CceGradients.roomOff);
-    final glowColor =
-        widget.anyOn ? CceColors.amberLo : Colors.transparent;
+    final t = widget.tint ?? CceColors.warm;
+
+    final gradient =
+        widget.anyOn ? CceGradients.huePastel([t]) : null;
     final fg =
-        widget.anyOn ? CceColors.inkOnAmber : CceColors.textPrimary;
+        widget.anyOn ? CceTint.inkOnPastel : CceColors.textPrimary;
     final fgSub = widget.anyOn
-        ? CceColors.inkOnAmber.withValues(alpha: 0.65)
+        ? CceTint.inkOnPastelSub
         : CceColors.textSecondary;
 
     final subtitleRow = Row(
@@ -201,7 +200,7 @@ class _RoomCardState extends State<RoomCard> {
                   ? null
                   : widget.onToggle,
               activeTrackColor: widget.anyOn
-                  ? CceColors.inkOnAmber.withValues(alpha: 0.30)
+                  ? CceTint.inkOnPastel.withValues(alpha: 0.30)
                   : null,
               thumbColor:
                   const WidgetStatePropertyAll<Color>(Colors.white),
@@ -213,8 +212,10 @@ class _RoomCardState extends State<RoomCard> {
 
     final card = CceCard(
       gradient: gradient,
-      color:
-          widget.selected && !widget.anyOn ? CceColors.surfaceHigh : null,
+      color: widget.anyOn
+          ? null
+          : (widget.selected ? CceColors.surfaceHigh : CceColors.cardOff),
+      radius: CceRadii.hueCard,
       padding: EdgeInsets.fromLTRB(16, showSlider ? 10 : 8, 14, 8),
       onTap: () {
         HapticFeedback.selectionClick();
@@ -233,9 +234,9 @@ class _RoomCardState extends State<RoomCard> {
                     value: (_dragValue ?? widget.brightness!)
                         .clamp(0.0, 1.0)
                         .toDouble(),
-                    activeColor: Colors.white.withValues(alpha: 0.85),
+                    activeColor: Colors.white,
                     thinTrackColor: widget.anyOn
-                        ? CceColors.inkOnAmber.withValues(alpha: 0.18)
+                        ? const Color(0x40101014)
                         : Colors.white.withValues(alpha: 0.22),
                     onChanged: _onSliderChanged,
                     onChangeEnd: _onSliderEnd,
@@ -256,9 +257,10 @@ class _RoomCardState extends State<RoomCard> {
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(CceRadii.card),
-              boxShadow:
-                  widget.anyOn ? CceShadows.glowOn(glowColor) : const [],
+              borderRadius: BorderRadius.circular(CceRadii.hueCard),
+              boxShadow: widget.anyOn
+                  ? CceShadows.glowOn(CceTint.pastel(t))
+                  : const [],
             ),
             child: card,
           ),
@@ -270,7 +272,7 @@ class _RoomCardState extends State<RoomCard> {
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOutCubic,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CceRadii.card),
+                  borderRadius: BorderRadius.circular(CceRadii.hueCard),
                   border: Border.all(
                     color: widget.selected
                         ? Colors.white.withValues(alpha: 0.80)

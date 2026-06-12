@@ -60,7 +60,9 @@ class _LightTileState extends State<LightTile> {
 
   void _onVerticalDragUpdate(DragUpdateDetails d) {
     if (_dragStartBri == null) return;
-    final delta = -d.delta.dy / widget.height * 254;
+    // Divisor constante (no la altura del tile): las cards Hue son bajas y
+    // dividir por widget.height haria el drag 2x mas sensible.
+    final delta = -d.delta.dy / 180.0 * 254;
     _currentBri = (_currentBri + delta).clamp(0, 254);
     setState(() {});
   }
@@ -116,7 +118,7 @@ class _LightTileState extends State<LightTile> {
     return PulseOnUpdate(
       triggerAt: d.lastEventAt,
       color: on ? color : CceColors.info,
-      borderRadius: CceRadii.tile,
+      borderRadius: CceRadii.hueCard,
       child: GestureDetector(
         onTap: reachable ? _onTap : null,
         onLongPress: reachable ? _openDetail : null,
@@ -132,7 +134,7 @@ class _LightTileState extends State<LightTile> {
           reachable: reachable,
           stateLabel: stateLabel,
           height: widget.height,
-          onMorePressed: reachable ? _openDetail : null,
+          onToggle: reachable ? (_) => _onTap() : null,
         ),
       ),
     );

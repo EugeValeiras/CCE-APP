@@ -180,9 +180,9 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 200,
-        mainAxisExtent: 130,
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: TileSize.small.maxTileExtent,
+        mainAxisExtent: TileSize.small.sensorTileHeight,
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
       ),
@@ -209,7 +209,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                   child: IgnorePointer(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(CceRadii.tile),
+                        borderRadius: BorderRadius.circular(CceRadii.hueCard),
                         border:
                             Border.all(color: CceColors.accent, width: 2),
                       ),

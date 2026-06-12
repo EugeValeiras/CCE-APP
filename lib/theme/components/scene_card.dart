@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../cce_tokens.dart';
 import 'status_pill.dart';
 
-/// Card de escena (Hue nativa o CCE): altura FIJA 100, gradiente horizontal
-/// con el swatch de colores (o surfaceHigh si no hay), borde accent + check
-/// cuando esta activa, badge "auto" para smart scenes y spinner mientras
-/// se aplica.
+/// Card de escena (Hue nativa o CCE), réplica del formato Hue: card OSCURA
+/// fija de 140 con un CÍRCULO de color centrado (gradiente del swatch, o
+/// círculo cálido con el ícono para escenas CCE) y el nombre DEBAJO.
+/// Activa = borde blanco sutil + check arriba a la derecha (la card NO se
+/// tiñe entera). Badge "auto" para smart scenes y spinner sobre el círculo
+/// mientras se aplica.
 class SceneCard extends StatelessWidget {
   const SceneCard({
     super.key,
@@ -22,37 +24,86 @@ class SceneCard extends StatelessWidget {
   final String name;
   final List<Color> colors; // swatch hasta 5 (HueScene.colors)
   final Widget? icon; // para CceScene (icon name -> MdiIcons)
-  final bool active; // borde accent + check
+  final bool active; // borde blanco + check
   final bool isSmart; // badge "auto"
   final bool busy; // spinner mientras aplica
   final VoidCallback onTap;
 
-  static const double _height = 100;
+  static const double _height = 140;
+  static const double _circle = 56;
 
-  @override
-  Widget build(BuildContext context) {
-    final borderRadius = BorderRadius.circular(CceRadii.tile);
+  Widget _buildCircle() {
     final hasSwatch = colors.isNotEmpty;
     final gradientColors =
         colors.length == 1 ? [colors.first, colors.first] : colors;
+
+    final circle = Container(
+      width: _circle,
+      height: _circle,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        // El círculo lleva los colores REALES saturados (como Hue);
+        // el pastel es solo para cards de luces/habitaciones.
+        color: hasSwatch ? null : CceColors.warm,
+        gradient: hasSwatch
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: gradientColors.take(5).toList(),
+              )
+            : null,
+      ),
+      child: !hasSwatch && icon != null
+          ? IconTheme.merge(
+              data: const IconThemeData(
+                color: Color(0xFF211B10),
+                size: 24,
+              ),
+              child: Center(child: icon!),
+            )
+          : null,
+    );
+
+    if (!busy) return circle;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        circle,
+        Container(
+          width: _circle,
+          height: _circle,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: Color(0x66000000),
+          ),
+        ),
+        const SizedBox(
+          width: 22,
+          height: 22,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(CceRadii.hueScene);
 
     return SizedBox(
       height: _height,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: hasSwatch ? null : CceColors.surfaceHigh,
-          gradient: hasSwatch
-              ? LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: gradientColors,
-                )
-              : null,
+          color: CceColors.cardOffHigh,
           borderRadius: borderRadius,
           border: active
-              ? Border.all(color: CceColors.accent, width: 2)
-              : Border.all(color: CceColors.stroke),
+              ? Border.all(
+                  color: Colors.white.withValues(alpha: 0.85), width: 1.4)
+              : null,
         ),
         child: Material(
           type: MaterialType.transparency,
@@ -61,81 +112,51 @@ class SceneCard extends StatelessWidget {
             borderRadius: borderRadius,
             child: Stack(
               children: [
-                // Scrim inferior para legibilidad del nombre sobre el swatch.
-                if (hasSwatch)
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.0),
-                            Colors.black.withValues(alpha: 0.42),
-                          ],
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 16, 8, 10),
+                    child: Column(
+                      children: [
+                        _buildCircle(),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.1,
+                              height: 1.15,
+                              color: CceColors.textPrimary,
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          if (icon != null)
-                            IconTheme.merge(
-                              data: const IconThemeData(
-                                color: CceColors.textPrimary,
-                                size: 20,
-                              ),
-                              child: icon!,
-                            ),
-                          const Spacer(),
-                          if (isSmart)
-                            const StatusPill(
-                              label: 'auto',
-                              color: Color(0x52000000),
-                            ),
-                          if (busy) ...[
-                            const SizedBox(width: 6),
-                            const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ] else if (active) ...[
-                            const SizedBox(width: 6),
-                            const Icon(
-                              Icons.check_circle,
-                              size: 18,
-                              color: CceColors.accent,
-                            ),
-                          ],
-                        ],
-                      ),
-                      const Spacer(),
-                      Text(
-                        name,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
-                          color: CceColors.textPrimary,
-                          shadows: [
-                            Shadow(color: Color(0x66000000), blurRadius: 6),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
+                if (isSmart)
+                  const Positioned(
+                    top: 8,
+                    left: 8,
+                    child: StatusPill(
+                      label: 'auto',
+                      color: Color(0x52000000),
+                    ),
+                  ),
+                if (active && !busy)
+                  const Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Icon(
+                      Icons.check_circle,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
               ],
             ),
           ),

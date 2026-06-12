@@ -335,6 +335,8 @@ class DevicesService extends ChangeNotifier {
   /// brillantes tienen hues a ≤90° se promedia circularmente el hue
   /// ponderado por brillo (jamás se promedian complementarios). El resultado
   /// sale SIEMPRE normalizado por [CceTint.normalize].
+  /// NOTA: el render aplica CceTint.pastel encima; este tint es el color
+  /// semántico, no el pintado.
   Color? _tintForOnLights(List<Device> onLights) {
     final colored = <({double hue, double sat, int bri})>[];
     for (final d in onLights) {

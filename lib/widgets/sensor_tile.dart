@@ -3,7 +3,7 @@ import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/status_pill.dart';
+import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
 import 'pulse_on_update.dart';
 
@@ -51,20 +51,25 @@ class SensorTile extends StatelessWidget {
       displayName: service.displayName(device),
     );
 
+    // Lectura numérica grande para temp/humedad (los binarios ya comunican
+    // su estado en la franja inferior).
+    final String? bigReading = device.isContactSensor || device.isMotionSensor
+        ? null
+        : stateLabel;
+
     return PulseOnUpdate(
       triggerAt: device.lastEventAt,
       color: color,
-      borderRadius: CceRadii.tile,
+      borderRadius: CceRadii.hueCard,
       child: Container(
         height: size.sensorTileHeight,
-        padding: const EdgeInsets.all(16),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: CceColors.surface,
-          borderRadius: BorderRadius.circular(CceRadii.tile),
-          border: Border.all(
-            color: alert ? color.withValues(alpha: 0.6) : CceColors.stroke,
-            width: alert ? 1.5 : 1,
-          ),
+          color: CceColors.cardOff,
+          borderRadius: BorderRadius.circular(CceRadii.hueCard),
+          border: alert
+              ? Border.all(color: color.withValues(alpha: 0.6), width: 1.5)
+              : null,
           boxShadow: alert
               ? [
                   BoxShadow(
@@ -75,41 +80,84 @@ class SensorTile extends StatelessWidget {
                 ]
               : null,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Stack(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: color, size: size.iconSize),
-                if (s?.battery == 'low')
-                  const Icon(Icons.battery_alert,
-                      color: CceColors.danger, size: 20),
-              ],
-            ),
             Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  service.displayName(device),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: CceColors.textPrimary,
-                    fontSize: size.nameSize,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
+                // Zona superior centrada (misma familia que LightCard).
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(icon, color: color, size: size.iconSize),
+                        const SizedBox(height: 8),
+                        Text(
+                          service.displayName(device),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: CceColors.textPrimary,
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: -0.1,
+                            height: 1.15,
+                          ),
+                        ),
+                        if (bigReading != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            bigReading,
+                            maxLines: 1,
+                            style: TextStyle(
+                              color: CceColors.textPrimary,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                StatusPill(
-                  label: stateLabel,
-                  color: color.withValues(alpha: 0.16),
-                  foreground: color,
+                // Franja inferior: dot de estado + label (sensores no se
+                // togglean — acá va el estado en lugar del switch).
+                Container(
+                  height: 46,
+                  color: Colors.white.withValues(alpha: 0.045),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  alignment: Alignment.centerLeft,
+                  child: Row(
+                    children: [
+                      StatusDot(color, semanticLabel: stateLabel),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          stateLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: alert ? color : CceColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
+            if (s?.battery == 'low')
+              const Positioned(
+                top: 10,
+                right: 10,
+                child: Icon(Icons.battery_alert,
+                    color: CceColors.danger, size: 18),
+              ),
           ],
         ),
       ),
