@@ -413,6 +413,17 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     return r.isWhite ? CceColors.warm : r.color;
   }
 
+  /// Ícono del device con la MISMA resolución que la lista (MDI / icons0 SVG /
+  /// emoji), para que plano y lista coincidan.
+  Widget _iconWidget(double size, Color color) => IconResolver.widget(
+        widget.device,
+        configuredIcon: widget.service.iconFor(widget.device.id),
+        customIcons: widget.service.customIcons,
+        displayName: widget.service.displayName(widget.device),
+        size: size,
+        color: color,
+      );
+
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
@@ -449,12 +460,6 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
       accent = Colors.white54;
     }
 
-    final icon = IconResolver.resolve(
-      device,
-      configuredIcon: widget.service.iconFor(device.id),
-      displayName: widget.service.displayName(device),
-    );
-
     return AnimatedBuilder(
       animation: Listenable.merge([_tapCtrl, _glowCtrl]),
       builder: (context, _) {
@@ -482,8 +487,8 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
         }
 
         final body = hasReading
-            ? _readingBadge(icon, accent, temp, hum, shadows)
-            : _circleDot(icon, accent, active, isLight, shadows, offline);
+            ? _readingBadge(accent, temp, hum, shadows)
+            : _circleDot(accent, active, isLight, shadows, offline);
 
         return Transform.scale(
           scale: _tapScale.value,
@@ -517,25 +522,27 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     );
   }
 
-  Widget _circleDot(IconData icon, Color accent, bool active, bool isLight,
+  Widget _circleDot(Color accent, bool active, bool isLight,
       List<BoxShadow> shadows, bool offline) {
     final size = widget.size;
     if (active) {
       return Container(
         width: size,
         height: size,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: accent,
           boxShadow: shadows,
         ),
-        child: Icon(icon, color: CceTint.textOn(accent), size: size * 0.52),
+        child: _iconWidget(size * 0.52, CceTint.textOn(accent)),
       );
     }
     // Apagado / sin actividad: ghost dark sobre el canvas.
     final ghost = Container(
       width: size,
       height: size,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: CceColors.surfaceHigh.withValues(alpha: 0.80),
@@ -546,10 +553,9 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
         ),
         boxShadow: shadows,
       ),
-      child: Icon(
-        icon,
-        color: Colors.white.withValues(alpha: isLight ? 0.22 : 0.38),
-        size: size * 0.52,
+      child: _iconWidget(
+        size * 0.52,
+        Colors.white.withValues(alpha: isLight ? 0.22 : 0.38),
       ),
     );
     if (!offline) return ghost;
@@ -580,7 +586,7 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     );
   }
 
-  Widget _readingBadge(IconData icon, Color color, double? temp, double? hum,
+  Widget _readingBadge(Color color, double? temp, double? hum,
       List<BoxShadow> shadows) {
     final size = widget.size;
     final label = temp != null
@@ -600,7 +606,7 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: color, size: size * 0.48),
+          _iconWidget(size * 0.48, color),
           SizedBox(width: size * 0.12),
           Text(
             label,

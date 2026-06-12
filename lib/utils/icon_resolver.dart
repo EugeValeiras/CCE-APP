@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/device.dart';
 
-/// Resolves a device's icon — either from user-configured lightIcons map (MDI name)
-/// or a smart default based on device type.
+/// Resuelve el ícono de un device — del lightIcons configurado en el dashboard
+/// (nombre MDI, id `icons0:<prefix>:<name>` con SVG vendoreado, o emoji), o un
+/// default inteligente por tipo. Misma lógica que el dashboard para que el
+/// ícono coincida en la lista de luces, los sensores y el plano.
 class IconResolver {
   /// Strip prefixes like "mdi-" / "mdi:" and normalize kebab-case.
   static String _normalize(String raw) {
@@ -13,20 +16,85 @@ class IconResolver {
     return s;
   }
 
+  static String _kebabToCamel(String s) {
+    final parts = s.split(RegExp(r'[-_]')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return s;
+    return parts.first +
+        parts.skip(1).map((p) => p[0].toUpperCase() + p.substring(1)).join();
+  }
+
+  /// MDI por nombre: primero el mapa curado, luego el set COMPLETO de MDI
+  /// (MdiIcons.fromString) — así cualquier ícono mdi del dashboard resuelve.
   static IconData? _mdiByName(String name) {
     final n = _normalize(name);
-    // Try direct lookup via material_design_icons_flutter convention: camelCase key
-    return _mdiMap[n];
+    final mapped = _mdiMap[n];
+    if (mapped != null) return mapped;
+    return MdiIcons.fromString(_kebabToCamel(n));
+  }
+
+  /// Un id parece identificador de ícono (no emoji/texto) si es ascii kebab.
+  static bool _looksLikeId(String s) =>
+      RegExp(r'^[a-z0-9:_-]+$').hasMatch(s.toLowerCase());
+
+  /// Si [configuredIcon] es un id `icons0:mdi:<name>`, devuelve el `<name>`;
+  /// si no, lo devuelve tal cual (o null si es un icons0 no-mdi).
+  static String? _mdiNameFrom(String cfg) {
+    if (!cfg.startsWith('icons0:')) return cfg;
+    final parts = cfg.split(':');
+    return (parts.length >= 3 && parts[1] == 'mdi')
+        ? parts.sublist(2).join(':')
+        : null;
   }
 
   /// Resolve an icon for a device, preferring user-configured.
   /// [displayName] is the user-facing name (custom or default) used for heuristics.
-  static IconData resolve(Device device, {String? configuredIcon, String? displayName}) {
-    if (configuredIcon != null && configuredIcon.isNotEmpty) {
-      final icon = _mdiByName(configuredIcon);
-      if (icon != null) return icon;
+  static IconData resolve(Device device,
+      {String? configuredIcon, String? displayName}) {
+    final raw = configuredIcon?.trim();
+    if (raw != null && raw.isNotEmpty) {
+      final name = _mdiNameFrom(raw);
+      if (name != null && name.isNotEmpty) {
+        final icon = _mdiByName(name);
+        if (icon != null) return icon;
+      }
     }
     return _defaultFor(device, displayName: displayName);
+  }
+
+  /// Versión que devuelve un Widget: soporta MDI (Icon), `icons0:` con SVG
+  /// vendoreado (SvgPicture tintado con [color]) y emoji (Text). [customIcons]
+  /// es el mapa `icons0:<prefix>:<name>` -> SVG del dashboard.
+  static Widget widget(
+    Device device, {
+    String? configuredIcon,
+    Map<String, String> customIcons = const {},
+    String? displayName,
+    double size = 24,
+    Color? color,
+  }) {
+    final raw = configuredIcon?.trim();
+    if (raw != null && raw.isNotEmpty) {
+      if (raw.startsWith('icons0:')) {
+        final svg = customIcons[raw];
+        if (svg != null && svg.contains('<svg')) {
+          return SvgPicture.string(
+            svg,
+            width: size,
+            height: size,
+            colorFilter: color != null
+                ? ColorFilter.mode(color, BlendMode.srcIn)
+                : null,
+          );
+        }
+        // icons0:mdi:* sin SVG cacheado → resolver por MDI.
+      } else if (!_looksLikeId(raw)) {
+        // Emoji o texto: se muestra tal cual.
+        return Text(raw,
+            style: TextStyle(fontSize: size * 0.92, height: 1.0));
+      }
+    }
+    final data = resolve(device, configuredIcon: raw, displayName: displayName);
+    return Icon(data, size: size, color: color);
   }
 
   static IconData _defaultFor(Device device, {String? displayName}) {

@@ -24,6 +24,9 @@ class DevicesService extends ChangeNotifier {
   FloorPlansData? _floorPlans;
   List<LightGroup> _groups = const [];
   Map<String, String> _lightIcons = const {};
+  // Íconos vendoreados de icons0.dev: 'icons0:<prefix>:<name>' -> SVG completo
+  // (mismo formato que guarda el dashboard en config.customIcons).
+  Map<String, String> _customIcons = const {};
   Map<String, String> _lightNames = const {};
   Map<String, String> _automationNames = const {};
   List<ColorPreset> _colorPresets = const [];
@@ -63,6 +66,7 @@ class DevicesService extends ChangeNotifier {
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
+  Map<String, String> get customIcons => _customIcons;
   List<ColorPreset> get colorPresets => _colorPresets;
   List<CceScene> get scenes => _scenes;
   List<HueScene> get hueScenes => _hueScenes;
@@ -121,6 +125,14 @@ class DevicesService extends ChangeNotifier {
       final rawIcons = cfg['lightIcons'];
       _lightIcons = rawIcons is Map
           ? rawIcons.map((k, v) => MapEntry(k.toString(), v.toString()))
+          : const {};
+      final rawCustom = cfg['customIcons'];
+      _customIcons = rawCustom is Map
+          ? {
+              for (final e in rawCustom.entries)
+                if (e.value is Map && (e.value as Map)['svg'] != null)
+                  e.key.toString(): (e.value as Map)['svg'].toString()
+            }
           : const {};
       final rawNames = cfg['lightNames'];
       _lightNames = rawNames is Map

@@ -100,11 +100,6 @@ class _LightTileState extends State<LightTile> {
     final briPct = (bri / 254).clamp(0.0, 1.0).toDouble();
     final reachable = d.state.reachable;
     final color = _activeColor();
-    final iconData = IconResolver.resolve(
-      d,
-      configuredIcon: widget.service.iconFor(d.id),
-      displayName: widget.service.displayName(d),
-    );
 
     // El brillo se comunica por el relleno de la card, no como texto %.
     final String? stateLabel;
@@ -128,7 +123,14 @@ class _LightTileState extends State<LightTile> {
         onVerticalDragEnd: reachable ? _onVerticalDragEnd : null,
         child: LightCard(
           name: widget.service.displayName(d),
-          icon: Icon(iconData, size: widget.size.iconSize),
+          iconBuilder: (c) => IconResolver.widget(
+            d,
+            configuredIcon: widget.service.iconFor(d.id),
+            customIcons: widget.service.customIcons,
+            displayName: widget.service.displayName(d),
+            size: widget.size.iconSize,
+            color: c,
+          ),
           on: on,
           brightness: briPct,
           color: color,

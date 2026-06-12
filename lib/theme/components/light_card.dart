@@ -11,7 +11,7 @@ class LightCard extends StatelessWidget {
   const LightCard({
     super.key,
     required this.name,
-    required this.icon,
+    required this.iconBuilder,
     required this.on,
     this.brightness,
     this.color,
@@ -22,7 +22,9 @@ class LightCard extends StatelessWidget {
   });
 
   final String name;
-  final Widget icon;
+  /// Construye el ícono con el color de primer plano que decide la card
+  /// (necesario para tintar SVGs de icons0, que no respetan IconTheme).
+  final Widget Function(Color color) iconBuilder;
   final bool on;
   final double? brightness; // 0..1 → altura del relleno
   final Color? color; // color real de la luz (default CceColors.warm)
@@ -85,9 +87,9 @@ class LightCard extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        IconTheme.merge(
-                          data: IconThemeData(color: fg, size: 24),
-                          child: icon,
+                        SizedBox(
+                          height: 26,
+                          child: Center(child: iconBuilder(fg)),
                         ),
                         const SizedBox(height: 6),
                         Flexible(

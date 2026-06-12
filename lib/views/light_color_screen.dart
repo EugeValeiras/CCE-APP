@@ -438,10 +438,13 @@ class _LightColorScreenState extends State<LightColorScreen> {
           final d = widget.service.byId(lights[i].id) ?? lights[i];
           return _DeviceMiniCard(
             name: widget.service.displayName(d),
-            icon: IconResolver.resolve(
+            icon: IconResolver.widget(
               d,
               configuredIcon: widget.service.iconFor(d.id),
+              customIcons: widget.service.customIcons,
               displayName: widget.service.displayName(d),
+              size: 22,
+              color: CceColors.textPrimary,
             ),
             on: d.state.on,
             reachable: d.state.reachable,
@@ -726,7 +729,7 @@ class _BrightnessPill extends StatelessWidget {
 
 class _DeviceMiniCard extends StatelessWidget {
   final String name;
-  final IconData icon;
+  final Widget icon;
   final bool on, reachable, selected;
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle;
@@ -763,7 +766,7 @@ class _DeviceMiniCard extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(icon, color: CceColors.textPrimary, size: 22),
+                    SizedBox(height: 22, child: Center(child: icon)),
                     const SizedBox(height: 6),
                     Text(
                       name,

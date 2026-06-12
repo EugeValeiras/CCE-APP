@@ -45,12 +45,6 @@ class SensorTile extends StatelessWidget {
       color = CceColors.info;
     }
 
-    final icon = IconResolver.resolve(
-      device,
-      configuredIcon: service.iconFor(device.id),
-      displayName: service.displayName(device),
-    );
-
     // Lectura numérica grande para temp/humedad (los binarios ya comunican
     // su estado en la franja inferior).
     final String? bigReading = device.isContactSensor || device.isMotionSensor
@@ -94,7 +88,19 @@ class SensorTile extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(icon, color: color, size: size.iconSize),
+                          SizedBox(
+                          height: size.iconSize,
+                          child: Center(
+                            child: IconResolver.widget(
+                              device,
+                              configuredIcon: service.iconFor(device.id),
+                              customIcons: service.customIcons,
+                              displayName: service.displayName(device),
+                              size: size.iconSize,
+                              color: color,
+                            ),
+                          ),
+                        ),
                           const SizedBox(height: 6),
                           SizedBox(
                             width: 124,
