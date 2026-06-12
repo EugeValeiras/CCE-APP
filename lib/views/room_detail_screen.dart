@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import '../models/device.dart';
+import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
+import '../theme/cce_tokens.dart';
+import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
+import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
 
 class RoomDetailScreen extends StatelessWidget {
   final String title;
   final List<String> deviceIds;
   final DevicesService service;
+  final RoomRef? room; // opcional: habilita la sección de escenas
 
   const RoomDetailScreen({
     super.key,
     required this.title,
     required this.deviceIds,
     required this.service,
+    this.room,
   });
 
   @override
@@ -30,11 +36,8 @@ class RoomDetailScreen extends StatelessWidget {
         final onCount = lights.where((l) => l.state.on).length;
 
         return Scaffold(
-          backgroundColor: const Color(0xFF0B1D38),
           appBar: AppBar(
-            backgroundColor: const Color(0xFF152D54),
-            title: Text(title, style: const TextStyle(color: Colors.white)),
-            iconTheme: const IconThemeData(color: Colors.white70),
+            title: Text(title),
             actions: [
               if (lights.isNotEmpty)
                 TextButton.icon(
@@ -45,12 +48,12 @@ class RoomDetailScreen extends StatelessWidget {
                   },
                   icon: Icon(
                     onCount > 0 ? Icons.power_settings_new : Icons.power_off,
-                    color: onCount > 0 ? Colors.amber : Colors.white54,
+                    color: onCount > 0 ? CceColors.warm : CceColors.textTertiary,
                   ),
                   label: Text(
                     onCount > 0 ? 'Apagar todo' : 'Encender',
                     style: TextStyle(
-                      color: onCount > 0 ? Colors.amber : Colors.white54,
+                      color: onCount > 0 ? CceColors.warm : CceColors.textTertiary,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -59,16 +62,23 @@ class RoomDetailScreen extends StatelessWidget {
           ),
           body: RefreshIndicator(
             onRefresh: service.refresh,
-            color: Colors.white,
-            backgroundColor: const Color(0xFF1E2A44),
+            color: CceColors.textPrimary,
+            backgroundColor: CceColors.surfaceHigh,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                if (sensors.isNotEmpty) ...[
-                  const SliverToBoxAdapter(
+                if (room != null)
+                  SliverToBoxAdapter(
                     child: Padding(
-                      padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
-                      child: _SectionLabel('Sensores'),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ScenesSection(service: service, room: room),
+                    ),
+                  ),
+                if (sensors.isNotEmpty) ...[
+                  const SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(
+                      child: SectionHeader(title: 'Sensores'),
                     ),
                   ),
                   SliverPadding(
@@ -94,10 +104,12 @@ class RoomDetailScreen extends StatelessWidget {
                   ),
                 ],
                 if (lights.isNotEmpty) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-                      child: _SectionLabel('Luces · $onCount de ${lights.length} encendidas'),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(
+                      child: SectionHeader(
+                        title: 'Luces · $onCount de ${lights.length} encendidas',
+                      ),
                     ),
                   ),
                   SliverPadding(
@@ -128,7 +140,7 @@ class RoomDetailScreen extends StatelessWidget {
                     child: Center(
                       child: Text(
                         'Este plano no tiene dispositivos',
-                        style: TextStyle(color: Colors.white54),
+                        style: TextStyle(color: CceColors.textTertiary),
                       ),
                     ),
                   ),
@@ -137,23 +149,6 @@ class RoomDetailScreen extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text.toUpperCase(),
-      style: const TextStyle(
-        color: Colors.white54,
-        fontSize: 11,
-        fontWeight: FontWeight.w800,
-        letterSpacing: 1.3,
-      ),
     );
   }
 }

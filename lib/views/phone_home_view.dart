@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
+import '../theme/cce_icons.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'history_screen.dart';
@@ -59,7 +60,6 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
         await _onWillPop();
       },
       child: Scaffold(
-        backgroundColor: const Color(0xFF0B1D38),
         body: IndexedStack(
           index: _tab,
           children: [
@@ -78,8 +78,6 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
           ],
         ),
         bottomNavigationBar: NavigationBar(
-          backgroundColor: const Color(0xFF152D54),
-          indicatorColor: const Color(0xFF0F3460),
           selectedIndex: _tab,
           onDestinationSelected: (i) {
             if (i == _tab && i == 0) {
@@ -87,25 +85,23 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             }
             setState(() => _tab = i);
           },
+          // El tinte selected/unselected lo provee el IconTheme del tema —
+          // nunca hardcodear color en estos CceIcon.
           destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.home_outlined, color: Colors.white70),
-              selectedIcon: Icon(Icons.home, color: Colors.white),
+              icon: CceIcon(CceIcons.allHouse, size: 26),
               label: 'Casa',
             ),
             NavigationDestination(
-              icon: Icon(Icons.history_outlined, color: Colors.white70),
-              selectedIcon: Icon(Icons.history, color: Colors.white),
+              icon: CceIcon(CceIcons.history, size: 26),
               label: 'Historial',
             ),
             NavigationDestination(
-              icon: Icon(Icons.smart_toy_outlined, color: Colors.white70),
-              selectedIcon: Icon(Icons.smart_toy, color: Colors.white),
+              icon: CceIcon(CceIcons.agent, size: 26),
               label: 'Agente',
             ),
             NavigationDestination(
-              icon: Icon(Icons.shield_outlined, color: Colors.white70),
-              selectedIcon: Icon(Icons.shield, color: Colors.white),
+              icon: CceIcon(CceIcons.alarmShield, size: 26),
               label: 'Alarma',
             ),
           ],

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../theme/cce_tokens.dart';
 
 class InAppNotification {
   static OverlayEntry? _currentEntry;
@@ -130,8 +131,9 @@ class _NotificationBannerState extends State<_NotificationBanner>
                 right: 8,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xF0222244),
-                borderRadius: BorderRadius.circular(16),
+                color: CceColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(CceRadii.card),
+                border: Border.all(color: CceColors.stroke),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.4),
@@ -166,9 +168,10 @@ class _NotificationBannerState extends State<_NotificationBanner>
                           Text(
                             widget.title,
                             style: const TextStyle(
-                              color: Colors.white,
+                              color: CceColors.textPrimary,
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
                               decoration: TextDecoration.none,
                             ),
                           ),
@@ -176,7 +179,7 @@ class _NotificationBannerState extends State<_NotificationBanner>
                           Text(
                             widget.body,
                             style: const TextStyle(
-                              color: Colors.white70,
+                              color: CceColors.textSecondary,
                               fontSize: 13,
                               fontWeight: FontWeight.normal,
                               decoration: TextDecoration.none,
@@ -188,10 +191,10 @@ class _NotificationBannerState extends State<_NotificationBanner>
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
+                    const Text(
                       'ahora',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.35),
+                        color: CceColors.textTertiary,
                         fontSize: 12,
                         fontWeight: FontWeight.normal,
                         decoration: TextDecoration.none,

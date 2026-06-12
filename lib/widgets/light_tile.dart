@@ -3,15 +3,17 @@ import 'package:flutter/services.dart';
 import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
+import '../theme/cce_tokens.dart';
+import '../theme/components/light_card.dart';
 import '../utils/icon_resolver.dart';
 import 'light_detail_sheet.dart';
 import 'pulse_on_update.dart';
 
-/// Philips Hue-inspired light tile.
-/// - Tap: toggle on/off
-/// - Long-press: open color/brightness detail sheet
-/// - Vertical drag: adjust brightness (up = brighter, down = dimmer)
-/// - Background fill reflects the actual color the light is set to.
+/// Tile de luz estilo Hue (los gestos viven acá; el render es [LightCard]).
+/// - Tap: prender/apagar
+/// - Long-press: sheet de color/brillo
+/// - Drag vertical: brillo (arriba = más, abajo = menos)
+/// - El fill de fondo refleja el color real de la luz.
 class LightTile extends StatefulWidget {
   final Device device;
   final DevicesService service;
@@ -37,17 +39,15 @@ class _LightTileState extends State<LightTile> {
 
   double get _displayBri => _dragging ? _currentBri : widget.device.state.bri.toDouble();
 
-  /// The actual color the light is displaying.
-  /// - If in colour mode with hue/sat → HSV to Color
-  /// - Else default to warm amber
+  /// Color real que está mostrando la luz: hue/sat → HSV, default cálido.
   Color _activeColor() {
     final s = widget.device.state;
     if (s.hue != null && s.sat != null && (s.sat ?? 0) > 40) {
       final h = (s.hue! / 65535) * 360.0;
       final sat = (s.sat! / 254).clamp(0.0, 1.0);
-      return HSVColor.fromAHSV(1.0, h, sat, 1.0).toColor();
+      return HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0), sat.toDouble(), 1.0).toColor();
     }
-    return const Color(0xFFFFB74D); // warm amber default
+    return CceColors.warm;
   }
 
   void _onVerticalDragStart(DragStartDetails _) {
@@ -95,125 +95,46 @@ class _LightTileState extends State<LightTile> {
     final d = widget.device;
     final on = _dragging ? _currentBri > 0 : d.state.on;
     final bri = _displayBri.clamp(0, 254);
-    final briPct = bri / 254;
+    final briPct = (bri / 254).clamp(0.0, 1.0).toDouble();
     final reachable = d.state.reachable;
     final color = _activeColor();
+    final iconData = IconResolver.resolve(
+      d,
+      configuredIcon: widget.service.iconFor(d.id),
+      displayName: widget.service.displayName(d),
+    );
 
-    final fillTop = on ? color.withValues(alpha: 0.55) : const Color(0xFF37474F).withValues(alpha: 0.30);
-    final fillBottom = on ? color.withValues(alpha: 0.85) : const Color(0xFF263238).withValues(alpha: 0.55);
-    final iconData = IconResolver.resolve(d, configuredIcon: widget.service.iconFor(d.id), displayName: widget.service.displayName(d));
-    final iconColor = on ? _contrastingOn(color) : Colors.white38;
+    final String stateLabel;
+    if (!reachable) {
+      stateLabel = 'Sin conexión';
+    } else if (on) {
+      stateLabel = '${(briPct * 100).round()}%';
+    } else {
+      stateLabel = 'Apagada';
+    }
 
     return PulseOnUpdate(
       triggerAt: d.lastEventAt,
-      color: on ? color : const Color(0xFF4FC3F7),
-      borderRadius: 24,
+      color: on ? color : CceColors.info,
+      borderRadius: CceRadii.tile,
       child: GestureDetector(
-      onTap: reachable ? _onTap : null,
-      onLongPress: reachable ? _openDetail : null,
-      onVerticalDragStart: reachable ? _onVerticalDragStart : null,
-      onVerticalDragUpdate: reachable ? _onVerticalDragUpdate : null,
-      onVerticalDragEnd: reachable ? _onVerticalDragEnd : null,
-      child: Container(
-        height: widget.height,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E2A44),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: on ? color.withValues(alpha: 0.65) : Colors.white12,
-            width: 1.5,
-          ),
-          boxShadow: on
-              ? [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.25),
-                    blurRadius: 16,
-                    spreadRadius: 1,
-                  ),
-                ]
-              : null,
+        onTap: reachable ? _onTap : null,
+        onLongPress: reachable ? _openDetail : null,
+        onVerticalDragStart: reachable ? _onVerticalDragStart : null,
+        onVerticalDragUpdate: reachable ? _onVerticalDragUpdate : null,
+        onVerticalDragEnd: reachable ? _onVerticalDragEnd : null,
+        child: LightCard(
+          name: widget.service.displayName(d),
+          icon: Icon(iconData, size: widget.size.iconSize),
+          on: on,
+          brightness: briPct,
+          color: color,
+          reachable: reachable,
+          stateLabel: stateLabel,
+          height: widget.height,
+          onMorePressed: reachable ? _openDetail : null,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            // Brightness fill from bottom
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: AnimatedContainer(
-                duration: _dragging ? Duration.zero : const Duration(milliseconds: 200),
-                height: widget.height * briPct * (on ? 1.0 : 0.0),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [fillTop, fillBottom],
-                  ),
-                ),
-              ),
-            ),
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Icon(iconData, color: iconColor, size: widget.size.iconSize),
-                      Row(
-                        children: [
-                          if (!reachable)
-                            const Icon(Icons.wifi_off, color: Colors.white24, size: 20)
-                          else if (on)
-                            Text(
-                              '${((bri / 254) * 100).round()}%',
-                              style: TextStyle(
-                                color: _contrastingOn(color),
-                                fontSize: widget.size.stateSize,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          const SizedBox(width: 8),
-                          GestureDetector(
-                            onTap: reachable ? _openDetail : null,
-                            behavior: HitTestBehavior.translucent,
-                            child: Icon(
-                              Icons.more_horiz,
-                              color: on ? Colors.white.withValues(alpha: 0.75) : Colors.white38,
-                              size: 22,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  Text(
-                    widget.service.displayName(d),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: reachable ? (on ? _contrastingOn(color) : Colors.white) : Colors.white38,
-                      fontSize: widget.size.nameSize,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
       ),
     );
-  }
-
-  /// Returns a readable foreground color for text/icon over the given background color.
-  Color _contrastingOn(Color bg) {
-    final luminance = bg.computeLuminance();
-    return luminance > 0.55 ? const Color(0xFF1A1A2E) : Colors.white;
   }
 }

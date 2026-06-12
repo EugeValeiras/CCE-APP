@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/device.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_tokens.dart';
+import '../theme/components/cce_card.dart';
 
-/// Big "weather-card style" widget summarising current temperature + humidity
-/// from whichever sensors are reporting them. Shows the highest-coverage readings.
+/// Card "clima de la casa": temperatura + humedad actuales tomadas de los
+/// sensores que reporten. Se auto-oculta si no hay lecturas.
 class TemperatureSummaryCard extends StatelessWidget {
   final DevicesService service;
   const TemperatureSummaryCard({super.key, required this.service});
@@ -24,20 +26,17 @@ class TemperatureSummaryCard extends StatelessWidget {
     final primaryTemp = primary?.sensor?.temperature;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-      child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: CceCard(
         padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              _colorForTemp(primaryTemp).withValues(alpha: 0.45),
-              const Color(0xFF1E2A44),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white12, width: 1.5),
+        border: true,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            _desaturate(_colorForTemp(primaryTemp)).withValues(alpha: 0.45),
+            CceColors.surface,
+          ],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -49,11 +48,16 @@ class TemperatureSummaryCard extends StatelessWidget {
                   value: primaryTemp.toStringAsFixed(1),
                   unit: '°C',
                   label: primary != null ? service.displayName(primary) : 'Temperatura',
-                  color: _colorForTemp(primaryTemp),
+                  color: _desaturate(_colorForTemp(primaryTemp)),
                 ),
               ),
             if (primaryTemp != null && primaryHum != null)
-              Container(width: 1, height: 72, color: Colors.white12, margin: const EdgeInsets.symmetric(horizontal: 16)),
+              Container(
+                width: 1,
+                height: 72,
+                color: CceColors.stroke,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+              ),
             if (primaryHum != null)
               Expanded(
                 child: _HeroReading(
@@ -61,13 +65,21 @@ class TemperatureSummaryCard extends StatelessWidget {
                   value: primaryHum.toStringAsFixed(0),
                   unit: '%',
                   label: primaryHumDevice.id.isEmpty ? 'Humedad' : service.displayName(primaryHumDevice),
-                  color: const Color(0xFF4FC3F7),
+                  color: CceColors.info,
                 ),
               ),
           ],
         ),
       ),
     );
+  }
+
+  /// Desatura el color de la escala térmica (60% de la saturación original).
+  static Color _desaturate(Color c) {
+    final hsv = HSVColor.fromColor(c);
+    return hsv
+        .withSaturation((hsv.saturation * 0.6).clamp(0.0, 1.0).toDouble())
+        .toColor();
   }
 
   static Color _colorForTemp(double? t) {
@@ -105,10 +117,12 @@ class _HeroReading extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 28),
             const SizedBox(width: 8),
-            Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.w600),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: CceText.caption.copyWith(fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),
@@ -119,10 +133,8 @@ class _HeroReading extends StatelessWidget {
           children: [
             Text(
               value,
-              style: const TextStyle(
-                color: Colors.white,
+              style: CceText.display.copyWith(
                 fontSize: 48,
-                fontWeight: FontWeight.w700,
                 height: 1.0,
                 letterSpacing: -1.5,
               ),

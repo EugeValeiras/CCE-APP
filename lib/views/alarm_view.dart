@@ -7,6 +7,8 @@ import '../services/api_service.dart';
 import '../services/socket_service.dart';
 import '../services/siren_service.dart';
 import '../services/notification_service.dart';
+import '../theme/cce_icons.dart';
+import '../theme/cce_tokens.dart';
 import 'active_alarm_view.dart';
 import 'settings_view.dart';
 import 'in_app_notification.dart';
@@ -287,9 +289,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1B3A6B),
+      backgroundColor: CceColors.bg,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF152D54),
         title: Row(
           children: [
             Container(
@@ -300,8 +301,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                 color: !_config.isConfigured
                     ? Colors.grey
                     : _isConnected
-                        ? Colors.green
-                        : Colors.red,
+                        ? CceColors.ok
+                        : CceColors.danger,
               ),
             ),
             const SizedBox(width: 8),
@@ -309,13 +310,14 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
               _config.isConfigured
                   ? 'CCE Home'
                   : 'Configurar servidor',
-              style: const TextStyle(color: Colors.white, fontSize: 18),
+              style: CceText.title.copyWith(fontSize: 18),
             ),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white54),
+            tooltip: 'Ajustes',
+            icon: const CceIcon(CceIcons.settings, color: CceColors.textTertiary),
             onPressed: _openSettings,
           ),
         ],
@@ -347,19 +349,19 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       children: [
         const Icon(Icons.wifi_off, size: 64, color: Colors.white24),
         const SizedBox(height: 16),
-        const Text(
+        Text(
           'Configura la IP del servidor',
-          style: TextStyle(color: Colors.white54, fontSize: 16),
+          style: CceText.body.copyWith(color: CceColors.textTertiary, fontSize: 16),
         ),
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: _openSettings,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF0F3460),
+            backgroundColor: CceColors.accent,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(CceRadii.control),
             ),
           ),
           child: const Text('Configurar'),
@@ -372,18 +374,23 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     if (_isLoading && !_isToggling) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircularProgressIndicator(color: Colors.white54),
-          const SizedBox(height: 16),
-          const Text(
+        children: const [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
             'Conectando...',
-            style: TextStyle(color: Colors.white38, fontSize: 14),
+            style: TextStyle(color: CceColors.textTertiary, fontSize: 14),
           ),
         ],
       );
     }
 
-    final color = _isArmed ? Colors.red : Colors.white38;
+    // Armada: rojo danger; desarmada: surfaceHigh + borde hairline.
+    final fg = _isArmed ? CceColors.danger : CceColors.textTertiary;
+    final fill = _isArmed
+        ? CceColors.danger.withValues(alpha: 0.15)
+        : CceColors.surfaceHigh;
+    final borderColor = _isArmed ? CceColors.danger : CceColors.stroke;
     final label = _isArmed ? 'ARMADA' : 'DESARMADA';
     final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
 
@@ -400,7 +407,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         if (_error != null) ...[
           Text(
             _error!,
-            style: TextStyle(color: Colors.orange, fontSize: hintSize),
+            style: TextStyle(color: CceColors.contact, fontSize: hintSize),
           ),
           const SizedBox(height: 16),
         ],
@@ -412,27 +419,29 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             height: buttonSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.15),
-              border: Border.all(color: color, width: isTablet ? 6 : 4),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.3),
-                  blurRadius: 30,
-                  spreadRadius: 5,
-                ),
-              ],
+              color: fill,
+              border: Border.all(color: borderColor, width: isTablet ? 6 : 4),
+              boxShadow: _isArmed
+                  ? [
+                      BoxShadow(
+                        color: CceColors.danger.withValues(alpha: 0.3),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ]
+                  : null,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: iconSize, color: color),
+                Icon(icon, size: iconSize, color: fg),
                 SizedBox(height: isTablet ? 14 : 8),
                 Text(
                   label,
                   style: TextStyle(
-                    color: color,
+                    color: fg,
                     fontSize: labelSize,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 2,
                   ),
                 ),
@@ -443,7 +452,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         SizedBox(height: isTablet ? 48 : 32),
         Text(
           'Toca para ${_isArmed ? 'desarmar' : 'armar'}',
-          style: TextStyle(color: Colors.white38, fontSize: hintSize),
+          style: TextStyle(color: CceColors.textTertiary, fontSize: hintSize),
         ),
         const SizedBox(height: 8),
         Text(

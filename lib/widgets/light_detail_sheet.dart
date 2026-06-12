@@ -5,6 +5,8 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../models/device.dart';
 import '../models/color_preset.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_tokens.dart';
+import '../theme/components/brightness_slider.dart';
 import '../utils/icon_resolver.dart';
 
 class LightDetailSheet extends StatefulWidget {
@@ -84,8 +86,9 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
           builder: (context, scrollController) {
             return Container(
               decoration: const BoxDecoration(
-                color: Color(0xFF152D54),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                color: CceColors.surface,
+                borderRadius:
+                    BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
               ),
               child: ListView(
                 controller: scrollController,
@@ -97,7 +100,7 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
                       height: 4,
                       margin: const EdgeInsets.only(bottom: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white24,
+                        color: CceColors.textTertiary,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -108,14 +111,14 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: d.state.on ? _color.withValues(alpha: 0.28) : const Color(0xFF1E2A44),
-                          borderRadius: BorderRadius.circular(16),
+                          color: d.state.on ? _color.withValues(alpha: 0.28) : CceColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(CceRadii.control),
                           border: Border.all(
-                            color: d.state.on ? _color : Colors.white12,
+                            color: d.state.on ? _color : CceColors.stroke,
                             width: 1.5,
                           ),
                         ),
-                        child: Icon(icon, color: d.state.on ? Colors.white : Colors.white54, size: 32),
+                        child: Icon(icon, color: d.state.on ? Colors.white : CceColors.textTertiary, size: 32),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -124,13 +127,13 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
                           children: [
                             Text(
                               widget.service.displayName(d),
-                              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                              style: CceText.title,
                               overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
                             Text(
                               d.type,
-                              style: const TextStyle(color: Colors.white54, fontSize: 12),
+                              style: CceText.caption.copyWith(fontSize: 12),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
@@ -147,23 +150,15 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
                   // Brightness slider
                   if (d.supportsBrightness) ...[
                     _SectionLabel('Brillo', trailing: '${((_bri / 254) * 100).round()}%'),
-                    const SizedBox(height: 6),
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 12,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 22),
-                        activeTrackColor: Colors.amber.shade300,
-                        inactiveTrackColor: Colors.white12,
-                        thumbColor: Colors.white,
-                      ),
-                      child: Slider(
-                        min: 0,
-                        max: 254,
-                        value: _bri.clamp(0, 254),
-                        onChanged: (v) => setState(() => _bri = v),
-                        onChangeEnd: (_) => _commitBrightness(),
-                      ),
+                    const SizedBox(height: 10),
+                    CceBrightnessSlider(
+                      value: (_bri / 254).clamp(0.0, 1.0).toDouble(),
+                      activeColor: d.supportsColor ? _color : null,
+                      onChanged: (v) => setState(() => _bri = v * 254),
+                      onChangeEnd: (v) {
+                        _bri = v * 254;
+                        _commitBrightness();
+                      },
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -223,18 +218,17 @@ class _SectionLabel extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          text,
-          style: const TextStyle(
-            color: Colors.white60,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.2,
-          ),
+          text.toUpperCase(),
+          style: CceText.section,
         ),
         if (trailing != null)
           Text(
             trailing!,
-            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+              color: CceColors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
       ],
     );

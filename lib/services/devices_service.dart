@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import '../models/color_preset.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
 import '../models/light_group.dart';
+import '../models/room_ref.dart';
+import '../models/scene.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 import 'socket_service.dart';
@@ -21,6 +24,8 @@ class DevicesService extends ChangeNotifier {
   Map<String, String> _lightNames = const {};
   Map<String, String> _automationNames = const {};
   List<ColorPreset> _colorPresets = const [];
+  List<CceScene> _scenes = const [];
+  List<HueScene> _hueScenes = const [];
   bool _loading = false;
   String? _error;
 
@@ -53,6 +58,8 @@ class DevicesService extends ChangeNotifier {
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
   List<ColorPreset> get colorPresets => _colorPresets;
+  List<CceScene> get scenes => _scenes;
+  List<HueScene> get hueScenes => _hueScenes;
   bool get loading => _loading;
   String? get error => _error;
   Device? byId(String id) => _byId[id];
@@ -80,6 +87,12 @@ class DevicesService extends ChangeNotifier {
       final devicesFuture = _api.getDevices();
       final plansFuture = _api.getFloorPlans();
       final configFuture = _api.getConfig();
+      // Escenas Hue en paralelo; si el bridge no está configurado o falla,
+      // degrada a [] sin romper el refresh.
+      final hueScenesFuture = _api.getHueScenes().catchError((Object e) {
+        debugPrint('getHueScenes error (degrada a []): $e');
+        return <HueScene>[];
+      });
       final devices = await devicesFuture;
       _byId
         ..clear()
@@ -122,6 +135,14 @@ class DevicesService extends ChangeNotifier {
               .map((p) => ColorPreset.fromJson(Map<String, dynamic>.from(p)))
               .toList()
           : const [];
+      final rawScenes = cfg['scenes'];
+      _scenes = rawScenes is List
+          ? rawScenes
+              .whereType<Map>()
+              .map((s) => CceScene.fromJson(Map<String, dynamic>.from(s)))
+              .toList()
+          : const [];
+      _hueScenes = await hueScenesFuture;
     } catch (e) {
       _error = 'Error cargando dispositivos';
       debugPrint('DevicesService error: $e');
@@ -193,6 +214,219 @@ class DevicesService extends ChangeNotifier {
       } catch (e) {
         debugPrint('setGroupOn error on $id: $e');
       }
+    }
+  }
+
+  // ===========================================================================
+  // Habitaciones canónicas (RoomRef) + stats — única fuente de verdad.
+  // ===========================================================================
+
+  /// Habitaciones derivadas ON-DEMAND del estado actual (sin caché, para que
+  /// altas/bajas de devices vía WS muevan '_orphans' y deviceIds al instante).
+  /// Triple fallback:
+  ///  (1) planos con posiciones → planId = plan.id, hueRoomId = plan.hueRoomId
+  ///  (2) groups               → planId = null, hueRoomId = null
+  ///  (3) '_orphans'           → planId = null, hueRoomId = null
+  List<RoomRef> get rooms {
+    final result = <RoomRef>[];
+    final assigned = <String>{};
+
+    bool visible(String id) {
+      final d = _byId[id];
+      return d != null && !d.hidden;
+    }
+
+    final fp = _floorPlans;
+    if (fp != null) {
+      for (final plan in fp.plans) {
+        final pos = fp.positions[plan.id];
+        if (pos == null || pos.isEmpty) continue;
+        final ids = pos.keys.where(visible).toList();
+        if (ids.isEmpty) continue;
+        assigned.addAll(ids);
+        result.add(RoomRef(
+          id: plan.id,
+          name: plan.name,
+          deviceIds: ids,
+          planId: plan.id,
+          hueRoomId: plan.hueRoomId,
+        ));
+      }
+    }
+
+    if (result.isEmpty) {
+      for (final g in _groups) {
+        final ids = g.lightIds.where(visible).toList();
+        if (ids.isEmpty) continue;
+        assigned.addAll(ids);
+        result.add(RoomRef(
+          id: g.id,
+          name: g.name,
+          deviceIds: ids,
+          iconName: g.icon,
+        ));
+      }
+    }
+
+    final orphanIds =
+        all.map((d) => d.id).where((id) => !assigned.contains(id)).toList();
+    if (orphanIds.isNotEmpty) {
+      result.add(RoomRef(
+        id: '_orphans',
+        name: result.isEmpty ? 'Todos' : 'Sin ubicación',
+        deviceIds: orphanIds,
+      ));
+    }
+    return result;
+  }
+
+  List<Device> _roomDevices(RoomRef room) =>
+      room.deviceIds.map((id) => _byId[id]).whereType<Device>().toList();
+
+  List<Device> _roomLights(RoomRef room) => _roomDevices(room)
+      .where((d) => d.isLight && !d.isSensorDevice)
+      .toList();
+
+  /// Stats derivadas de una sala (tint, conteos, brillo, chips, último evento).
+  /// Las vistas NO recalculan nada de esto por su cuenta.
+  RoomStats statsFor(RoomRef room) {
+    final devices = _roomDevices(room);
+    final lights =
+        devices.where((d) => d.isLight && !d.isSensorDevice).toList();
+    final onLights = lights.where((d) => d.state.on).toList();
+
+    // Promedio del brillo de las luces ON (0..1); null si no hay luces ON —
+    // prohibido dividir por cero / devolver NaN.
+    double? avgBrightness;
+    if (onLights.isNotEmpty) {
+      final sum = onLights.fold<int>(0, (acc, d) => acc + d.state.bri);
+      avgBrightness =
+          (sum / onLights.length / 254).clamp(0.0, 1.0).toDouble();
+    }
+
+    DateTime? latest;
+    for (final d in devices) {
+      final t = d.lastEventAt;
+      if (t != null && (latest == null || t.isAfter(latest))) latest = t;
+    }
+
+    return RoomStats(
+      lightsOn: onLights.length,
+      lightsTotal: lights.length,
+      anyOn: onLights.isNotEmpty,
+      tint: _tintForOnLights(onLights),
+      avgBrightness: avgBrightness,
+      anyContactOpen:
+          devices.any((d) => d.isContactSensor && d.sensor?.contact == true),
+      anyMotion:
+          devices.any((d) => d.isMotionSensor && d.sensor?.motion == true),
+      latestEventAt: latest,
+    );
+  }
+
+  /// Promedio HSV de las luces encendidas que reportan color; null si ninguna.
+  Color? _tintForOnLights(List<Device> onLights) {
+    double r = 0, g = 0, b = 0;
+    int count = 0;
+    for (final d in onLights) {
+      final s = d.state;
+      if (s.hue == null || s.sat == null || (s.sat ?? 0) <= 40) continue;
+      final h = (s.hue! / 65535) * 360.0;
+      final sat = (s.sat! / 254).clamp(0.0, 1.0).toDouble();
+      final c = HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0), sat, 1.0).toColor();
+      r += c.r;
+      g += c.g;
+      b += c.b;
+      count++;
+    }
+    if (count == 0) return null;
+    return Color.from(alpha: 1.0, red: r / count, green: g / count, blue: b / count);
+  }
+
+  /// Prende/apaga TODAS las luces de la sala (optimista, luz por luz).
+  Future<void> setRoomOn(RoomRef room, bool on) async {
+    final lights = _roomLights(room);
+    if (lights.isEmpty) return;
+    for (final d in lights) {
+      d.state = d.state.copyWith(on: on);
+    }
+    notifyListeners();
+    for (final d in lights) {
+      try {
+        await _api.setDeviceState(d.id, {'on': on});
+      } catch (e) {
+        debugPrint('setRoomOn error on ${d.id}: $e');
+      }
+    }
+  }
+
+  /// Brillo de toda la sala: [value] 0..1 aplicado a cada luz ENCENDIDA.
+  Future<void> setRoomBrightness(RoomRef room, double value) async {
+    final target = (value * 254).round().clamp(1, 254);
+    final onLights = _roomLights(room).where((d) => d.state.on).toList();
+    for (final d in onLights) {
+      await setBrightness(d, target);
+    }
+  }
+
+  // ===========================================================================
+  // Escenas (Hue nativas + config CCE)
+  // ===========================================================================
+
+  /// Escenas Hue de la sala (vía hueRoomId del plano); [] si no hay link.
+  List<HueScene> hueScenesForRoom(RoomRef room) {
+    final roomId = room.hueRoomId;
+    if (roomId == null) return const [];
+    return _hueScenes.where((s) => s.roomId == roomId).toList();
+  }
+
+  /// Escenas CCE de la sala — REGLA CONGELADA: solo planId == room.planId
+  /// (estricto). Las escenas globales (planId == null) aparecen únicamente
+  /// en "Toda la casa" (ScenesSection con room == null).
+  List<CceScene> scenesForRoom(RoomRef room) {
+    final planId = room.planId;
+    if (planId == null) return const [];
+    return _scenes.where((s) => s.planId == planId).toList();
+  }
+
+  /// Ejecuta una escena CCE client-side: optimista + N× setDeviceState.
+  Future<void> applyScene(CceScene s) async {
+    for (final l in s.lights) {
+      final d = _byId[l.lightId];
+      if (d == null) continue;
+      d.state = d.state.copyWith(
+        on: l.on,
+        bri: l.on ? l.bri : null,
+        hue: l.on ? l.hue : null,
+        sat: l.on ? l.sat : null,
+        ct: l.on ? l.ct : null,
+      );
+    }
+    notifyListeners();
+    for (final l in s.lights) {
+      await _api.setDeviceState(l.lightId, l.toStateBody());
+    }
+  }
+
+  /// Recall de escena Hue nativa, optimista CON REVERT: marca [s] activa y el
+  /// resto del room inactivas; si el POST falla, restaura y relanza. El estado
+  /// real de las luces llega solo por WS device:state-changed.
+  Future<void> recallHueScene(HueScene s) async {
+    final prev = <HueScene, bool>{
+      for (final sc in _hueScenes) sc: sc.isActive,
+    };
+    for (final sc in _hueScenes) {
+      if (sc.roomId != null && sc.roomId == s.roomId) sc.isActive = false;
+    }
+    s.isActive = true;
+    notifyListeners();
+    try {
+      await _api.recallHueScene(s.id, smart: s.isSmart);
+    } catch (e) {
+      prev.forEach((sc, wasActive) => sc.isActive = wasActive);
+      s.isActive = prev[s] ?? false;
+      notifyListeners();
+      rethrow;
     }
   }
 

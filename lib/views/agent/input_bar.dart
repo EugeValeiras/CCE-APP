@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../services/chat_service.dart';
+import '../../theme/cce_tokens.dart';
 
 /// WhatsApp-style input row: attach/camera, removable image chips, a rounded
 /// text field, an on-device dictation mic (speech_to_text), and a send/stop
@@ -55,7 +56,7 @@ class InputBarState extends State<InputBar> {
     FocusScope.of(context).unfocus();
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF152D54),
+      backgroundColor: CceColors.surfaceHigh,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -65,7 +66,7 @@ class InputBarState extends State<InputBar> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library_outlined,
-                  color: Color(0xFF00A884)),
+                  color: CceColors.accent),
               title: const Text('Galería',
                   style: TextStyle(color: Colors.white)),
               onTap: () {
@@ -75,7 +76,7 @@ class InputBarState extends State<InputBar> {
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera_outlined,
-                  color: Color(0xFF00A884)),
+                  color: CceColors.accent),
               title: const Text('Cámara',
                   style: TextStyle(color: Colors.white)),
               onTap: () {
@@ -179,8 +180,8 @@ class InputBarState extends State<InputBar> {
 
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFF0B1D38),
-        border: Border(top: BorderSide(color: Colors.white12)),
+        color: CceColors.surface,
+        border: Border(top: BorderSide(color: CceColors.stroke)),
       ),
       child: SafeArea(
         top: false,
@@ -207,7 +208,7 @@ class InputBarState extends State<InputBar> {
                   Expanded(
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xFF16213E),
+                        color: CceColors.surfaceHigh,
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: Row(
@@ -241,7 +242,7 @@ class InputBarState extends State<InputBar> {
                             icon: Icon(
                               _listening ? Icons.mic : Icons.mic_none,
                               color: _listening
-                                  ? const Color(0xFFF6465D)
+                                  ? CceColors.danger
                                   : Colors.white60,
                             ),
                             onPressed: streaming ? null : _toggleListen,
@@ -264,7 +265,7 @@ class InputBarState extends State<InputBar> {
                   padding: EdgeInsets.only(top: 4, left: 12),
                   child: Text(
                     'Escuchando…',
-                    style: TextStyle(color: Color(0xFFF6465D), fontSize: 12),
+                    style: TextStyle(color: CceColors.danger, fontSize: 12),
                   ),
                 ),
             ],
@@ -329,10 +330,10 @@ class _SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = streaming
-        ? const Color(0xFFF6465D)
+        ? CceColors.danger
         : enabled
-            ? const Color(0xFF00A884)
-            : const Color(0xFF16213E);
+            ? CceColors.accent
+            : CceColors.surfaceHigh;
     return Material(
       color: color,
       shape: const CircleBorder(),

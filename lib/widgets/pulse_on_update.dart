@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/cce_tokens.dart';
 
 /// Wraps a child and plays a brief glow pulse whenever [triggerAt] changes.
 /// Use to indicate "this widget just received a live WS update".
@@ -13,9 +14,9 @@ class PulseOnUpdate extends StatefulWidget {
     super.key,
     required this.child,
     required this.triggerAt,
-    this.color = const Color(0xFF4FC3F7),
+    this.color = CceColors.info,
     this.duration = const Duration(milliseconds: 650),
-    this.borderRadius = 24,
+    this.borderRadius = CceRadii.tile,
   });
 
   @override

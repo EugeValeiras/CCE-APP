@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models/server_config.dart';
+import 'theme/cce_theme.dart';
 import 'views/alarm_view.dart';
 import 'views/phone_home_view.dart';
 import 'views/settings_view.dart';
@@ -25,14 +26,7 @@ class CCEApp extends StatelessWidget {
     return MaterialApp(
       title: 'CCE Home',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1A1A2E),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F3460),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: CceTheme.dark(),
       home: const _AppEntry(),
     );
   }

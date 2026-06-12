@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/alarm_event.dart';
+import '../theme/cce_tokens.dart';
 
 class ActiveAlarmView extends StatefulWidget {
   final AlarmEvent event;
@@ -65,18 +66,16 @@ class _ActiveAlarmViewState extends State<ActiveAlarmView>
                       SizedBox(height: isTablet ? 32 : 24),
                       Text(
                         widget.event.automationName,
-                        style: TextStyle(
-                          color: Colors.white,
+                        style: CceText.display.copyWith(
                           fontSize: isTablet ? 40 : 28,
-                          fontWeight: FontWeight.bold,
                         ),
                         textAlign: TextAlign.center,
                       ),
                       SizedBox(height: isTablet ? 20 : 16),
                       Text(
                         widget.event.message,
-                        style: TextStyle(
-                          color: Colors.white70,
+                        style: CceText.body.copyWith(
+                          color: CceColors.textSecondary,
                           fontSize: isTablet ? 24 : 18,
                         ),
                         textAlign: TextAlign.center,
@@ -89,16 +88,17 @@ class _ActiveAlarmViewState extends State<ActiveAlarmView>
                           onPressed: widget.onDismiss,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
-                            foregroundColor: Colors.red.shade900,
+                            foregroundColor: const Color(0xFF8B0000),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(CceRadii.control),
                             ),
                           ),
                           child: Text(
                             'DESACTIVAR ALARMA',
                             style: TextStyle(
                               fontSize: isTablet ? 24 : 20,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
                             ),
                           ),
                         ),

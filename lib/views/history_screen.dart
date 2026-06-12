@@ -6,6 +6,8 @@ import '../models/server_config.dart';
 import '../services/api_service.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
+import '../theme/cce_tokens.dart';
+import '../theme/components/cce_card.dart';
 
 enum HistoryFilter { all, lights, sensors, automations, alarm }
 
@@ -175,28 +177,26 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget build(BuildContext context) {
     final filtered = _filtered;
     return Scaffold(
-      backgroundColor: const Color(0xFF0B1D38),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF152D54),
         title: Row(
           children: [
-            const Text('Historial', style: TextStyle(color: Colors.white)),
+            const Text('Historial'),
             if (_liveMode) ...[
               const SizedBox(width: 10),
               const _LivePulse(),
             ],
           ],
         ),
-        iconTheme: const IconThemeData(color: Colors.white70),
         actions: [
           _LiveToggleButton(enabled: _liveMode, onTap: _toggleLive),
           IconButton(
-            icon: const Icon(Icons.delete_sweep_outlined, color: Colors.white70),
+            icon: const Icon(Icons.delete_sweep_outlined,
+                color: CceColors.textSecondary),
             tooltip: 'Limpiar',
             onPressed: _items.isEmpty ? null : _clearItems,
           ),
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white70),
+            icon: const Icon(Icons.refresh, color: CceColors.textSecondary),
             tooltip: 'Recargar',
             onPressed: _refresh,
           ),
@@ -219,14 +219,17 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     selected: selected,
                     showCheckmark: false,
                     onSelected: (_) => setState(() => _filter = f),
-                    backgroundColor: const Color(0xFF1E2A44),
-                    selectedColor: const Color(0xFF0F3460),
+                    shape: const StadiumBorder(),
+                    backgroundColor: CceColors.surfaceHigh,
+                    selectedColor: CceColors.accent.withValues(alpha: 0.24),
                     labelStyle: TextStyle(
-                      color: selected ? Colors.white : Colors.white70,
+                      color: selected
+                          ? CceColors.textPrimary
+                          : CceColors.textSecondary,
                       fontWeight: FontWeight.w600,
                     ),
                     side: BorderSide(
-                      color: selected ? const Color(0xFF4FC3F7) : Colors.white12,
+                      color: selected ? CceColors.accent : CceColors.stroke,
                     ),
                   ),
                 );
@@ -236,8 +239,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refresh,
-              color: Colors.white,
-              backgroundColor: const Color(0xFF1E2A44),
+              color: CceColors.textPrimary,
+              backgroundColor: CceColors.surfaceHigh,
               child: filtered.isEmpty
                   ? ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -247,7 +250,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           child: Center(
                             child: Text(
                               _loading ? '' : 'Sin eventos',
-                              style: const TextStyle(color: Colors.white54),
+                              style: const TextStyle(
+                                  color: CceColors.textTertiary),
                             ),
                           ),
                         ),
@@ -267,7 +271,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               child: SizedBox(
                                 width: 22,
                                 height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white38),
+                                child: CircularProgressIndicator(strokeWidth: 2, color: CceColors.textTertiary),
                               ),
                             ),
                           );
@@ -294,13 +298,13 @@ class _EventRow extends StatelessWidget {
     if (event.eventName == 'alarm:triggered') {
       final name = (p['automationName'] ?? 'Alarma').toString();
       final msg = (p['message'] ?? '').toString();
-      return (icon: MdiIcons.alarmLight, color: const Color(0xFFE53935), title: 'Alarma: $name', subtitle: msg.isEmpty ? null : msg);
+      return (icon: MdiIcons.alarmLight, color: CceColors.danger, title: 'Alarma: $name', subtitle: msg.isEmpty ? null : msg);
     }
     if (event.eventName == 'alarm:armed-changed') {
       final armed = p['armed'] == true;
       return (
         icon: armed ? MdiIcons.shield : MdiIcons.shieldOutline,
-        color: armed ? const Color(0xFFE53935) : const Color(0xFF4FC3F7),
+        color: armed ? CceColors.danger : CceColors.ok,
         title: armed ? 'Alarma ACTIVADA' : 'Alarma DESACTIVADA',
         subtitle: null,
       );
@@ -312,7 +316,7 @@ class _EventRow extends StatelessWidget {
       final trigger = p['trigger']?.toString();
       return (
         icon: MdiIcons.lightningBolt,
-        color: const Color(0xFFFFB300),
+        color: CceColors.warm,
         title: 'Automatización: $name',
         subtitle: trigger != null && trigger.isNotEmpty ? 'Trigger: $trigger' : null,
       );
@@ -341,7 +345,7 @@ class _EventRow extends StatelessWidget {
         final open = sensor['contact'] == true;
         return (
           icon: open ? MdiIcons.doorOpen : MdiIcons.doorClosed,
-          color: open ? const Color(0xFFFF9800) : Colors.white60,
+          color: open ? CceColors.contact : CceColors.textSecondary,
           title: '$deviceName → ${open ? 'Abierta' : 'Cerrada'}',
           subtitle: null,
         );
@@ -350,7 +354,7 @@ class _EventRow extends StatelessWidget {
         final motion = sensor['motion'] == true;
         return (
           icon: motion ? MdiIcons.motionSensor : MdiIcons.motionSensorOff,
-          color: motion ? const Color(0xFF2196F3) : Colors.white60,
+          color: motion ? CceColors.motion : CceColors.textSecondary,
           title: '$deviceName → ${motion ? 'Movimiento' : 'Sin movimiento'}',
           subtitle: null,
         );
@@ -359,7 +363,7 @@ class _EventRow extends StatelessWidget {
         final t = (sensor['temperature'] as num).toDouble();
         return (
           icon: MdiIcons.thermometer,
-          color: const Color(0xFFFF7043),
+          color: const Color(0xFFFF8A5C),
           title: '$deviceName → ${t.toStringAsFixed(1)}°',
           subtitle: null,
         );
@@ -368,7 +372,7 @@ class _EventRow extends StatelessWidget {
         final h = (sensor['humidity'] as num).toDouble();
         return (
           icon: MdiIcons.waterPercent,
-          color: const Color(0xFF4FC3F7),
+          color: CceColors.info,
           title: '$deviceName → ${h.toStringAsFixed(0)}%',
           subtitle: null,
         );
@@ -392,7 +396,7 @@ class _EventRow extends StatelessWidget {
         final label = on == true ? 'encendida' : 'apagada';
         return (
           icon: on == true ? MdiIcons.lightbulbOn : MdiIcons.lightbulbOutline,
-          color: on == true ? Colors.amber : Colors.white54,
+          color: on == true ? CceColors.warm : CceColors.textTertiary,
           title: '$deviceName $label',
           subtitle: bri != null && on == true ? 'Brillo ${((bri as num) / 254 * 100).round()}%' : null,
         );
@@ -400,7 +404,7 @@ class _EventRow extends StatelessWidget {
       if (bri != null) {
         return (
           icon: MdiIcons.brightness6,
-          color: Colors.amber,
+          color: CceColors.warm,
           title: '$deviceName → ${((bri as num) / 254 * 100).round()}%',
           subtitle: null,
         );
@@ -409,7 +413,7 @@ class _EventRow extends StatelessWidget {
 
     return (
       icon: MdiIcons.information,
-      color: Colors.white54,
+      color: CceColors.textTertiary,
       title: deviceName.isEmpty ? event.eventName : '$deviceName (${event.eventName})',
       subtitle: null,
     );
@@ -430,13 +434,10 @@ class _EventRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = _render();
-    return Container(
+    return CceCard(
+      radius: CceRadii.tile,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E2A44),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white12),
-      ),
+      border: true,
       child: Row(
         children: [
           Container(
@@ -455,7 +456,10 @@ class _EventRow extends StatelessWidget {
               children: [
                 Text(
                   r.title,
-                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      color: CceColors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 2,
                 ),
@@ -463,7 +467,8 @@ class _EventRow extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     r.subtitle!,
-                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    style: const TextStyle(
+                        color: CceColors.textTertiary, fontSize: 12),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -473,7 +478,10 @@ class _EventRow extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             _relativeTime(event.timestamp),
-            style: const TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+                color: CceColors.textTertiary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -498,10 +506,12 @@ class _LiveToggleButton extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
-              color: enabled ? const Color(0xFFE53935).withValues(alpha: 0.22) : Colors.white10,
-              borderRadius: BorderRadius.circular(18),
+              color: enabled
+                  ? CceColors.danger.withValues(alpha: 0.22)
+                  : CceColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(CceRadii.pill),
               border: Border.all(
-                color: enabled ? const Color(0xFFE53935) : Colors.white24,
+                color: enabled ? CceColors.danger : CceColors.stroke,
                 width: 1.2,
               ),
             ),
@@ -510,14 +520,16 @@ class _LiveToggleButton extends StatelessWidget {
               children: [
                 Icon(
                   enabled ? Icons.fiber_manual_record : Icons.play_circle_outline,
-                  color: enabled ? const Color(0xFFE53935) : Colors.white70,
+                  color: enabled ? CceColors.danger : CceColors.textSecondary,
                   size: 14,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'LIVE',
                   style: TextStyle(
-                    color: enabled ? Colors.white : Colors.white70,
+                    color: enabled
+                        ? CceColors.textPrimary
+                        : CceColors.textSecondary,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 1.2,
@@ -565,10 +577,10 @@ class _LivePulseState extends State<_LivePulse> with SingleTickerProviderStateMi
           height: 10,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Color.lerp(const Color(0xFFE53935), const Color(0xFFFF8A80), v),
+            color: Color.lerp(CceColors.danger, const Color(0xFFFF8A80), v),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFFE53935).withValues(alpha: 0.4 + v * 0.4),
+                color: CceColors.danger.withValues(alpha: 0.4 + v * 0.4),
                 blurRadius: 8 + v * 6,
                 spreadRadius: 1 + v * 1.5,
               ),

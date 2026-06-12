@@ -4,21 +4,33 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
 import '../services/devices_service.dart';
-import '../services/ui_settings_service.dart';
+import '../theme/cce_tokens.dart';
 import '../utils/icon_resolver.dart';
 import '../widgets/light_detail_sheet.dart';
 import '../widgets/pulse_on_update.dart';
 
-class FloorPlanTab extends StatefulWidget {
+/// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
+/// Si [planId] != null fuerza ese plano y oculta los chips de seleccion
+/// (modo "Plano" de una habitacion); con [planId] == null muestra el plano
+/// activo y, si hay mas de uno, los chips para cambiarlo.
+class FloorPlanPanel extends StatefulWidget {
   final DevicesService service;
-  final TileSize tileSize;
-  const FloorPlanTab({super.key, required this.service, this.tileSize = TileSize.medium});
+  final String? planId;
+  final double dotSize;
+  final bool showPlanChips;
+  const FloorPlanPanel({
+    super.key,
+    required this.service,
+    this.planId,
+    this.dotSize = 56,
+    this.showPlanChips = true,
+  });
 
   @override
-  State<FloorPlanTab> createState() => _FloorPlanTabState();
+  State<FloorPlanPanel> createState() => _FloorPlanPanelState();
 }
 
-class _FloorPlanTabState extends State<FloorPlanTab> {
+class _FloorPlanPanelState extends State<FloorPlanPanel> {
   String? _selectedPlanId;
 
   @override
@@ -29,23 +41,26 @@ class _FloorPlanTabState extends State<FloorPlanTab> {
         final fp = widget.service.floorPlans;
         if (fp == null || fp.plans.isEmpty) {
           if (widget.service.loading) {
-            return const Center(child: CircularProgressIndicator(color: Colors.white54));
+            return const Center(child: CircularProgressIndicator());
           }
           return const Center(
-            child: Text('No hay planos configurados', style: TextStyle(color: Colors.white54)),
+            child: Text('No hay planos configurados', style: CceText.caption),
           );
         }
 
-        final activeId = _selectedPlanId ?? fp.activePlanId ?? fp.plans.first.id;
+        final activeId =
+            widget.planId ?? _selectedPlanId ?? fp.activePlanId ?? fp.plans.first.id;
         final plan = fp.plans.firstWhere(
           (p) => p.id == activeId,
           orElse: () => fp.plans.first,
         );
         final positions = fp.positions[plan.id] ?? const <String, LightPosition>{};
+        final showChips =
+            widget.showPlanChips && widget.planId == null && fp.plans.length > 1;
 
         return Column(
           children: [
-            if (fp.plans.length > 1)
+            if (showChips)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: SingleChildScrollView(
@@ -58,16 +73,13 @@ class _FloorPlanTabState extends State<FloorPlanTab> {
                                 label: Text(p.name),
                                 selected: p.id == plan.id,
                                 onSelected: (_) => setState(() => _selectedPlanId = p.id),
-                                backgroundColor: const Color(0xFF1E2A44),
-                                selectedColor: const Color(0xFF0F3460),
-                                labelStyle: const TextStyle(color: Colors.white),
                               ),
                             ))
                         .toList(),
                   ),
                 ),
               ),
-            Expanded(child: _PlanCanvas(plan: plan, positions: positions, service: widget.service, dotSize: widget.tileSize.floorPlanDotSize)),
+            Expanded(child: _PlanCanvas(plan: plan, positions: positions, service: widget.service, dotSize: widget.dotSize)),
           ],
         );
       },
@@ -165,7 +177,7 @@ class _DeviceDot extends StatelessWidget {
       final sat = (s.sat! / 254).clamp(0.0, 1.0);
       return HSVColor.fromAHSV(1.0, h, sat, 1.0).toColor();
     }
-    return Colors.amber;
+    return CceColors.warm;
   }
 
   @override
@@ -181,13 +193,13 @@ class _DeviceDot extends StatelessWidget {
     if (isLight) {
       color = device.state.on ? _lightColor() : Colors.white38;
     } else if (isContact) {
-      color = device.sensor?.contact == true ? const Color(0xFFFF9800) : Colors.white60;
+      color = device.sensor?.contact == true ? CceColors.contact : Colors.white60;
     } else if (isMotion) {
-      color = device.sensor?.motion == true ? const Color(0xFF2196F3) : Colors.white60;
+      color = device.sensor?.motion == true ? CceColors.motion : Colors.white60;
     } else if (temp != null) {
       color = _colorForTemp(temp);
     } else if (hum != null) {
-      color = const Color(0xFF4FC3F7);
+      color = CceColors.info;
     } else {
       color = Colors.white54;
     }
@@ -231,7 +243,7 @@ class _DeviceDot extends StatelessWidget {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: size * 0.18, vertical: size * 0.14),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B1D38).withValues(alpha: 0.94),
+          color: CceColors.surface.withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(size * 0.45),
           border: Border.all(color: color, width: 2.5),
           boxShadow: [
@@ -262,7 +274,7 @@ class _DeviceDot extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: const Color(0xFF0B1D38).withValues(alpha: 0.92),
+        color: CceColors.surface.withValues(alpha: 0.92),
         border: Border.all(color: color, width: 2.5),
         boxShadow: [
           BoxShadow(
@@ -277,10 +289,10 @@ class _DeviceDot extends StatelessWidget {
   }
 
   static Color _colorForTemp(double t) {
-    if (t < 15) return const Color(0xFF42A5F5);
-    if (t < 20) return const Color(0xFF66BB6A);
-    if (t < 25) return const Color(0xFFFFB74D);
-    if (t < 30) return const Color(0xFFFF8A65);
-    return const Color(0xFFE53935);
+    if (t < 15) return CceColors.motion;
+    if (t < 20) return CceColors.ok;
+    if (t < 25) return CceColors.warm;
+    if (t < 30) return const Color(0xFFFF8A5C);
+    return CceColors.danger;
   }
 }

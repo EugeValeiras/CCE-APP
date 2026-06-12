@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
+import '../theme/cce_tokens.dart';
 
 class SettingsView extends StatefulWidget {
   final ServerConfig config;
@@ -64,14 +65,32 @@ class _SettingsViewState extends State<SettingsView> {
     if (mounted) Navigator.of(context).pop();
   }
 
+  InputDecoration _inputDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      labelStyle: const TextStyle(color: CceColors.textTertiary),
+      hintStyle: const TextStyle(color: Color(0x3DFFFFFF)),
+      filled: true,
+      fillColor: CceColors.surfaceHigh,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        borderSide: BorderSide.none,
+      ),
+      prefixIcon: Icon(icon, color: CceColors.textTertiary),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E),
+      backgroundColor: CceColors.bg,
       appBar: AppBar(
         title: const Text('Configuracion'),
-        backgroundColor: const Color(0xFF16213E),
-        foregroundColor: Colors.white,
       ),
       body: Center(
         child: ConstrainedBox(
@@ -81,127 +100,104 @@ class _SettingsViewState extends State<SettingsView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-            const Text(
-              'Servidor CCE',
-              style: TextStyle(
-                color: Colors.white70,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _hostController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'IP del servidor',
-                hintText: '100.79.196.98',
-                labelStyle: const TextStyle(color: Colors.white54),
-                hintStyle: const TextStyle(color: Colors.white24),
-                filled: true,
-                fillColor: const Color(0xFF16213E),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                const Text('SERVIDOR CCE', style: CceText.section),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _hostController,
+                  style: const TextStyle(color: CceColors.textPrimary),
+                  decoration: _inputDecoration(
+                    label: 'IP del servidor',
+                    hint: '100.79.196.98',
+                    icon: Icons.dns_outlined,
+                  ),
+                  keyboardType: TextInputType.url,
                 ),
-                prefixIcon:
-                    const Icon(Icons.dns_outlined, color: Colors.white54),
-              ),
-              keyboardType: TextInputType.url,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _portController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'Puerto',
-                hintText: '3000',
-                labelStyle: const TextStyle(color: Colors.white54),
-                hintStyle: const TextStyle(color: Colors.white24),
-                filled: true,
-                fillColor: const Color(0xFF16213E),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _portController,
+                  style: const TextStyle(color: CceColors.textPrimary),
+                  decoration: _inputDecoration(
+                    label: 'Puerto',
+                    hint: '3000',
+                    icon: Icons.numbers,
+                  ),
+                  keyboardType: TextInputType.number,
                 ),
-                prefixIcon: const Icon(Icons.numbers, color: Colors.white54),
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _testing ? null : _testConnection,
-                    icon: _testing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white54,
-                            ),
-                          )
-                        : Icon(
-                            _testResult == null
-                                ? Icons.wifi_find
-                                : _testResult!
-                                    ? Icons.check_circle
-                                    : Icons.error,
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _testing ? null : _testConnection,
+                        icon: _testing
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: CceColors.textTertiary,
+                                ),
+                              )
+                            : Icon(
+                                _testResult == null
+                                    ? Icons.wifi_find
+                                    : _testResult!
+                                        ? Icons.check_circle
+                                        : Icons.error,
+                                color: _testResult == null
+                                    ? CceColors.textTertiary
+                                    : _testResult!
+                                        ? CceColors.ok
+                                        : CceColors.danger,
+                              ),
+                        label: Text(
+                          _testResult == null
+                              ? 'Test conexion'
+                              : _testResult!
+                                  ? 'Conectado!'
+                                  : 'Sin conexion',
+                          style: TextStyle(
                             color: _testResult == null
-                                ? Colors.white54
+                                ? CceColors.textTertiary
                                 : _testResult!
-                                    ? Colors.green
-                                    : Colors.red,
+                                    ? CceColors.ok
+                                    : CceColors.danger,
                           ),
-                    label: Text(
-                      _testResult == null
-                          ? 'Test conexion'
-                          : _testResult!
-                              ? 'Conectado!'
-                              : 'Sin conexion',
-                      style: TextStyle(
-                        color: _testResult == null
-                            ? Colors.white54
-                            : _testResult!
-                                ? Colors.green
-                                : Colors.red,
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _testResult == null
+                                ? CceColors.stroke
+                                : _testResult!
+                                    ? CceColors.ok
+                                    : CceColors.danger,
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(CceRadii.control),
+                          ),
+                        ),
                       ),
                     ),
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(
-                        color: _testResult == null
-                            ? Colors.white24
-                            : _testResult!
-                                ? Colors.green
-                                : Colors.red,
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CceColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(CceRadii.control),
                     ),
                   ),
+                  child: const Text(
+                    'Guardar',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _save,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F3460),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: const Text(
-                'Guardar',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
               ],
             ),
           ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../models/chat_message.dart';
+import '../../theme/cce_tokens.dart';
 import 'tool_call_tile.dart';
 
 /// WhatsApp-style chat bubble using the CCE dark palette.
@@ -14,7 +15,7 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({super.key, required this.message});
 
   static const _outgoing = Color(0xFF075E54); // WhatsApp-ish dark green
-  static const _incoming = Color(0xFF1E2A44); // app card color
+  static const _incoming = CceColors.surfaceHigh; // app card color
 
   @override
   Widget build(BuildContext context) {
@@ -108,22 +109,22 @@ class MessageBubble extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFFF6465D).withValues(alpha: 0.12),
+          color: CceColors.danger.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: const Color(0xFFF6465D).withValues(alpha: 0.4),
+            color: CceColors.danger.withValues(alpha: 0.4),
           ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(Icons.error_outline,
-                size: 16, color: Color(0xFFF6465D)),
+                size: 16, color: CceColors.danger),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 text,
-                style: const TextStyle(color: Color(0xFFF6465D), fontSize: 13),
+                style: const TextStyle(color: CceColors.danger, fontSize: 13),
               ),
             ),
           ],
@@ -145,13 +146,13 @@ class MessageBubble extends StatelessWidget {
       a: const TextStyle(color: Color(0xFF4DD0E1)),
       code: mono,
       codeblockDecoration: BoxDecoration(
-        color: const Color(0xFF0B1D38),
+        color: CceColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white12),
       ),
       codeblockPadding: const EdgeInsets.all(10),
       blockquoteDecoration: BoxDecoration(
-        color: const Color(0xFF152D54),
+        color: CceColors.surface,
         borderRadius: BorderRadius.circular(6),
         border: const Border(
           left: BorderSide(color: Color(0xFF4DD0E1), width: 3),

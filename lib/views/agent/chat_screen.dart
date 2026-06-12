@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/server_config.dart';
 import '../../services/chat_service.dart';
+import '../../theme/cce_tokens.dart';
 import 'input_bar.dart';
 import 'message_bubble.dart';
 import 'thread_history_drawer.dart';
@@ -58,13 +59,13 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: const Color(0xFF0B1D38),
+      backgroundColor: CceColors.bg,
       endDrawer: ThreadHistoryDrawer(service: _service),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF152D54),
+        backgroundColor: CceColors.surface,
         title: const Row(
           children: [
-            Icon(Icons.smart_toy_outlined, color: Color(0xFF00A884), size: 22),
+            Icon(Icons.smart_toy_outlined, color: CceColors.accent, size: 22),
             SizedBox(width: 8),
             Text('Asistente', style: TextStyle(color: Colors.white)),
           ],
@@ -136,7 +137,7 @@ class _ModelMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<String>(
       tooltip: 'Modelo',
-      color: const Color(0xFF152D54),
+      color: CceColors.surface,
       icon: const Icon(Icons.more_vert, color: Colors.white70),
       onSelected: (m) => service.model = m,
       itemBuilder: (_) => [
@@ -167,7 +168,7 @@ class _EmptyChat extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.smart_toy_outlined,
-                size: 56, color: Color(0xFF00A884)),
+                size: 56, color: CceColors.accent),
             const SizedBox(height: 16),
             const Text(
               'Tu asistente de la casa',
@@ -192,9 +193,9 @@ class _EmptyChat extends StatelessWidget {
                 for (final s in _ChatScreenState._suggestions)
                   ActionChip(
                     label: Text(s, style: const TextStyle(fontSize: 12)),
-                    backgroundColor: const Color(0xFF16213E),
+                    backgroundColor: CceColors.surfaceHigh,
                     labelStyle: const TextStyle(color: Colors.white),
-                    side: const BorderSide(color: Colors.white12),
+                    side: const BorderSide(color: CceColors.stroke),
                     onPressed: () => onPick(s),
                   ),
               ],

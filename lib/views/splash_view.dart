@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../theme/cce_tokens.dart';
 
 class SplashView extends StatefulWidget {
   final VoidCallback onComplete;
@@ -60,7 +61,7 @@ class _SplashViewState extends State<SplashView>
     final buildingWidth = isTablet ? 520.0 : 320.0;
     final buildingHeight = isTablet ? 163.0 : 100.0;
     return Scaffold(
-      backgroundColor: const Color(0xFF1B3A6B),
+      backgroundColor: CceColors.bg,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -88,8 +89,7 @@ class _SplashViewState extends State<SplashView>
                   opacity: 0.5 + _textController.value * 0.5,
                   child: Text(
                     'Preparando tu hogar...',
-                    style: TextStyle(
-                      color: const Color(0xFF8BACC8),
+                    style: CceText.caption.copyWith(
                       fontSize: isTablet ? 26 : 18,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 0.5,
@@ -128,7 +128,8 @@ class _BuildingPainter extends CustomPainter {
     canvas.scale(scale);
     canvas.translate(-_svgLeft, -_svgTop);
 
-    final paint = Paint()..color = const Color(0xFFD0ECF6);
+    // Edificio en tono calido (familia de CceColors.warm, desaturado)
+    final paint = Paint()..color = const Color(0xFFEFD9BD);
 
     // Roof — exact SVG path: translate(467,947) "m0 0h1111l13 1 1 2v18l-1 1h-1125l-1-1v-20z"
     final roof = Path()
@@ -212,7 +213,7 @@ class _BuildingPainter extends CustomPainter {
     }
 
     // Reset paint color for next frame
-    paint.color = const Color(0xFFD0ECF6);
+    paint.color = const Color(0xFFEFD9BD);
 
     canvas.restore();
   }

@@ -3,13 +3,17 @@ class FloorPlan {
   final String name;
   final String svg;
 
-  FloorPlan({required this.id, required this.name, required this.svg});
+  /// Room Hue linkeado al plano (para la sección de escenas); opcional.
+  final String? hueRoomId;
+
+  FloorPlan({required this.id, required this.name, required this.svg, this.hueRoomId});
 
   factory FloorPlan.fromJson(Map<String, dynamic> json) {
     return FloorPlan(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       svg: (json['svg'] ?? '').toString(),
+      hueRoomId: json['hueRoomId'] as String?,
     );
   }
 }

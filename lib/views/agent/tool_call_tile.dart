@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../models/chat_message.dart';
+import '../../theme/cce_tokens.dart';
 
 /// Collapsible chip showing a single agent tool call and its result.
 class ToolCallTile extends StatefulWidget {
@@ -23,15 +24,15 @@ class _ToolCallTileState extends State<ToolCallTile> {
     final tool = widget.tool;
     final pending = tool.result == null;
     final color = tool.isError
-        ? const Color(0xFFF6465D)
+        ? CceColors.danger
         : pending
             ? const Color(0xFFF0B90B)
-            : const Color(0xFF0ECB81);
+            : CceColors.ok;
 
     return Container(
       margin: const EdgeInsets.only(top: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFF152D54),
+        color: CceColors.surfaceHigh,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.white12),
       ),
@@ -126,7 +127,7 @@ class _ToolCallTileState extends State<ToolCallTile> {
       width: double.infinity,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B1D38),
+        color: CceColors.surface,
         borderRadius: BorderRadius.circular(6),
       ),
       child: SelectableText(

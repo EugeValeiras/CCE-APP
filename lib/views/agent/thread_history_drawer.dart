@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/chat_thread.dart';
 import '../../services/chat_service.dart';
+import '../../theme/cce_tokens.dart';
 
 /// End-drawer listing previous conversations with open / new / rename / delete.
 /// Rebuilds with the [service] (a ChangeNotifier) — no Provider.
@@ -12,7 +13,7 @@ class ThreadHistoryDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: const Color(0xFF0B1D38),
+      backgroundColor: CceColors.surface,
       child: SafeArea(
         child: AnimatedBuilder(
           animation: service,
@@ -35,7 +36,7 @@ class ThreadHistoryDrawer extends StatelessWidget {
                       const Spacer(),
                       IconButton(
                         tooltip: 'Nueva conversación',
-                        icon: const Icon(Icons.add, color: Color(0xFF00A884)),
+                        icon: const Icon(Icons.add, color: CceColors.accent),
                         onPressed: () {
                           service.newConversation();
                           Navigator.of(context).pop();
@@ -87,7 +88,7 @@ class _ThreadTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       selected: selected,
-      selectedTileColor: const Color(0xFF0F3460).withValues(alpha: 0.5),
+      selectedTileColor: CceColors.surfaceHigh,
       title: Text(
         thread.title,
         maxLines: 1,
@@ -108,7 +109,7 @@ class _ThreadTile extends StatelessWidget {
             ),
       trailing: PopupMenuButton<String>(
         icon: const Icon(Icons.more_vert, size: 18, color: Colors.white38),
-        color: const Color(0xFF152D54),
+        color: CceColors.surfaceHigh,
         onSelected: (value) async {
           if (value == 'rename') {
             await _rename(context);
@@ -123,7 +124,7 @@ class _ThreadTile extends StatelessWidget {
           ),
           PopupMenuItem(
             value: 'delete',
-            child: Text('Eliminar', style: TextStyle(color: Color(0xFFF6465D))),
+            child: Text('Eliminar', style: TextStyle(color: CceColors.danger)),
           ),
         ],
       ),
@@ -139,7 +140,7 @@ class _ThreadTile extends StatelessWidget {
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF152D54),
+        backgroundColor: CceColors.surfaceHigh,
         title: const Text('Renombrar conversación',
             style: TextStyle(color: Colors.white)),
         content: TextField(
@@ -169,7 +170,7 @@ class _ThreadTile extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF152D54),
+        backgroundColor: CceColors.surfaceHigh,
         title: const Text('Eliminar conversación',
             style: TextStyle(color: Colors.white)),
         content: Text(
@@ -184,7 +185,7 @@ class _ThreadTile extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Eliminar',
-                style: TextStyle(color: Color(0xFFF6465D))),
+                style: TextStyle(color: CceColors.danger)),
           ),
         ],
       ),
