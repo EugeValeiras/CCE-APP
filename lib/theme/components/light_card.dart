@@ -122,26 +122,30 @@ class LightCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Franja inferior: toggle a la izquierda (sobre el relleno).
-                SizedBox(
-                  height: 38,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 6),
-                      child: Transform.scale(
-                        scale: 0.72,
-                        alignment: Alignment.centerLeft,
-                        child: Switch.adaptive(
-                          value: on,
-                          onChanged: onToggle,
-                          activeTrackColor: darkText
-                              ? CceTint.inkOnPastel.withValues(alpha: 0.30)
-                              : null,
-                          thumbColor: const WidgetStatePropertyAll<Color>(
-                              Colors.white),
-                        ),
+                // Franja inferior: separada por un borde superior; el switch
+                // va centrado y grande.
+                Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: on
+                            ? Colors.black.withValues(alpha: 0.16)
+                            : Colors.white.withValues(alpha: 0.10),
                       ),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Transform.scale(
+                    scale: 0.95,
+                    child: Switch.adaptive(
+                      value: on,
+                      onChanged: onToggle,
+                      activeTrackColor: darkText
+                          ? CceTint.inkOnPastel.withValues(alpha: 0.30)
+                          : null,
+                      thumbColor:
+                          const WidgetStatePropertyAll<Color>(Colors.white),
                     ),
                   ),
                 ),

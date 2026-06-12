@@ -9,20 +9,21 @@ enum TileSize { small, medium, large }
 enum RoomPanelMode { lights, plan }
 
 extension TileSizeX on TileSize {
-  // Cards compactas, MISMO tamaño que las scene cards (150×132 en medium).
+  // Cards RECTANGULARES verticales y compactas (≈120×156 en medium):
+  // más angostas que altas, entran más por fila.
   double get tileHeight {
     switch (this) {
-      case TileSize.small: return 120;
-      case TileSize.medium: return 132;
-      case TileSize.large: return 148;
+      case TileSize.small: return 138;
+      case TileSize.medium: return 156;
+      case TileSize.large: return 174;
     }
   }
 
   double get sensorTileHeight {
     switch (this) {
-      case TileSize.small: return 120;
-      case TileSize.medium: return 132;
-      case TileSize.large: return 148;
+      case TileSize.small: return 138;
+      case TileSize.medium: return 156;
+      case TileSize.large: return 174;
     }
   }
 
@@ -53,12 +54,13 @@ extension TileSizeX on TileSize {
     }
   }
 
-  // Ancho máximo por card vertical (col count sale de acá).
+  // Ancho máximo por card vertical (col count sale de acá). Más angosto que
+  // el alto → cards rectangulares en vez de casi-cuadradas.
   double get maxTileExtent {
     switch (this) {
-      case TileSize.small: return 130;
-      case TileSize.medium: return 150;
-      case TileSize.large: return 175;
+      case TileSize.small: return 105;
+      case TileSize.medium: return 120;
+      case TileSize.large: return 140;
     }
   }
 
