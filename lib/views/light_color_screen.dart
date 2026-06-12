@@ -274,8 +274,8 @@ class _LightColorScreenState extends State<LightColorScreen> {
                   child: LayoutBuilder(
                     builder: (context, c) {
                       final size = math
-                          .min(c.maxWidth * 0.62, c.maxHeight * 0.62)
-                          .clamp(220.0, 420.0)
+                          .min(c.maxWidth * 0.70, c.maxHeight * 0.66)
+                          .clamp(240.0, 480.0)
                           .toDouble();
                       return Column(
                         children: [
@@ -329,25 +329,28 @@ class _LightColorScreenState extends State<LightColorScreen> {
       ));
     }
 
-    // Pins de las seleccionadas (clusterizadas).
+    // Pins de las seleccionadas (clusterizadas). Cluster de 1 → ícono real del
+    // device; cluster > 1 → contador.
     final clusters = _clusters();
     for (final cl in clusters) {
-      final bulb = cl.ids.length == 1
-          ? IconResolver.resolve(
-              widget.service.byId(cl.ids.first) ?? widget.device,
-              configuredIcon: widget.service.iconFor(cl.ids.first),
-              displayName: widget.service
-                  .displayName(widget.service.byId(cl.ids.first) ??
-                      widget.device),
-            )
-          : null;
+      final single = cl.ids.length == 1;
+      Widget? child;
+      if (single) {
+        final d = widget.service.byId(cl.ids.first) ?? widget.device;
+        child = IconResolver.widget(
+          d,
+          configuredIcon: widget.service.iconFor(cl.ids.first),
+          customIcons: widget.service.customIcons,
+          displayName: widget.service.displayName(d),
+          size: 22,
+          color: const Color(0xFF1A1A1E),
+        );
+      }
       markers.add(Positioned(
-        left: cl.pos.dx * size - 22,
-        top: cl.pos.dy * size - 30,
-        child: _Marker(
-          icon: bulb,
-          label: cl.ids.length > 1 ? '${cl.ids.length}' : null,
-        ),
+        // Centro del círculo del pin en el punto de color (cola hacia abajo).
+        left: cl.pos.dx * size - _Marker.w / 2,
+        top: cl.pos.dy * size - _Marker.w / 2,
+        child: _Marker(child: child, label: single ? null : '${cl.ids.length}'),
       ));
     }
 
@@ -549,65 +552,67 @@ class _ColorDisk extends StatelessWidget {
 }
 
 class _Marker extends StatelessWidget {
-  final IconData? icon;
-  final String? label; // contador si hay luces fusionadas
-  const _Marker({this.icon, this.label});
+  final Widget? child; // ícono del device (cluster de 1)
+  final String? label; // contador (cluster > 1)
+  const _Marker({this.child, this.label});
+
+  static const double w = 46; // diámetro del círculo
+  static const double h = 60; // alto total con la cola
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 44,
-      height: 52,
-      child: CustomPaint(
-        painter: _PinPainter(),
-        child: Padding(
-          padding: const EdgeInsets.only(top: 7),
-          child: Center(
-            child: SizedBox(
-              width: 44,
-              height: 44,
-              child: Center(
-                child: label != null
-                    ? Text(
-                        label!,
-                        style: const TextStyle(
-                          color: Color(0xFF1A1A1E),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
-                    : Icon(icon, color: const Color(0xFF1A1A1E), size: 22),
-              ),
-            ),
-          ),
+    return CustomPaint(
+      size: const Size(w, h),
+      painter: _PinPainter(),
+      child: Padding(
+        // Reserva la cola abajo → el contenido queda centrado en el círculo.
+        padding: const EdgeInsets.only(bottom: h - w),
+        child: Center(
+          child: label != null
+              ? Text(
+                  label!,
+                  style: const TextStyle(
+                    color: Color(0xFF1A1A1E),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                )
+              : child,
         ),
       ),
     );
   }
 }
 
+/// Pin estilo Hue: gota (círculo + cola curva) blanca con sombra suave.
 class _PinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.fill;
-    final shadow = Paint()
-      ..color = Colors.black.withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    final r = size.width / 2;
-    final path = Path()
-      ..addOval(Rect.fromLTWH(0, 0, size.width, size.width))
-      ..moveTo(size.width / 2 - 6, size.width - 4)
-      ..lineTo(size.width / 2, size.height)
-      ..lineTo(size.width / 2 + 6, size.width - 4)
+    final w = size.width;
+    final r = w / 2;
+    final cx = w / 2, cy = r;
+    final tipY = size.height;
+
+    final circle = Path()
+      ..addOval(Rect.fromCircle(center: Offset(cx, cy), radius: r));
+    // Unión de la cola con el círculo (~±42° desde abajo) hacia la punta.
+    final th = 42 * math.pi / 180;
+    final lx = cx - r * math.sin(th), ly = cy + r * math.cos(th);
+    final rx = cx + r * math.sin(th), ry = ly;
+    final tail = Path()
+      ..moveTo(lx, ly)
+      ..quadraticBezierTo(cx - r * 0.10, (ly + tipY) / 2, cx, tipY)
+      ..quadraticBezierTo(cx + r * 0.10, (ry + tipY) / 2, rx, ry)
       ..close();
-    canvas.drawPath(path.shift(const Offset(0, 2)), shadow);
-    canvas.drawPath(path, paint);
+    final pin = Path.combine(PathOperation.union, circle, tail);
+
+    canvas.drawShadow(pin, Colors.black.withValues(alpha: 0.45), 4, false);
+    canvas.drawPath(pin, Paint()..color = Colors.white);
     canvas.drawCircle(
-      Offset(size.width / 2, r),
+      Offset(cx, cy),
       r - 1,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.08)
+        ..color = Colors.black.withValues(alpha: 0.06)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1,
     );
