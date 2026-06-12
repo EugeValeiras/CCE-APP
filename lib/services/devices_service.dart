@@ -352,8 +352,8 @@ class DevicesService extends ChangeNotifier {
   /// a ≤90° se promedia circularmente el hue ponderado por brillo (jamás se
   /// promedian complementarios). El tint de color sale SIEMPRE normalizado
   /// por [CceTint.normalize]. Sin luces coloreadas pero con alguna ON en
-  /// blanco (ct != null) → blanco cálido fijo 0xFFE7E2D8 (el pastel lo
-  /// vuelve champagne/plateado, como el Outside de Hue); sin ct, null.
+  /// blanco → el color REAL del CT (cálido/frío) de esas luces, NO un gris
+  /// fijo (para 2700K da ámbar; el pastel lo deja amarillo cálido, no blanco).
   /// NOTA: el render aplica CceTint.pastel encima; este tint es el color
   /// semántico, no el pintado.
   Color? _tintForOnLights(List<Device> onLights) {
@@ -368,9 +368,10 @@ class DevicesService extends ChangeNotifier {
       ));
     }
     if (colored.isEmpty) {
-      // Luces ON en modo blanco (ct): blanco cálido → pastel champagne.
-      if (onLights.any((d) => d.state.ct != null)) {
-        return const Color(0xFFE7E2D8);
+      // Luces ON en modo blanco: usar el blanco cálido/frío REAL del CT.
+      for (final d in onLights) {
+        final r = resolveLightColor(d.state);
+        if (r.isWhite) return r.color;
       }
       return null;
     }
@@ -413,11 +414,11 @@ class DevicesService extends ChangeNotifier {
   List<Color> _tintColorsForOnLights(List<Device> onLights) {
     final colors = <Color>[];
     final hues = <double>[];
-    bool hasWhite = false;
+    Color? whiteColor; // color real del CT de la primera luz blanca ON
     for (final d in onLights) {
       final r = resolveLightColor(d.state);
       if (r.isWhite) {
-        hasWhite = true;
+        whiteColor ??= r.color;
         continue;
       }
       final h = r.hueDeg! % 360.0;
@@ -436,8 +437,8 @@ class DevicesService extends ChangeNotifier {
       ));
       if (colors.length >= 5) break;
     }
-    if (colors.isEmpty && hasWhite) {
-      return const [Color(0xFFE7E2D8)];
+    if (colors.isEmpty && whiteColor != null) {
+      return [whiteColor];
     }
     return colors;
   }

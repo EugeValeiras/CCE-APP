@@ -41,12 +41,9 @@ class _LightTileState extends State<LightTile> {
   double get _displayBri => _dragging ? _currentBri : widget.device.state.bri.toDouble();
 
   /// Color real que está mostrando la luz (respeta colormode vía
-  /// resolveLightColor). Blancos/CT: champagne plateado como Hue.
-  Color _activeColor() {
-    final r = resolveLightColor(widget.device.state);
-    if (r.isWhite) return widget.device.state.ct != null ? const Color(0xFFE7E2D8) : CceColors.warm;
-    return r.color;
-  }
+  /// resolveLightColor). Para CT usa el blanco cálido/frío REAL (ámbar para
+  /// 2700K) en vez de un gris fijo — así la card no termina casi blanca.
+  Color _activeColor() => resolveLightColor(widget.device.state).color;
 
   void _onVerticalDragStart(DragStartDetails _) {
     _dragStartBri = widget.device.state.on ? widget.device.state.bri.toDouble() : 0;

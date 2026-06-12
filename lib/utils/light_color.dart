@@ -98,11 +98,11 @@ Color xyToColor(double x, double y) {
 }
 
 /// Mireds → blanco real. Interpolación LINEAL EN RGB entre anclas:
-/// 153 mireds → 0xFFDDE6F0 (frío), 370 mireds → 0xFFFFE3C0 (cálido).
-/// ct > 370 clampea al cálido.
+/// 153 mireds → 0xFFDDE6F0 (frío), 370 mireds → 0xFFFFE3A0 (cálido, ámbar
+/// amarillo — 2700K se ve claramente cálido, no gris). ct > 370 clampea.
 Color ctToWhiteColor(int ct) {
   const cold = Color(0xFFDDE6F0); // 153 mireds
-  const warm = Color(0xFFFFE3C0); // 370 mireds
+  const warm = Color(0xFFFFE3A0); // 370 mireds (más amarillo)
   final t = ((ct - 153) / (370 - 153)).clamp(0.0, 1.0).toDouble();
   return Color.lerp(cold, warm, t)!;
 }
