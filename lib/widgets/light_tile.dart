@@ -47,6 +47,11 @@ class _LightTileState extends State<LightTile> {
       final sat = (s.sat! / 254).clamp(0.0, 1.0);
       return HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0), sat.toDouble(), 1.0).toColor();
     }
+    // Luces blancas/CT (sin saturación de color): champagne plateado como
+    // Hue, no amarillo cálido.
+    if ((s.sat ?? 0) <= 40 && s.ct != null) {
+      return const Color(0xFFE7E2D8);
+    }
     return CceColors.warm;
   }
 

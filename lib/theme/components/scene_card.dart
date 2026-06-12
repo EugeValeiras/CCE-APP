@@ -4,7 +4,7 @@ import '../cce_tokens.dart';
 import 'status_pill.dart';
 
 /// Card de escena (Hue nativa o CCE), réplica del formato Hue: card OSCURA
-/// fija de 140 con un CÍRCULO de color centrado (gradiente del swatch, o
+/// fija de 132 con un CÍRCULO de color centrado (gradiente del swatch, o
 /// círculo cálido con el ícono para escenas CCE) y el nombre DEBAJO.
 /// Activa = borde blanco sutil + check arriba a la derecha (la card NO se
 /// tiñe entera). Badge "auto" para smart scenes y spinner sobre el círculo
@@ -29,13 +29,29 @@ class SceneCard extends StatelessWidget {
   final bool busy; // spinner mientras aplica
   final VoidCallback onTap;
 
-  static const double _height = 140;
-  static const double _circle = 56;
+  static const double _height = 132;
+  static const double _circle = 60;
+
+  /// Ajusta la luminosidad HSL de [c] en [delta] (conserva hue/saturación).
+  static Color _shiftL(Color c, double delta) {
+    final hsl = HSLColor.fromColor(c);
+    return hsl
+        .withLightness((hsl.lightness + delta).clamp(0.0, 1.0).toDouble())
+        .toColor();
+  }
 
   Widget _buildCircle() {
     final hasSwatch = colors.isNotEmpty;
-    final gradientColors =
-        colors.length == 1 ? [colors.first, colors.first] : colors;
+    // Con 1 solo color el gradiente le da profundidad (claro arriba a la
+    // izquierda, oscuro abajo a la derecha); multi-color usa el swatch tal
+    // cual. Siempre colores REALES saturados, NO pastel.
+    final gradientColors = colors.length == 1
+        ? [
+            _shiftL(colors.first, 0.10),
+            colors.first,
+            _shiftL(colors.first, -0.08),
+          ]
+        : colors;
 
     final circle = Container(
       width: _circle,
@@ -114,11 +130,11 @@ class SceneCard extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 16, 8, 10),
+                    padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
                     child: Column(
                       children: [
                         _buildCircle(),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
                         Expanded(
                           child: Text(
                             name,
@@ -126,7 +142,7 @@ class SceneCard extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                              fontSize: 13.5,
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.1,
                               height: 1.15,

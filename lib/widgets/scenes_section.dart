@@ -21,7 +21,7 @@ class ScenesSection extends StatefulWidget {
     required this.service,
     this.room,
     this.title = 'Mis escenas',
-    this.maxCrossAxisExtent = 180,
+    this.maxCrossAxisExtent = 150,
   });
 
   final DevicesService service;
@@ -99,8 +99,8 @@ class _ScenesSectionState extends State<ScenesSection> {
           feedback: Material(
             color: Colors.transparent,
             child: SizedBox(
-              width: 160,
-              height: 140,
+              width: 150,
+              height: 132,
               child: Opacity(opacity: 0.92, child: card),
             ),
           ),
@@ -208,9 +208,9 @@ class _ScenesSectionState extends State<ScenesSection> {
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
                 maxCrossAxisExtent: widget.maxCrossAxisExtent,
-                mainAxisExtent: 140, // alto fijo = SceneCard._height
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
+                mainAxisExtent: 132, // alto fijo = SceneCard._height
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
               ),
               children: cards,
             ),

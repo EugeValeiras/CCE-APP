@@ -330,11 +330,13 @@ class DevicesService extends ChangeNotifier {
     );
   }
 
-  /// Tint dominante de las luces encendidas que reportan color; null si
-  /// ninguna. La luz dominante es la de mayor brillo; si las dos más
-  /// brillantes tienen hues a ≤90° se promedia circularmente el hue
-  /// ponderado por brillo (jamás se promedian complementarios). El resultado
-  /// sale SIEMPRE normalizado por [CceTint.normalize].
+  /// Tint dominante de las luces encendidas que reportan color. La luz
+  /// dominante es la de mayor brillo; si las dos más brillantes tienen hues
+  /// a ≤90° se promedia circularmente el hue ponderado por brillo (jamás se
+  /// promedian complementarios). El tint de color sale SIEMPRE normalizado
+  /// por [CceTint.normalize]. Sin luces coloreadas pero con alguna ON en
+  /// blanco (ct != null) → blanco cálido fijo 0xFFE7E2D8 (el pastel lo
+  /// vuelve champagne/plateado, como el Outside de Hue); sin ct, null.
   /// NOTA: el render aplica CceTint.pastel encima; este tint es el color
   /// semántico, no el pintado.
   Color? _tintForOnLights(List<Device> onLights) {
@@ -348,7 +350,13 @@ class DevicesService extends ChangeNotifier {
         bri: s.bri,
       ));
     }
-    if (colored.isEmpty) return null;
+    if (colored.isEmpty) {
+      // Luces ON en modo blanco (ct): blanco cálido → pastel champagne.
+      if (onLights.any((d) => d.state.ct != null)) {
+        return const Color(0xFFE7E2D8);
+      }
+      return null;
+    }
 
     colored.sort((a, b) => b.bri.compareTo(a.bri));
     final dominant = colored.first;

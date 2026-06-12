@@ -69,19 +69,19 @@ abstract final class CceTint {
   /// 70% alpha del resultado de [textOn] (para subtítulos).
   static Color subTextOn(Color base) => textOn(base).withValues(alpha: 0.7);
 
-  // Pastel Hue: clamps del pastel de cards encendidas.
-  static const double pastelSatMin = 0.42;
-  static const double pastelSatMax = 0.58;
-  static const double pastelLightMin = 0.74;
-  static const double pastelLightMax = 0.82;
+  // Pastel Hue: clamps de saturación del pastel de cards encendidas.
+  static const double pastelSatMin = 0.12;
+  static const double pastelSatMax = 0.40;
 
-  /// ÚNICA fuente del pastel Hue. Conserva hue; S→[0.42,0.58];
-  /// L→[0.74,0.82]; alpha forzado 1.0.
+  /// ÚNICA fuente del pastel Hue. Conserva hue; S' = (S*0.55) clampeado a
+  /// [0.12,0.40]; L' = 0.45 + L*0.35 (afín, sin clamp: L∈[0,1] ⇒
+  /// L'∈[0.45,0.80]); alpha forzado 1.0.
   static Color pastel(Color base) {
     final hsl = HSLColor.fromColor(base);
     return hsl
-        .withSaturation(hsl.saturation.clamp(pastelSatMin, pastelSatMax).toDouble())
-        .withLightness(hsl.lightness.clamp(pastelLightMin, pastelLightMax).toDouble())
+        .withSaturation(
+            (hsl.saturation * 0.55).clamp(pastelSatMin, pastelSatMax).toDouble())
+        .withLightness(0.45 + hsl.lightness * 0.35)
         .withAlpha(1.0)
         .toColor();
   }
@@ -164,13 +164,14 @@ abstract final class CceGradients {
     final src = (colors.isEmpty ? const <Color>[CceColors.warm] : colors).take(5).toList();
     if (src.length == 1) {
       // Un color: gradiente VERTICAL claro→profundo (look Hue real).
+      // top = pastel con L'+0.05 (máx 0.82); bottom = L'-0.06 (mín 0.40).
       final hsl = HSLColor.fromColor(CceTint.pastel(src.first));
       return LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          hsl.withLightness(0.78).toColor(),
-          hsl.withLightness(0.62).toColor(),
+          hsl.withLightness((hsl.lightness + 0.05).clamp(0.0, 0.82).toDouble()).toColor(),
+          hsl.withLightness((hsl.lightness - 0.06).clamp(0.40, 1.0).toDouble()).toColor(),
         ],
       );
     }

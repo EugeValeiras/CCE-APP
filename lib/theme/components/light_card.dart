@@ -44,8 +44,11 @@ class LightCard extends StatelessWidget {
     final base = color ?? CceColors.warm;
     final displayColor = reachable ? base : _muted(base);
     final tinted = on;
-    final fg = tinted ? CceTint.inkOnPastel : CceColors.textPrimary;
-    final fgSub = tinted ? CceTint.inkOnPastelSub : CceColors.textSecondary;
+    // Foreground por luminancia del pastel medio: los tonos fríos/magenta de
+    // CceTint.pastel salen medio-oscuros y la tinta oscura fija ya no sirve.
+    final mid = CceTint.pastel(displayColor);
+    final fg = tinted ? CceTint.textOn(mid) : CceColors.textPrimary;
+    final fgSub = tinted ? CceTint.subTextOn(mid) : CceColors.textSecondary;
 
     return SizedBox(
       height: height,
@@ -107,7 +110,7 @@ class LightCard extends StatelessWidget {
                 Container(
                   height: 46,
                   color: tinted
-                      ? Colors.black.withValues(alpha: 0.10)
+                      ? Colors.black.withValues(alpha: 0.14)
                       : Colors.white.withValues(alpha: 0.045),
                   padding: const EdgeInsets.only(left: 8),
                   alignment: Alignment.centerLeft,
@@ -118,7 +121,7 @@ class LightCard extends StatelessWidget {
                       value: on,
                       onChanged: onToggle,
                       activeTrackColor: tinted
-                          ? CceTint.inkOnPastel.withValues(alpha: 0.30)
+                          ? fg.withValues(alpha: 0.30)
                           : null,
                       thumbColor:
                           const WidgetStatePropertyAll<Color>(Colors.white),

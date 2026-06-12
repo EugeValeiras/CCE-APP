@@ -9,13 +9,14 @@ import 'cce_card.dart';
 import 'status_dot.dart';
 
 /// Card de habitacion (sidebar tablet y lista phone), estilo Hue:
-/// gradiente pastel del tint real de las luces si hay encendidas (texto
-/// oscuro), dots de estado integrados al subtítulo, switch a la derecha y
-/// slider de brillo FINO embebido al pie (solo tablet, [brightness] != null).
+/// gradiente pastel del tint real de las luces si hay encendidas (foreground
+/// por luminancia del pastel), SOLO el nombre como Hue (sin subtítulo), dots
+/// de estado inline a la derecha del título, switch a la derecha y slider de
+/// brillo FINO embebido al pie (solo tablet, [brightness] != null).
 ///
 /// Layout congelado (anti-overflow):
-///  - compact == true (phone): altura FIJA 84, NUNCA renderiza slider.
-///  - compact == false (tablet): 84 sin slider; 110 con slider thin (24).
+///  - compact == true (phone): altura FIJA 76, NUNCA renderiza slider.
+///  - compact == false (tablet): 76 sin slider; 104 con slider thin (24).
 class RoomCard extends StatefulWidget {
   const RoomCard({
     super.key,
@@ -82,6 +83,9 @@ class _RoomCardState extends State<RoomCard> {
     super.dispose();
   }
 
+  // Queda por compatibilidad de la firma (lightsOn/lightsTotal/
+  // subtitleOverride); el subtítulo ya NO se renderiza (look Hue: solo nombre).
+  // ignore: unused_element
   String get _subtitle {
     final override = widget.subtitleOverride;
     if (override != null) return override;
@@ -114,47 +118,20 @@ class _RoomCardState extends State<RoomCard> {
   @override
   Widget build(BuildContext context) {
     final showSlider = !widget.compact && widget.brightness != null;
-    final height = widget.compact ? 84.0 : (showSlider ? 110.0 : 84.0);
+    final height = widget.compact ? 76.0 : (showSlider ? 104.0 : 76.0);
 
     final t = widget.tint ?? CceColors.warm;
 
     final gradient =
         widget.anyOn ? CceGradients.huePastel([t]) : null;
-    final fg =
-        widget.anyOn ? CceTint.inkOnPastel : CceColors.textPrimary;
-    final fgSub = widget.anyOn
-        ? CceTint.inkOnPastelSub
-        : CceColors.textSecondary;
-
-    final subtitleRow = Row(
-      children: [
-        // Dots primero (28 px máx fijos): fin del "7 l…".
-        if (widget.contactOpen) ...[
-          const StatusDot(
-            CceColors.contact,
-            pulse: true,
-            semanticLabel: 'Puerta abierta',
-          ),
-          const SizedBox(width: 6),
-        ],
-        if (widget.motion) ...[
-          const StatusDot(
-            CceColors.motion,
-            pulse: true,
-            semanticLabel: 'Movimiento',
-          ),
-          const SizedBox(width: 6),
-        ],
-        Flexible(
-          child: Text(
-            _subtitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: CceText.caption.copyWith(color: fgSub),
-          ),
-        ),
-      ],
-    );
+    // Foreground por LUMINANCIA del pastel medio (no ink fijo): los pasteles
+    // oscuros (azules profundos) llevan texto blanco, los claros casi-negro.
+    final mid = CceTint.pastel(t);
+    final fg = widget.anyOn ? CceTint.textOn(mid) : CceColors.textPrimary;
+    // Sin subtítulo renderizado: fgSub queda documentado para futuros usos.
+    // ignore: unused_local_variable
+    final fgSub =
+        widget.anyOn ? CceTint.subTextOn(mid) : CceColors.textSecondary;
 
     final headerRow = Row(
       children: [
@@ -167,24 +144,40 @@ class _RoomCardState extends State<RoomCard> {
           ),
         ),
         const SizedBox(width: 12),
+        // SOLO el nombre (look Hue), centrado verticalmente; dots de estado
+        // inline a la derecha del título.
         Expanded(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  color: fg,
+              Flexible(
+                child: Text(
+                  widget.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                    color: fg,
+                  ),
                 ),
               ),
-              const SizedBox(height: 2),
-              subtitleRow,
+              if (widget.contactOpen) ...[
+                const SizedBox(width: 8),
+                const StatusDot(
+                  CceColors.contact,
+                  pulse: true,
+                  semanticLabel: 'Puerta abierta',
+                ),
+              ],
+              if (widget.motion) ...[
+                const SizedBox(width: 8),
+                const StatusDot(
+                  CceColors.motion,
+                  pulse: true,
+                  semanticLabel: 'Movimiento',
+                ),
+              ],
             ],
           ),
         ),
@@ -199,9 +192,7 @@ class _RoomCardState extends State<RoomCard> {
               onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
                   ? null
                   : widget.onToggle,
-              activeTrackColor: widget.anyOn
-                  ? CceTint.inkOnPastel.withValues(alpha: 0.30)
-                  : null,
+              activeTrackColor: fg.withValues(alpha: 0.30),
               thumbColor:
                   const WidgetStatePropertyAll<Color>(Colors.white),
             ),
@@ -235,9 +226,7 @@ class _RoomCardState extends State<RoomCard> {
                         .clamp(0.0, 1.0)
                         .toDouble(),
                     activeColor: Colors.white,
-                    thinTrackColor: widget.anyOn
-                        ? const Color(0x40101014)
-                        : Colors.white.withValues(alpha: 0.22),
+                    thinTrackColor: fg.withValues(alpha: 0.15),
                     onChanged: _onSliderChanged,
                     onChangeEnd: _onSliderEnd,
                   ),
