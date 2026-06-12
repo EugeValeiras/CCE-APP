@@ -37,6 +37,11 @@ class RoomStats {
   /// (o si ninguna luz encendida reporta color).
   final Color? tint;
 
+  /// Colores (crudos, sin pastelizar) de TODAS las luces ON con color, para
+  /// armar el gradiente multicolor de la room card estilo Hue. Vacío si no
+  /// hay luces ON coloreadas (la card cae al [tint] dominante o al ámbar).
+  final List<Color> tintColors;
+
   /// Brillo promedio 0..1 de las luces ON (bri/254); null si lightsOn == 0
   /// — NUNCA NaN.
   final double? avgBrightness;
@@ -52,6 +57,7 @@ class RoomStats {
     required this.lightsTotal,
     required this.anyOn,
     this.tint,
+    this.tintColors = const [],
     this.avgBrightness,
     this.anyContactOpen = false,
     this.anyMotion = false,

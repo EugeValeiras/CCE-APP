@@ -84,49 +84,56 @@ class SensorTile extends StatelessWidget {
           children: [
             Column(
               children: [
-                // Zona superior centrada (misma familia que LightCard).
+                // Zona superior centrada (misma familia que LightCard). El
+                // FittedBox evita overflow en la card compacta (132 px).
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(icon, color: color, size: size.iconSize),
-                        const SizedBox(height: 8),
-                        Text(
-                          service.displayName(device),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: CceColors.textPrimary,
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.1,
-                            height: 1.15,
-                          ),
-                        ),
-                        if (bigReading != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            bigReading,
-                            maxLines: 1,
-                            style: TextStyle(
-                              color: CceColors.textPrimary,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.5,
+                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, color: color, size: size.iconSize),
+                          const SizedBox(height: 6),
+                          SizedBox(
+                            width: 124,
+                            child: Text(
+                              service.displayName(device),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: CceColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.1,
+                                height: 1.15,
+                              ),
                             ),
                           ),
+                          if (bigReading != null) ...[
+                            const SizedBox(height: 3),
+                            Text(
+                              bigReading,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: CceColors.textPrimary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 // Franja inferior: dot de estado + label (sensores no se
                 // togglean — acá va el estado en lugar del switch).
                 Container(
-                  height: 46,
+                  height: 36,
                   color: Colors.white.withValues(alpha: 0.045),
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   alignment: Alignment.centerLeft,

@@ -153,6 +153,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
                       lightsTotal: stats.lightsTotal,
                       anyOn: stats.anyOn,
                       tint: stats.tint,
+                      tintColors: stats.tintColors,
                       brightness: stats.avgBrightness,
                       selected: widget.selectedRoomId == room.id,
                       motion: stats.anyMotion,

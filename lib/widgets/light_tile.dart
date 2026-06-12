@@ -104,11 +104,12 @@ class _LightTileState extends State<LightTile> {
       displayName: widget.service.displayName(d),
     );
 
-    final String stateLabel;
+    // El brillo se comunica por el relleno de la card, no como texto %.
+    final String? stateLabel;
     if (!reachable) {
       stateLabel = 'Sin conexión';
     } else if (on) {
-      stateLabel = '${(briPct * 100).round()}%';
+      stateLabel = null;
     } else {
       stateLabel = 'Apagada';
     }

@@ -9,20 +9,20 @@ enum TileSize { small, medium, large }
 enum RoomPanelMode { lights, plan }
 
 extension TileSizeX on TileSize {
-  // Cards VERTICALES estilo Hue (~150×220 en medium).
+  // Cards compactas, MISMO tamaño que las scene cards (150×132 en medium).
   double get tileHeight {
     switch (this) {
-      case TileSize.small: return 190;
-      case TileSize.medium: return 220;
-      case TileSize.large: return 250;
+      case TileSize.small: return 120;
+      case TileSize.medium: return 132;
+      case TileSize.large: return 148;
     }
   }
 
   double get sensorTileHeight {
     switch (this) {
-      case TileSize.small: return 190;
-      case TileSize.medium: return 220;
-      case TileSize.large: return 250;
+      case TileSize.small: return 120;
+      case TileSize.medium: return 132;
+      case TileSize.large: return 148;
     }
   }
 

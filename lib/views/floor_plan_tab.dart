@@ -423,11 +423,14 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     final hum = device.sensor?.humidity;
     final hasReading = temp != null || hum != null;
 
+    // Luz sin conexión: nunca activa, se pinta como ghost + badge wifi-off.
+    final offline = isLight && !device.state.reachable;
+
     // active = el dot se pinta pleno con glow; inactive = ghost dark.
     bool active;
     Color accent;
     if (isLight) {
-      active = device.state.on;
+      active = device.state.on && !offline;
       accent = active ? CceTint.normalize(_lightColor()) : CceColors.warm;
     } else if (isContact) {
       active = device.sensor?.contact == true;
@@ -480,7 +483,7 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
 
         final body = hasReading
             ? _readingBadge(icon, accent, temp, hum, shadows)
-            : _circleDot(icon, accent, active, isLight, shadows);
+            : _circleDot(icon, accent, active, isLight, shadows, offline);
 
         return Transform.scale(
           scale: _tapScale.value,
@@ -515,7 +518,7 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
   }
 
   Widget _circleDot(IconData icon, Color accent, bool active, bool isLight,
-      List<BoxShadow> shadows) {
+      List<BoxShadow> shadows, bool offline) {
     final size = widget.size;
     if (active) {
       return Container(
@@ -530,13 +533,17 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
       );
     }
     // Apagado / sin actividad: ghost dark sobre el canvas.
-    return Container(
+    final ghost = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: CceColors.surfaceHigh.withValues(alpha: 0.80),
-        border: Border.all(color: CceColors.stroke),
+        border: Border.all(
+          color: offline
+              ? CceColors.danger.withValues(alpha: 0.55)
+              : CceColors.stroke,
+        ),
         boxShadow: shadows,
       ),
       child: Icon(
@@ -544,6 +551,32 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
         color: Colors.white.withValues(alpha: isLight ? 0.22 : 0.38),
         size: size * 0.52,
       ),
+    );
+    if (!offline) return ghost;
+    // Badge wifi-off en la esquina inferior derecha para luces sin conexión.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ghost,
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: size * 0.40,
+            height: size * 0.40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CceColors.surface,
+              border: Border.all(color: CceColors.danger, width: 1.5),
+            ),
+            child: Icon(
+              Icons.wifi_off,
+              size: size * 0.22,
+              color: CceColors.danger,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -26,6 +26,7 @@ class RoomCard extends StatefulWidget {
     required this.lightsTotal,
     required this.anyOn,
     this.tint,
+    this.tintColors = const [],
     this.brightness,
     this.selected = false,
     this.compact = false,
@@ -44,9 +45,12 @@ class RoomCard extends StatefulWidget {
   final int lightsTotal;
   final bool anyOn;
 
-  /// tint SÍ tiñe la card encendida, vía CceTint.pastel (gradiente pastel
-  /// del color real de las luces, estilo Hue).
+  /// Color dominante (fallback del gradiente si [tintColors] viene vacío).
   final Color? tint;
+
+  /// Colores de todas las luces ON: gradiente multicolor estilo Hue. Vacío
+  /// ⇒ se usa [tint] como color único.
+  final List<Color> tintColors;
   final double? brightness; // 0..1; null = sin slider
   final bool selected; // resaltado en sidebar tablet
   final bool compact; // phone vs tablet
@@ -99,6 +103,21 @@ class _RoomCardState extends State<RoomCard> {
     return '${widget.lightsTotal} luces';
   }
 
+  /// Promedio RGB simple de las paradas del gradiente (para decidir el fg).
+  static Color _avgColor(List<Color> colors) {
+    if (colors.isEmpty) return CceColors.warm;
+    if (colors.length == 1) return colors.first;
+    var r = 0.0, g = 0.0, b = 0.0;
+    for (final c in colors) {
+      r += (c.r * 255.0);
+      g += (c.g * 255.0);
+      b += (c.b * 255.0);
+    }
+    final n = colors.length;
+    return Color.fromARGB(
+        255, (r / n).round(), (g / n).round(), (b / n).round());
+  }
+
   void _onSliderChanged(double v) {
     _retainTimer?.cancel();
     _retainTimer = null;
@@ -120,13 +139,16 @@ class _RoomCardState extends State<RoomCard> {
     final showSlider = !widget.compact && widget.brightness != null;
     final height = widget.compact ? 76.0 : (showSlider ? 104.0 : 76.0);
 
-    final t = widget.tint ?? CceColors.warm;
+    // Gradiente multicolor estilo Hue: una parada por cada luz ON con color.
+    // Con 0/1 colores cae al tint dominante (o ámbar) — comportamiento previo.
+    final colors = widget.tintColors.isNotEmpty
+        ? widget.tintColors
+        : [widget.tint ?? CceColors.warm];
 
-    final gradient =
-        widget.anyOn ? CceGradients.huePastel([t]) : null;
-    // Foreground por LUMINANCIA del pastel medio (no ink fijo): los pasteles
-    // oscuros (azules profundos) llevan texto blanco, los claros casi-negro.
-    final mid = CceTint.pastel(t);
+    final gradient = widget.anyOn ? CceGradients.huePastel(colors) : null;
+    // Foreground por LUMINANCIA del pastel medio (promedio de las paradas):
+    // pasteles oscuros → texto blanco, claros → casi-negro.
+    final mid = CceTint.pastel(_avgColor(colors));
     final fg = widget.anyOn ? CceTint.textOn(mid) : CceColors.textPrimary;
     // Sin subtítulo renderizado: fgSub queda documentado para futuros usos.
     // ignore: unused_local_variable
@@ -248,7 +270,7 @@ class _RoomCardState extends State<RoomCard> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(CceRadii.hueCard),
               boxShadow: widget.anyOn
-                  ? CceShadows.glowOn(CceTint.pastel(t))
+                  ? CceShadows.glowOn(mid)
                   : const [],
             ),
             child: card,

@@ -325,6 +325,7 @@ class DevicesService extends ChangeNotifier {
       lightsTotal: lights.length,
       anyOn: onLights.isNotEmpty,
       tint: _tintForOnLights(onLights),
+      tintColors: _tintColorsForOnLights(onLights),
       avgBrightness: avgBrightness,
       anyContactOpen:
           devices.any((d) => d.isContactSensor && d.sensor?.contact == true),
@@ -390,6 +391,43 @@ class DevicesService extends ChangeNotifier {
         HSVColor.fromAHSV(1.0, hue.clamp(0.0, 360.0).toDouble(), sat, 1.0)
             .toColor();
     return CceTint.normalize(base);
+  }
+
+  /// Colores de TODAS las luces ON con color (para el gradiente multicolor de
+  /// la room card estilo Hue). Conserva el orden de las luces, normaliza cada
+  /// color, descarta hues casi-iguales (≤18°) para que el gradiente no sea un
+  /// bloque plano, y topea en 5 paradas. Las luces ON en blanco/CT aportan
+  /// una parada champagne. [] si no hay ninguna luz ON con color ni CT.
+  List<Color> _tintColorsForOnLights(List<Device> onLights) {
+    final colors = <Color>[];
+    final hues = <double>[];
+    bool hasWhite = false;
+    for (final d in onLights) {
+      final r = resolveLightColor(d.state);
+      if (r.isWhite) {
+        hasWhite = true;
+        continue;
+      }
+      final h = r.hueDeg! % 360.0;
+      // Dedupe por cercanía de hue (circular).
+      final dup = hues.any((other) {
+        var diff = (h - other).abs();
+        if (diff > 180) diff = 360 - diff;
+        return diff <= 18;
+      });
+      if (dup) continue;
+      hues.add(h);
+      colors.add(CceTint.normalize(
+        HSVColor.fromAHSV(1.0, h.clamp(0.0, 360.0).toDouble(),
+                r.sat01!.clamp(0.0, 1.0).toDouble(), 1.0)
+            .toColor(),
+      ));
+      if (colors.length >= 5) break;
+    }
+    if (colors.isEmpty && hasWhite) {
+      return const [Color(0xFFE7E2D8)];
+    }
+    return colors;
   }
 
   /// Prende/apaga TODAS las luces de la sala (optimista, luz por luz).

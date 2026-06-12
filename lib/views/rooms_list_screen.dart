@@ -102,6 +102,7 @@ class RoomsListScreen extends StatelessWidget {
         lightsTotal: stats.lightsTotal,
         anyOn: stats.anyOn,
         tint: stats.tint,
+        tintColors: stats.tintColors,
         // compact nunca muestra slider; el brillo por sala vive en el detalle.
         brightness: null,
         compact: true,

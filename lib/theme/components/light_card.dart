@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../cce_tokens.dart';
 
 /// Card visual de una luz (SOLO presentacion; los gestos los pone LightTile).
-/// Card VERTICAL estilo Hue: zona superior con ícono/nombre/estado centrados
-/// y franja inferior apenas más oscura con el toggle a la izquierda. Cuando
-/// la luz está encendida, toda la card se tiñe con el pastel de su color
-/// real (gradiente vertical claro→profundo); sin conexión = pastel muteado.
+/// Card compacta estilo Hue (mismo tamaño que las scene cards): el BRILLO se
+/// representa como un RELLENO de color que sube desde abajo (no como texto %).
+/// Apagada = card oscura; encendida = relleno pastel del color real con altura
+/// proporcional al brillo; sin conexión = color muteado + ícono wifi-off.
 class LightCard extends StatelessWidget {
   const LightCard({
     super.key,
@@ -17,17 +17,17 @@ class LightCard extends StatelessWidget {
     this.color,
     this.reachable = true,
     this.stateLabel,
-    this.height = 200,
+    this.height = 132,
     this.onToggle,
   });
 
   final String name;
   final Widget icon;
   final bool on;
-  final double? brightness; // 0..1 (solo informa el stateLabel del caller)
+  final double? brightness; // 0..1 → altura del relleno
   final Color? color; // color real de la luz (default CceColors.warm)
   final bool reachable;
-  final String? stateLabel; // '80%' | 'Apagada' | 'Sin conexión'
+  final String? stateLabel; // 'Apagada' | 'Sin conexión' | null (encendida)
   final double height;
   final ValueChanged<bool>? onToggle; // null ⇒ switch deshabilitado
 
@@ -43,60 +43,76 @@ class LightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = color ?? CceColors.warm;
     final displayColor = reachable ? base : _muted(base);
-    final tinted = on;
-    // Foreground por luminancia del pastel medio: los tonos fríos/magenta de
-    // CceTint.pastel salen medio-oscuros y la tinta oscura fija ya no sirve.
-    final mid = CceTint.pastel(displayColor);
-    final fg = tinted ? CceTint.textOn(mid) : CceColors.textPrimary;
-    final fgSub = tinted ? CceTint.subTextOn(mid) : CceColors.textSecondary;
+    // Altura del relleno: brillo real (mínimo visible 0.10 para que se note).
+    final double fill =
+        on ? (brightness ?? 1.0).clamp(0.10, 1.0).toDouble() : 0.0;
+    // Texto oscuro solo si el relleno cubre el centro de la card (~mitad).
+    final darkText = on && fill >= 0.5;
+    final fg = darkText ? CceTint.inkOnPastel : CceColors.textPrimary;
+    final fgSub =
+        darkText ? CceTint.inkOnPastelSub : CceColors.textSecondary;
 
     return SizedBox(
       height: height,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: tinted ? null : CceColors.cardOff,
-          gradient: tinted ? CceGradients.huePastel([displayColor]) : null,
+          color: CceColors.cardOff,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
         ),
         child: Stack(
           children: [
+            // Relleno de brillo: sube desde abajo, gradiente pastel del color.
+            if (on)
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: FractionallySizedBox(
+                  heightFactor: fill,
+                  widthFactor: 1,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: CceGradients.huePastel([displayColor]),
+                    ),
+                  ),
+                ),
+              ),
+            // Contenido.
             Column(
               children: [
-                // Zona superior: ícono + nombre + estado, centrados.
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
+                    padding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         IconTheme.merge(
-                          data: IconThemeData(color: fg),
+                          data: IconThemeData(color: fg, size: 24),
                           child: icon,
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.1,
-                            height: 1.15,
-                            color: fg,
+                        const SizedBox(height: 6),
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.1,
+                              height: 1.15,
+                              color: fg,
+                            ),
                           ),
                         ),
                         if (stateLabel != null) ...[
-                          const SizedBox(height: 3),
+                          const SizedBox(height: 2),
                           Text(
                             stateLabel!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w500,
                               color: fgSub,
                             ),
@@ -106,25 +122,26 @@ class LightCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Franja inferior con el toggle a la izquierda (look Hue).
-                Container(
-                  height: 46,
-                  color: tinted
-                      ? Colors.black.withValues(alpha: 0.14)
-                      : Colors.white.withValues(alpha: 0.045),
-                  padding: const EdgeInsets.only(left: 8),
-                  alignment: Alignment.centerLeft,
-                  child: Transform.scale(
-                    scale: 0.78,
+                // Franja inferior: toggle a la izquierda (sobre el relleno).
+                SizedBox(
+                  height: 38,
+                  child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Switch.adaptive(
-                      value: on,
-                      onChanged: onToggle,
-                      activeTrackColor: tinted
-                          ? fg.withValues(alpha: 0.30)
-                          : null,
-                      thumbColor:
-                          const WidgetStatePropertyAll<Color>(Colors.white),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Transform.scale(
+                        scale: 0.72,
+                        alignment: Alignment.centerLeft,
+                        child: Switch.adaptive(
+                          value: on,
+                          onChanged: onToggle,
+                          activeTrackColor: darkText
+                              ? CceTint.inkOnPastel.withValues(alpha: 0.30)
+                              : null,
+                          thumbColor: const WidgetStatePropertyAll<Color>(
+                              Colors.white),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -133,9 +150,9 @@ class LightCard extends StatelessWidget {
             // Sin conexión: ícono chico arriba a la derecha (como Hue).
             if (!reachable)
               Positioned(
-                top: 10,
-                right: 10,
-                child: Icon(Icons.wifi_off, size: 15, color: fgSub),
+                top: 8,
+                right: 8,
+                child: Icon(Icons.wifi_off, size: 14, color: fgSub),
               ),
           ],
         ),
