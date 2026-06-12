@@ -343,7 +343,7 @@ class _LightColorScreenState extends State<LightColorScreen> {
           configuredIcon: widget.service.iconFor(cl.ids.first),
           customIcons: widget.service.customIcons,
           displayName: widget.service.displayName(d),
-          size: 22,
+          size: 24,
           color: const Color(0xFF1A1A1E),
         );
       }
@@ -432,7 +432,7 @@ class _LightColorScreenState extends State<LightColorScreen> {
     final lights = _roomLights();
     if (lights.length <= 1) return const SizedBox.shrink();
     return SizedBox(
-      height: 132,
+      height: 150,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -560,10 +560,11 @@ class _Marker extends StatelessWidget {
   final String? label; // contador (cluster > 1)
   const _Marker({this.child, this.label});
 
-  static const double w = 48; // ancho del lozenge
-  static const double lozengeH = 40; // alto del lozenge (zona del ícono)
-  static const double h = 66; // alto total con cola + aro
-  static const double tipY = 58; // centro del aro inferior (la punta)
+  static const double w = 52; // ancho del lozenge
+  static const double lozengeH = 46; // alto del lozenge (zona del ícono)
+  static const double h = 72; // alto total con cola + punto
+  static const double tipY = 64; // centro del punto inferior (la punta)
+  static const double tipR = 7; // radio del punto sólido
 
   @override
   Widget build(BuildContext context) {
@@ -571,7 +572,7 @@ class _Marker extends StatelessWidget {
       size: const Size(w, h),
       painter: _PinPainter(),
       child: Padding(
-        // Reserva la cola/aro abajo → el contenido queda en el lozenge.
+        // Reserva la cola/punto abajo → el contenido queda en el lozenge.
         padding: const EdgeInsets.only(bottom: h - lozengeH),
         child: Center(
           child: label != null
@@ -579,8 +580,8 @@ class _Marker extends StatelessWidget {
                   label!,
                   style: const TextStyle(
                     color: Color(0xFF1A1A1E),
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
                   ),
                 )
               : child,
@@ -590,49 +591,46 @@ class _Marker extends StatelessWidget {
   }
 }
 
-/// Pin estilo Hue: lozenge blanco con el ícono, cuello fino y un aro chico que
-/// marca el punto exacto de color. Sombra suave.
+/// Pin estilo Hue: lozenge blanco redondeado con el ícono, cuello que baja a un
+/// punto sólido blanco que marca el lugar exacto — todo una sola pieza con
+/// sombra suave.
 class _PinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
     const lozengeH = _Marker.lozengeH;
-    const ringCy = _Marker.tipY;
-    const ringR = 6.0;
+    const tipCy = _Marker.tipY;
+    const tipR = _Marker.tipR;
     final cx = w / 2;
 
-    // Lozenge (rounded rect) + cuello que baja hacia el aro.
     final lozenge = Path()
       ..addRRect(RRect.fromRectAndRadius(
         Rect.fromLTWH(0, 0, w, lozengeH),
-        const Radius.circular(14),
+        const Radius.circular(16),
       ));
+    // Cuello: trapecio de la base del lozenge hacia el punto.
     final neck = Path()
-      ..moveTo(cx - 7, lozengeH - 3)
-      ..lineTo(cx, ringCy - ringR + 1)
-      ..lineTo(cx + 7, lozengeH - 3)
+      ..moveTo(cx - 8, lozengeH - 4)
+      ..lineTo(cx - tipR * 0.7, tipCy)
+      ..lineTo(cx + tipR * 0.7, tipCy)
+      ..lineTo(cx + 8, lozengeH - 4)
       ..close();
-    final body = Path.combine(PathOperation.union, lozenge, neck);
+    final tip = Path()
+      ..addOval(Rect.fromCircle(center: Offset(cx, tipCy), radius: tipR));
 
-    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.40), 4, false);
+    var body = Path.combine(PathOperation.union, lozenge, neck);
+    body = Path.combine(PathOperation.union, body, tip);
+
+    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.42), 5, false);
     canvas.drawPath(body, Paint()..color = Colors.white);
-
-    // Aro de la punta (hueco) marcando el punto exacto.
+    // Anillo sutil en el punto para darle profundidad.
     canvas.drawCircle(
-      Offset(cx, ringCy),
-      ringR,
+      Offset(cx, tipCy),
+      tipR - 1.5,
       Paint()
-        ..color = Colors.white
+        ..color = Colors.black.withValues(alpha: 0.10)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
-    );
-    canvas.drawCircle(
-      Offset(cx, ringCy),
-      ringR,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.12)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 0.5,
+        ..strokeWidth = 1,
     );
   }
 
@@ -777,27 +775,40 @@ class _DeviceMiniCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 116,
+        width: 122,
         decoration: BoxDecoration(
           color: on ? null : CceColors.surface,
           gradient: on ? CceGradients.huePastel([tint]) : null,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
           border: Border.all(
-            color: selected ? Colors.white : CceColors.stroke,
-            width: selected ? 1.8 : 1,
+            color: selected
+                ? Colors.white
+                : (on
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : CceColors.stroke),
+            width: selected ? 2 : 1,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 10, 8, 4),
+                padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(height: 22, child: Center(child: iconBuilder(fg))),
-                    const SizedBox(height: 6),
+                    SizedBox(height: 26, child: Center(child: iconBuilder(fg))),
+                    const SizedBox(height: 8),
                     Text(
                       name,
                       maxLines: 2,
@@ -821,16 +832,13 @@ class _DeviceMiniCard extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(
-              height: 40,
-              child: Center(
-                child: _HueSwitch(
-                  value: on,
-                  onChanged: onToggle,
-                  onColor: on
-                      ? CceTint.inkOnPastel.withValues(alpha: 0.28)
-                      : null,
-                ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _HueSwitch(
+                value: on,
+                onChanged: onToggle,
+                onColor:
+                    on ? CceTint.inkOnPastel.withValues(alpha: 0.28) : null,
               ),
             ),
           ],
@@ -850,7 +858,7 @@ class _HueSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const w = 50.0, h = 30.0, thumb = 24.0;
+    const w = 54.0, h = 32.0, thumb = 26.0;
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
