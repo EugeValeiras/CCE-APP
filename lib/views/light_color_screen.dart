@@ -10,10 +10,11 @@ import '../theme/cce_tokens.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 
-/// Pantalla full-screen de configuración de color/temperatura de una luz,
-/// estilo Hue: disco HSV (modo color) o gradiente cálido↔frío (modo blanco),
-/// control de brillo a la derecha, y abajo la lista de luces que comparten la
-/// habitación (seleccionables para editar cualquiera sin salir).
+/// Pantalla full-screen de color/temperatura estilo Hue, con MULTI-SELECCIÓN:
+/// cada luz seleccionada tiene su propio marcador en el disco; al solaparlos
+/// se fusionan en un único pin con contador y se mueven juntos. El disco es
+/// HSV (modo color) o gradiente cálido↔frío (modo blanco). Abajo, la lista de
+/// luces del room (tap = sumar/quitar de la selección, switch = on/off).
 class LightColorScreen extends StatefulWidget {
   final Device device;
   final DevicesService service;
@@ -30,36 +31,30 @@ class LightColorScreen extends StatefulWidget {
 enum _Mode { color, white }
 
 class _LightColorScreenState extends State<LightColorScreen> {
-  late Device _selected;
-  late _Mode _mode;
-  late Color _color; // color actual (modo color)
-  late double _ct; // mireds 153..500 (modo blanco)
-  late double _bri; // 0..254
-  // Posición libre del marcador en modo blanco (fracción 0..1 del disco);
-  // null = centrado a la altura que corresponde al CT actual.
-  Offset? _whiteMarker;
+  // Luces seleccionadas (editables). Siempre ≥ 1.
+  final Set<String> _selected = {};
+  // Posición del marcador (fracción 0..1 del disco) por luz seleccionada.
+  final Map<String, Offset> _markerFrac = {};
+
+  _Mode _mode = _Mode.color;
+  double _bri = 254; // 0..254 (compartido en la UI)
+  List<String> _dragIds = const []; // grupo que se está arrastrando
 
   Timer? _debounce;
-
   static const double _ctMin = 153, _ctMax = 500;
 
   @override
   void initState() {
     super.initState();
-    _selected = widget.device;
-    _loadFrom(_selected);
-  }
-
-  void _loadFrom(Device d) {
-    final s = d.state;
-    final r = resolveLightColor(s);
-    _color = r.isWhite ? CceColors.warm : r.color;
-    _ct = (s.ct ?? 350).clamp(_ctMin, _ctMax).toDouble();
-    _bri = s.bri.toDouble().clamp(0, 254);
-    _whiteMarker = null; // re-centra el marcador al CT de la luz cargada
-    // Modo inicial: blanco si la luz está en CT, o si no soporta color.
-    final whiteMode = (r.isWhite && d.supportsCT) || !d.supportsColor;
-    _mode = whiteMode && d.supportsCT ? _Mode.white : _Mode.color;
+    _selected.add(widget.device.id);
+    _bri = widget.device.state.bri.toDouble().clamp(0, 254);
+    final r = resolveLightColor(widget.device.state);
+    _mode = ((r.isWhite && widget.device.supportsCT) ||
+                !widget.device.supportsColor) &&
+            widget.device.supportsCT
+        ? _Mode.white
+        : _Mode.color;
+    _recomputeMarkers();
   }
 
   @override
@@ -68,10 +63,179 @@ class _LightColorScreenState extends State<LightColorScreen> {
     super.dispose();
   }
 
-  // Live device (refrescado por el service) del seleccionado.
-  Device get _live => widget.service.byId(_selected.id) ?? _selected;
+  // ----- conversiones frac <-> color/ct -----
+  Offset _fracForColor(Color c) {
+    final hsv = HSVColor.fromColor(c);
+    final ang = hsv.hue * math.pi / 180.0;
+    final r = hsv.saturation * 0.5;
+    return Offset(0.5 + r * math.cos(ang), 0.5 + r * math.sin(ang));
+  }
 
-  /// Luces que comparten habitación con la luz original (o solo ella).
+  Color _colorForFrac(Offset f) {
+    final dx = f.dx - 0.5, dy = f.dy - 0.5;
+    final dist = math.sqrt(dx * dx + dy * dy);
+    final sat = (dist / 0.5).clamp(0.0, 1.0).toDouble();
+    final hue = (math.atan2(dy, dx) * 180.0 / math.pi + 360.0) % 360.0;
+    return HSVColor.fromAHSV(1.0, hue, sat, 1.0).toColor();
+  }
+
+  Offset _fracForCt(double ct) =>
+      Offset(0.5, ((_ctMax - ct) / (_ctMax - _ctMin)).clamp(0.0, 1.0));
+
+  double _ctForFrac(Offset f) =>
+      (_ctMax - f.dy * (_ctMax - _ctMin)).clamp(_ctMin, _ctMax);
+
+  /// (Re)calcula el marcador de cada luz seleccionada desde su estado real,
+  /// según el modo actual.
+  void _recomputeMarkers() {
+    for (final id in _selected) {
+      final d = widget.service.byId(id);
+      if (d == null) continue;
+      if (_mode == _Mode.color) {
+        final r = resolveLightColor(d.state);
+        _markerFrac[id] = _fracForColor(r.isWhite ? CceColors.warm : r.color);
+      } else {
+        _markerFrac[id] =
+            _fracForCt((d.state.ct ?? 350).clamp(_ctMin, _ctMax).toDouble());
+      }
+    }
+    _markerFrac.removeWhere((k, v) => !_selected.contains(k));
+  }
+
+  /// Aplica el color/temperatura (según el marcador) a las luces [ids].
+  void _applyToIds(Iterable<String> ids) {
+    for (final id in ids) {
+      final f = _markerFrac[id];
+      final d = widget.service.byId(id);
+      if (f == null || d == null) continue;
+      if (_mode == _Mode.color) {
+        final hsv = HSVColor.fromColor(_colorForFrac(f));
+        widget.service.setColor(
+          d,
+          hue: ((hsv.hue / 360) * 65535).round().clamp(0, 65535),
+          sat: (hsv.saturation * 254).round().clamp(0, 254),
+        );
+      } else {
+        widget.service.setCt(d, _ctForFrac(f).round());
+      }
+    }
+  }
+
+  // ----- interacción del disco -----
+  Offset _clampFrac(Offset f) {
+    final dx = f.dx - 0.5, dy = f.dy - 0.5;
+    final r = math.sqrt(dx * dx + dy * dy);
+    if (r <= 0.5 || r == 0) return f;
+    final k = 0.5 / r;
+    return Offset(0.5 + dx * k, 0.5 + dy * k);
+  }
+
+  void _onPanDown(Offset localFrac) {
+    // Engancha el grupo (cluster) cuyo pin esté más cerca del toque.
+    final clusters = _clusters();
+    if (clusters.isEmpty) {
+      _dragIds = _selected.toList();
+    } else {
+      var best = clusters.first;
+      var bestD = double.infinity;
+      for (final c in clusters) {
+        final d = (c.pos - localFrac).distance;
+        if (d < bestD) {
+          bestD = d;
+          best = c;
+        }
+      }
+      _dragIds = best.ids;
+    }
+    _drag(localFrac);
+  }
+
+  void _drag(Offset localFrac) {
+    final f = _clampFrac(localFrac);
+    setState(() {
+      for (final id in _dragIds) {
+        _markerFrac[id] = f;
+      }
+    });
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 150),
+        () => _applyToIds(_dragIds));
+  }
+
+  void _onPanEnd() {
+    _debounce?.cancel();
+    _applyToIds(_dragIds);
+  }
+
+  /// Agrupa las luces seleccionadas cuyos marcadores están muy cerca.
+  List<({Offset pos, List<String> ids})> _clusters() {
+    const thr = 0.07; // en fracción del disco
+    final out = <({Offset pos, List<String> ids})>[];
+    for (final id in _selected) {
+      final f = _markerFrac[id];
+      if (f == null) continue;
+      var placed = false;
+      for (var i = 0; i < out.length; i++) {
+        if ((out[i].pos - f).distance <= thr) {
+          final ids = [...out[i].ids, id];
+          // centroide
+          var cx = 0.0, cy = 0.0;
+          for (final j in ids) {
+            cx += _markerFrac[j]!.dx;
+            cy += _markerFrac[j]!.dy;
+          }
+          out[i] = (pos: Offset(cx / ids.length, cy / ids.length), ids: ids);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) out.add((pos: f, ids: [id]));
+    }
+    return out;
+  }
+
+  // ----- selección / brillo -----
+  void _toggleSelect(Device d) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      if (_selected.contains(d.id)) {
+        if (_selected.length > 1) {
+          _selected.remove(d.id);
+          _markerFrac.remove(d.id);
+        }
+      } else {
+        _selected.add(d.id);
+        final live = widget.service.byId(d.id) ?? d;
+        if (_mode == _Mode.color) {
+          final r = resolveLightColor(live.state);
+          _markerFrac[d.id] =
+              _fracForColor(r.isWhite ? CceColors.warm : r.color);
+        } else {
+          _markerFrac[d.id] = _fracForCt(
+              (live.state.ct ?? 350).clamp(_ctMin, _ctMax).toDouble());
+        }
+      }
+    });
+  }
+
+  void _onBrightness(double bri) => setState(() => _bri = bri.clamp(0, 254));
+
+  void _commitBrightness() {
+    for (final id in _selected) {
+      final d = widget.service.byId(id);
+      if (d != null) widget.service.setBrightness(d, _bri.round());
+    }
+  }
+
+  void _setMode(_Mode m) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _mode = m;
+      _recomputeMarkers();
+    });
+    _applyToIds(_selected); // aplicar el modo elegido a todas las seleccionadas
+  }
+
   List<Device> _roomLights() {
     final svc = widget.service;
     for (final room in svc.rooms) {
@@ -87,42 +251,13 @@ class _LightColorScreenState extends State<LightColorScreen> {
     return [widget.device];
   }
 
-  void _selectDevice(Device d) {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _selected = d;
-      _loadFrom(widget.service.byId(d.id) ?? d);
-    });
+  String _title() {
+    if (_selected.length == 1) {
+      final d = widget.service.byId(_selected.first);
+      return d != null ? widget.service.displayName(d) : 'Luz';
+    }
+    return '${_selected.length} luces';
   }
-
-  void _onColorChanged(Color c) {
-    setState(() => _color = c);
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 200), () {
-      final hsv = HSVColor.fromColor(c);
-      final hue = ((hsv.hue / 360) * 65535).round().clamp(0, 65535);
-      final sat = (hsv.saturation * 254).round().clamp(0, 254);
-      widget.service.setColor(_live, hue: hue, sat: sat);
-    });
-  }
-
-  /// Modo blanco: el marcador sigue el dedo en 2D (frac 0..1) y el CT sale de
-  /// la posición vertical (arriba = cálido).
-  void _onWhitePos(Offset frac) {
-    setState(() {
-      _whiteMarker = frac;
-      _ct = (_ctMax - frac.dy * (_ctMax - _ctMin)).clamp(_ctMin, _ctMax);
-    });
-  }
-
-  void _commitCt() => widget.service.setCt(_live, _ct.round());
-
-  void _onBrightness(double bri) {
-    setState(() => _bri = bri.clamp(0, 254));
-  }
-
-  void _commitBrightness() =>
-      widget.service.setBrightness(_live, _bri.round());
 
   @override
   Widget build(BuildContext context) {
@@ -132,39 +267,22 @@ class _LightColorScreenState extends State<LightColorScreen> {
         child: AnimatedBuilder(
           animation: widget.service,
           builder: (context, _) {
-            final d = _live;
             return Column(
               children: [
-                _topBar(d),
+                _topBar(),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, c) {
-                      final disk = math.min(c.maxWidth * 0.62, c.maxHeight * 0.62)
+                      final size = math
+                          .min(c.maxWidth * 0.62, c.maxHeight * 0.62)
                           .clamp(220.0, 420.0)
                           .toDouble();
                       return Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Spacer(),
-                          _ColorDisk(
-                            size: disk,
-                            mode: _mode,
-                            color: _color,
-                            ct: _ct,
-                            ctMin: _ctMin,
-                            ctMax: _ctMax,
-                            whiteMarker: _whiteMarker,
-                            iconData: IconResolver.resolve(
-                              d,
-                              configuredIcon: widget.service.iconFor(d.id),
-                              displayName: widget.service.displayName(d),
-                            ),
-                            onColor: _onColorChanged,
-                            onWhitePos: _onWhitePos,
-                            onCtEnd: _commitCt,
-                          ),
+                          _buildDisk(size),
                           const SizedBox(height: 28),
-                          _controlsRow(d),
+                          _controlsRow(),
                           const Spacer(),
                         ],
                       );
@@ -181,7 +299,74 @@ class _LightColorScreenState extends State<LightColorScreen> {
     );
   }
 
-  Widget _topBar(Device d) {
+  Widget _buildDisk(double size) {
+    // Marcadores: dots tenues para luces NO seleccionadas + pins (con
+    // contador si hay fusión) para las seleccionadas.
+    final markers = <Widget>[];
+
+    // Dots de luces del room no seleccionadas (referencia, no interactivos).
+    for (final d in _roomLights()) {
+      if (_selected.contains(d.id)) continue;
+      final live = widget.service.byId(d.id) ?? d;
+      final frac = _mode == _Mode.color
+          ? _fracForColor(() {
+              final r = resolveLightColor(live.state);
+              return r.isWhite ? CceColors.warm : r.color;
+            }())
+          : _fracForCt((live.state.ct ?? 350).clamp(_ctMin, _ctMax).toDouble());
+      markers.add(Positioned(
+        left: frac.dx * size - 6,
+        top: frac.dy * size - 6,
+        child: Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.55),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.15)),
+          ),
+        ),
+      ));
+    }
+
+    // Pins de las seleccionadas (clusterizadas).
+    final clusters = _clusters();
+    for (final cl in clusters) {
+      final bulb = cl.ids.length == 1
+          ? IconResolver.resolve(
+              widget.service.byId(cl.ids.first) ?? widget.device,
+              configuredIcon: widget.service.iconFor(cl.ids.first),
+              displayName: widget.service
+                  .displayName(widget.service.byId(cl.ids.first) ??
+                      widget.device),
+            )
+          : null;
+      markers.add(Positioned(
+        left: cl.pos.dx * size - 22,
+        top: cl.pos.dy * size - 30,
+        child: _Marker(
+          icon: bulb,
+          label: cl.ids.length > 1 ? '${cl.ids.length}' : null,
+        ),
+      ));
+    }
+
+    return _ColorDisk(
+      size: size,
+      mode: _mode,
+      glowColor: _mode == _Mode.color
+          ? (_selected.isNotEmpty && _markerFrac[_selected.first] != null
+              ? _colorForFrac(_markerFrac[_selected.first]!)
+              : CceColors.warm)
+          : CceColors.warm,
+      onPanDown: (local) => _onPanDown(Offset(local.dx / size, local.dy / size)),
+      onPanUpdate: (local) => _drag(Offset(local.dx / size, local.dy / size)),
+      onPanEnd: _onPanEnd,
+      markers: markers,
+    );
+  }
+
+  Widget _topBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Row(
@@ -193,7 +378,7 @@ class _LightColorScreenState extends State<LightColorScreen> {
           const SizedBox(width: 4),
           Expanded(
             child: Text(
-              widget.service.displayName(d),
+              _title(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: CceText.title,
@@ -212,35 +397,23 @@ class _LightColorScreenState extends State<LightColorScreen> {
     );
   }
 
-  Widget _controlsRow(Device d) {
-    final showSegmented = d.supportsColor && d.supportsCT;
+  Widget _controlsRow() {
+    final anyColor =
+        _selected.any((id) => widget.service.byId(id)?.supportsColor ?? false);
+    final anyCt =
+        _selected.any((id) => widget.service.byId(id)?.supportsCT ?? false);
+    final anyBri = _selected
+        .any((id) => widget.service.byId(id)?.supportsBrightness ?? false);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Row(
         children: [
-          if (showSegmented)
-            _ModeToggle(
-              mode: _mode,
-              onChanged: (m) {
-                HapticFeedback.selectionClick();
-                setState(() => _mode = m);
-                // Al cambiar a blanco, aplicar el CT actual; a color, el color.
-                if (m == _Mode.white) {
-                  _commitCt();
-                } else {
-                  final hsv = HSVColor.fromColor(_color);
-                  widget.service.setColor(
-                    _live,
-                    hue: ((hsv.hue / 360) * 65535).round().clamp(0, 65535),
-                    sat: (hsv.saturation * 254).round().clamp(0, 254),
-                  );
-                }
-              },
-            )
+          if (anyColor && anyCt)
+            _ModeToggle(mode: _mode, onChanged: _setMode)
           else
             const SizedBox.shrink(),
           const Spacer(),
-          if (d.supportsBrightness)
+          if (anyBri)
             _BrightnessPill(
               value: _bri,
               onChanged: _onBrightness,
@@ -272,8 +445,8 @@ class _LightColorScreenState extends State<LightColorScreen> {
             ),
             on: d.state.on,
             reachable: d.state.reachable,
-            selected: d.id == _selected.id,
-            onTap: () => _selectDevice(d),
+            selected: _selected.contains(d.id),
+            onTap: () => _toggleSelect(d),
             onToggle: (_) => widget.service.toggleLight(d),
           );
         },
@@ -282,34 +455,28 @@ class _LightColorScreenState extends State<LightColorScreen> {
   }
 }
 
-/// Disco interactivo: HSV (color) o gradiente vertical cálido↔frío (blanco).
+/// Disco que pinta el gradiente (HSV o cálido↔frío) y superpone [markers] ya
+/// posicionados; reporta los gestos en coordenadas locales (píxeles).
 class _ColorDisk extends StatelessWidget {
   final double size;
   final _Mode mode;
-  final Color color;
-  final double ct, ctMin, ctMax;
-  final Offset? whiteMarker; // posición libre del marcador en modo blanco
-  final IconData iconData;
-  final ValueChanged<Color> onColor;
-  final ValueChanged<Offset> onWhitePos; // frac 0..1 del disco
-  final VoidCallback onCtEnd;
+  final Color glowColor;
+  final List<Widget> markers;
+  final ValueChanged<Offset> onPanDown;
+  final ValueChanged<Offset> onPanUpdate;
+  final VoidCallback onPanEnd;
 
   const _ColorDisk({
     required this.size,
     required this.mode,
-    required this.color,
-    required this.ct,
-    required this.ctMin,
-    required this.ctMax,
-    required this.whiteMarker,
-    required this.iconData,
-    required this.onColor,
-    required this.onWhitePos,
-    required this.onCtEnd,
+    required this.glowColor,
+    required this.markers,
+    required this.onPanDown,
+    required this.onPanUpdate,
+    required this.onPanEnd,
   });
 
-  // Rainbow del SweepGradient (debe coincidir con el cálculo de hue del drag).
-  static const List<Color> _wheel = [
+  static const List<Color> wheel = [
     Color(0xFFFF0000),
     Color(0xFFFFFF00),
     Color(0xFF00FF00),
@@ -319,98 +486,45 @@ class _ColorDisk extends StatelessWidget {
     Color(0xFFFF0000),
   ];
 
-  /// Restringe [local] al interior del disco (centro, radio size/2).
-  Offset _clampToCircle(Offset local) {
-    final c = size / 2;
-    final dx = local.dx - c;
-    final dy = local.dy - c;
-    final r = math.sqrt(dx * dx + dy * dy);
-    final maxR = size / 2;
-    if (r <= maxR || r == 0) return local;
-    final k = maxR / r;
-    return Offset(c + dx * k, c + dy * k);
-  }
-
-  void _handle(Offset local) {
-    final c = size / 2;
-    if (mode == _Mode.white) {
-      // El marcador sigue el dedo en 2D (clampeado al disco); la temperatura
-      // sale de la posición vertical (arriba = cálido, abajo = frío).
-      final p = _clampToCircle(local);
-      onWhitePos(Offset(p.dx / size, p.dy / size));
-      return;
-    }
-    final p = _clampToCircle(local);
-    final dx = p.dx - c;
-    final dy = p.dy - c;
-    final r = math.sqrt(dx * dx + dy * dy);
-    final sat = (r / (size / 2)).clamp(0.0, 1.0).toDouble();
-    var hue = math.atan2(dy, dx) * 180.0 / math.pi;
-    hue = (hue + 360.0) % 360.0;
-    onColor(HSVColor.fromAHSV(1.0, hue, sat, 1.0).toColor());
-  }
-
-  Offset _markerPos() {
-    final c = size / 2;
-    if (mode == _Mode.white) {
-      if (whiteMarker != null) {
-        return Offset(whiteMarker!.dx * size, whiteMarker!.dy * size);
-      }
-      // Sin posición libre aún: centrado a la altura del CT actual.
-      final frac = ((ctMax - ct) / (ctMax - ctMin)).clamp(0.0, 1.0);
-      return Offset(c, frac * size);
-    }
-    final hsv = HSVColor.fromColor(color);
-    final ang = hsv.hue * math.pi / 180.0;
-    final r = hsv.saturation * (size / 2);
-    return Offset(c + r * math.cos(ang), c + r * math.sin(ang));
-  }
-
   @override
   Widget build(BuildContext context) {
-    final marker = _markerPos();
     return GestureDetector(
-      onPanDown: (d) => _handle(d.localPosition),
-      onPanUpdate: (d) => _handle(d.localPosition),
-      onPanEnd: (_) {
-        if (mode == _Mode.white) onCtEnd();
-      },
+      onPanDown: (d) => onPanDown(d.localPosition),
+      onPanUpdate: (d) => onPanUpdate(d.localPosition),
+      onPanEnd: (_) => onPanEnd(),
       child: SizedBox(
         width: size,
         height: size,
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // Disco
             Container(
               width: size,
               height: size,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: mode == _Mode.color
-                    ? const SweepGradient(colors: _wheel)
+                    ? const SweepGradient(colors: wheel)
                     : const LinearGradient(
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Color(0xFFFFD08A), // cálido
+                          Color(0xFFFFD08A),
                           Color(0xFFFFF3E0),
                           Colors.white,
-                          Color(0xFFD6ECFF), // frío
+                          Color(0xFFD6ECFF),
                         ],
                         stops: [0.0, 0.42, 0.6, 1.0],
                       ),
                 boxShadow: [
                   BoxShadow(
-                    color: (mode == _Mode.color ? color : CceColors.warm)
-                        .withValues(alpha: 0.35),
+                    color: glowColor.withValues(alpha: 0.35),
                     blurRadius: 60,
                     spreadRadius: 4,
                   ),
                 ],
               ),
             ),
-            // Saturación: blanco al centro → transparente al borde (solo color).
             if (mode == _Mode.color)
               Container(
                 width: size,
@@ -423,12 +537,7 @@ class _ColorDisk extends StatelessWidget {
                   ),
                 ),
               ),
-            // Marcador (pin con la luminaria).
-            Positioned(
-              left: marker.dx - 22,
-              top: marker.dy - 30,
-              child: _Marker(icon: iconData),
-            ),
+            ...markers,
           ],
         ),
       ),
@@ -437,8 +546,9 @@ class _ColorDisk extends StatelessWidget {
 }
 
 class _Marker extends StatelessWidget {
-  final IconData icon;
-  const _Marker({required this.icon});
+  final IconData? icon;
+  final String? label; // contador si hay luces fusionadas
+  const _Marker({this.icon, this.label});
   @override
   Widget build(BuildContext context) {
     return SizedBox(
@@ -447,8 +557,25 @@ class _Marker extends StatelessWidget {
       child: CustomPaint(
         painter: _PinPainter(),
         child: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Icon(icon, color: const Color(0xFF1A1A1E), size: 22),
+          padding: const EdgeInsets.only(top: 7),
+          child: Center(
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Center(
+                child: label != null
+                    ? Text(
+                        label!,
+                        style: const TextStyle(
+                          color: Color(0xFF1A1A1E),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                    : Icon(icon, color: const Color(0xFF1A1A1E), size: 22),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -473,7 +600,6 @@ class _PinPainter extends CustomPainter {
       ..close();
     canvas.drawPath(path.shift(const Offset(0, 2)), shadow);
     canvas.drawPath(path, paint);
-    // Aro sutil.
     canvas.drawCircle(
       Offset(size.width / 2, r),
       r - 1,
@@ -488,7 +614,6 @@ class _PinPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// Toggle color/blanco (pill con círculo arcoíris + círculo ámbar).
 class _ModeToggle extends StatelessWidget {
   final _Mode mode;
   final ValueChanged<_Mode> onChanged;
@@ -508,7 +633,7 @@ class _ModeToggle extends StatelessWidget {
           _opt(
             selected: mode == _Mode.color,
             onTap: () => onChanged(_Mode.color),
-            gradient: const SweepGradient(colors: _ColorDisk._wheel),
+            gradient: const SweepGradient(colors: _ColorDisk.wheel),
           ),
           const SizedBox(width: 6),
           _opt(
@@ -549,7 +674,6 @@ class _ModeToggle extends StatelessWidget {
   }
 }
 
-/// Pill de brillo: drag vertical, muestra el % arriba.
 class _BrightnessPill extends StatelessWidget {
   final double value; // 0..254
   final ValueChanged<double> onChanged;
@@ -600,7 +724,6 @@ class _BrightnessPill extends StatelessWidget {
   }
 }
 
-/// Card mini de luz en la fila inferior (selección + toggle).
 class _DeviceMiniCard extends StatelessWidget {
   final String name;
   final IconData icon;
