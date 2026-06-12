@@ -1,20 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/device.dart';
+import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 
-/// Card "clima de la casa": temperatura + humedad actuales tomadas de los
-/// sensores que reporten. Se auto-oculta si no hay lecturas.
+/// Card "clima": temperatura + humedad actuales. Si [room] != null toma solo
+/// los sensores de esa habitación; si es null, toda la casa. Se auto-oculta
+/// si no hay lecturas. [compact] reduce el alto para vivir en el header.
 class TemperatureSummaryCard extends StatelessWidget {
   final DevicesService service;
-  const TemperatureSummaryCard({super.key, required this.service});
+  final RoomRef? room;
+  final bool compact;
+  const TemperatureSummaryCard({
+    super.key,
+    required this.service,
+    this.room,
+    this.compact = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final tempSensors = service.sensors.where((s) => s.sensor?.temperature != null).toList();
-    final humSensors = service.sensors.where((s) => s.sensor?.humidity != null).toList();
+    // Sensores en el alcance: los de la room (por deviceIds) o toda la casa.
+    final scoped = room == null
+        ? service.sensors
+        : service.sensors
+            .where((s) => room!.deviceIds.contains(s.id))
+            .toList();
+    final tempSensors =
+        scoped.where((s) => s.sensor?.temperature != null).toList();
+    final humSensors =
+        scoped.where((s) => s.sensor?.humidity != null).toList();
     if (tempSensors.isEmpty && humSensors.isEmpty) return const SizedBox.shrink();
 
     final primary = tempSensors.isNotEmpty ? tempSensors.first : null;
@@ -25,19 +42,11 @@ class TemperatureSummaryCard extends StatelessWidget {
     final primaryHum = primaryHumDevice.sensor?.humidity;
     final primaryTemp = primary?.sensor?.temperature;
 
-    // Nombre del sensor UNA sola vez, como contexto chico a la derecha
-    // (antes salía "Office thermometer" duplicado como label de ambas
-    // lecturas, sobre un gradiente marrón).
-    final sensorName = primary != null
-        ? service.displayName(primary)
-        : (primaryHumDevice.id.isEmpty
-            ? null
-            : service.displayName(primaryHumDevice));
-
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.symmetric(vertical: compact ? 0 : 8),
       child: CceCard(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
+        padding: EdgeInsets.symmetric(
+            horizontal: 22, vertical: compact ? 12 : 16),
         border: true,
         color: CceColors.surface,
         child: Row(
@@ -51,12 +60,13 @@ class TemperatureSummaryCard extends StatelessWidget {
                   unit: '°C',
                   label: 'Temperatura',
                   color: _desaturate(_colorForTemp(primaryTemp)),
+                  compact: compact,
                 ),
               ),
             if (primaryTemp != null && primaryHum != null)
               Container(
                 width: 1,
-                height: 56,
+                height: compact ? 40 : 56,
                 color: CceColors.stroke,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
               ),
@@ -68,15 +78,7 @@ class TemperatureSummaryCard extends StatelessWidget {
                   unit: '%',
                   label: 'Humedad',
                   color: CceColors.info,
-                ),
-              ),
-            if (sensorName != null)
-              Padding(
-                padding: const EdgeInsets.only(left: 12),
-                child: Text(
-                  sensorName,
-                  style: CceText.caption
-                      .copyWith(color: CceColors.textTertiary),
+                  compact: compact,
                 ),
               ),
           ],
@@ -111,12 +113,14 @@ class _HeroReading extends StatelessWidget {
   final String unit;
   final String label;
   final Color color;
+  final bool compact;
   const _HeroReading({
     required this.icon,
     required this.value,
     required this.unit,
     required this.label,
     required this.color,
+    this.compact = false,
   });
 
   @override
@@ -137,7 +141,7 @@ class _HeroReading extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        SizedBox(height: compact ? 3 : 6),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
@@ -145,7 +149,7 @@ class _HeroReading extends StatelessWidget {
             Text(
               value,
               style: CceText.display.copyWith(
-                fontSize: 38,
+                fontSize: compact ? 30 : 38,
                 height: 1.0,
                 letterSpacing: -1.2,
               ),

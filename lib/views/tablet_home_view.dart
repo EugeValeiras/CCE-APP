@@ -9,7 +9,6 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_segmented.dart';
 import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
-import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'agent/chat_screen.dart';
@@ -370,9 +369,7 @@ class _AllHouseLights extends StatelessWidget {
 
     return CustomScrollView(
       slivers: [
-        SliverToBoxAdapter(
-          child: ScenesSection(service: service),
-        ),
+        // En "Toda la casa" no se muestran escenas (son por habitación).
         if (lights.isNotEmpty) ...[
           const SliverToBoxAdapter(
             child: SectionHeader(title: 'Luces'),

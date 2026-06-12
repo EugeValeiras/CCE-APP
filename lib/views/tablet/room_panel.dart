@@ -11,6 +11,7 @@ import '../../theme/components/section_header.dart';
 import '../../widgets/light_tile.dart';
 import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
+import '../../widgets/temperature_summary_card.dart';
 import '../floor_plan_tab.dart';
 
 /// Panel derecho de la tab Casa cuando hay una habitacion seleccionada:
@@ -131,6 +132,16 @@ class RoomPanel extends StatelessWidget {
                     onPressed: onRefresh,
                   ),
                 ],
+              ),
+            ),
+            // Banner de clima de la habitación (se auto-oculta si la room no
+            // tiene termómetro/higrómetro).
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+              child: TemperatureSummaryCard(
+                service: service,
+                room: room,
+                compact: true,
               ),
             ),
             Expanded(
