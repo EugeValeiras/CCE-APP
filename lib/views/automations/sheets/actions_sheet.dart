@@ -516,8 +516,9 @@ class _ActionsSheetState extends State<_ActionsSheet> {
           physics: const NeverScrollableScrollPhysics(),
           buildDefaultDragHandles: false,
           itemCount: draft.actions.length,
-          // onReorderItem ya entrega newIndex ajustado por el item removido.
-          onReorderItem: (oldIndex, newIndex) => setState(() {
+          // onReorder entrega newIndex SIN ajustar por el item removido.
+          onReorder: (oldIndex, newIndex) => setState(() {
+            if (newIndex > oldIndex) newIndex -= 1;
             final item = draft.actions.removeAt(oldIndex);
             draft.actions.insert(newIndex, item);
           }),
