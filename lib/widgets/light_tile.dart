@@ -7,13 +7,13 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/light_card.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
-import 'light_detail_sheet.dart';
+import '../views/light_color_screen.dart';
 import 'pulse_on_update.dart';
 
 /// Tile de luz estilo Hue (los gestos viven acá; el render es [LightCard]).
-/// - Tap: prender/apagar
-/// - Long-press: sheet de color/brillo
-/// - Drag vertical: brillo (arriba = más, abajo = menos)
+/// - Tap (sobre la card): abre la pantalla de color/temperatura.
+/// - Switch (franja inferior): prende/apaga.
+/// - Drag vertical: brillo (arriba = más, abajo = menos).
 /// - El fill de fondo refleja el color real de la luz.
 class LightTile extends StatefulWidget {
   final Device device;
@@ -75,18 +75,20 @@ class _LightTileState extends State<LightTile> {
     setState(() {});
   }
 
-  void _onTap() {
+  void _toggle() {
     HapticFeedback.selectionClick();
     widget.service.toggleLight(widget.device);
   }
 
-  void _openDetail() {
+  void _openColor() {
     HapticFeedback.mediumImpact();
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (_) => LightDetailSheet(device: widget.device, service: widget.service),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LightColorScreen(
+          device: widget.device,
+          service: widget.service,
+        ),
+      ),
     );
   }
 
@@ -119,8 +121,8 @@ class _LightTileState extends State<LightTile> {
       color: on ? color : CceColors.info,
       borderRadius: CceRadii.hueCard,
       child: GestureDetector(
-        onTap: reachable ? _onTap : null,
-        onLongPress: reachable ? _openDetail : null,
+        // Tap en la card abre la pantalla de color (también offline, como Hue).
+        onTap: _openColor,
         onVerticalDragStart: reachable ? _onVerticalDragStart : null,
         onVerticalDragUpdate: reachable ? _onVerticalDragUpdate : null,
         onVerticalDragEnd: reachable ? _onVerticalDragEnd : null,
@@ -133,7 +135,8 @@ class _LightTileState extends State<LightTile> {
           reachable: reachable,
           stateLabel: stateLabel,
           height: widget.height,
-          onToggle: reachable ? (_) => _onTap() : null,
+          // El switch de la franja prende/apaga directo.
+          onToggle: reachable ? (_) => _toggle() : null,
         ),
       ),
     );
