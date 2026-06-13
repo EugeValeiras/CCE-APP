@@ -4,6 +4,22 @@ import '../models/jbl_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 
+/// Allowlist de ids del remote JBL (espejo del enum compartido del backend —
+/// ver remote-keys.ts / contrato 0.1). El `deviceKey` real vive SOLO
+/// server-side: la app sólo manda estos ids.
+abstract final class JblRemoteKeys {
+  static const String playpause = 'playpause';
+  static const String tv = 'tv';
+  static const String hdmi = 'hdmi';
+  static const String bluetooth = 'bluetooth';
+  static const String atmos = 'atmos';
+  static const String bass = 'bass';
+  static const String rear = 'rear';
+  static const String calibrate = 'calibrate';
+  static const String surround = 'surround';
+  static const String smart = 'smart';
+}
+
 /// Estado del soundbar JBL con polling controlable (5s). El soundbar NO emite
 /// por socket: el estado se obtiene por polling de getJblStatus.
 ///
@@ -203,7 +219,10 @@ class JblService extends ChangeNotifier {
 
   /// Sin optimismo; refresh tras éxito. Funciona offline server-side; un 502
   /// (barra inalcanzable) devuelve false sin setear _error global.
-  Future<bool> playRadio(String name) async {
+  ///
+  /// [name] opcional: sin nombre reproduce la radio favorita por defecto del
+  /// backend (Heart/favorito → POST /jbl/radio/play sin body).
+  Future<bool> playRadio([String? name]) async {
     try {
       await _api.playJblRadio(name: name);
       await refresh();
@@ -212,6 +231,21 @@ class JblService extends ChangeNotifier {
       debugPrint('JblService playRadio error: $e');
       return false;
     }
+  }
+
+  /// Envía una tecla del remote (allowlist [JblRemoteKeys]). NO gatea por
+  /// `online`: varias teclas (tv/hdmi/bluetooth/playpause) despiertan la barra
+  /// desde standby. Gatea sólo por estado conocido (`_status != null`); el
+  /// backend devuelve `ok:false` sin romper si la barra rechaza/está offline.
+  /// Sin optimismo de estado (son press momentáneos/toggle sin lectura).
+  Future<bool> sendRemoteKey(String id) async {
+    if (_status == null) return false;
+    final ok = await _api.jblSendRemoteKey(id);
+    // playpause puede cambiar el transporte: refrescamos para reflejarlo.
+    if (ok && id == JblRemoteKeys.playpause) {
+      await refresh();
+    }
+    return ok;
   }
 
   Future<bool> saveCurrentRadio() async {

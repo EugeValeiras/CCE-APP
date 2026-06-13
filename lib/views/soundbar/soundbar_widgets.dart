@@ -100,172 +100,297 @@ class _SoundbarHeaderCard extends StatelessWidget {
   }
 }
 
-// ── Volumen ─────────────────────────────────────────────────────────────────
+// ── Remote Control (grilla neumórfica de 2 columnas) ────────────────────────
 
-/// Card de volumen: slider 0..100, botones −/+ y botón mute. Si el transporte
-/// UPnP de volumen falló ([JblService.hasVolume] == false) se atenúa el slider
-/// y se muestra "Volumen no disponible".
-class _VolumeCard extends StatelessWidget {
-  const _VolumeCard({required this.service});
+/// Grilla del control remoto: 2 columnas que replican el remote oficial del
+/// JBL. Cada botón circular es un [CceNeoSvgIconButton] (variante SVG icons0,
+/// NO toca los defaults de [CceNeoIconButton]). El fondo es transparente: la
+/// pantalla ya pinta [CceColors.neoBase].
+///
+/// Power/Vol/Mute reusan los métodos existentes del service; el resto de las
+/// teclas van por `sendRemoteKey(id)`; el Heart/favorito por `playRadio()`.
+class _RemoteGrid extends StatelessWidget {
+  const _RemoteGrid({required this.service});
 
   final JblService service;
 
   @override
   Widget build(BuildContext context) {
-    final hasVolume = service.hasVolume;
     final muted = service.muted;
+    final isOn = service.isOn;
 
-    return CceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    // Cada fila = par de celdas (izquierda, derecha). null = celda vacía.
+    final rows = <List<Widget?>>[
+      [
+        _PowerKey(service: service, isOn: isOn),
+        _RemoteKeyButton(
+          svg: CceIcons.tv,
+          label: 'TV',
+          onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.plus,
+          label: 'Vol +',
+          onTap: () => _handle(service.nudgeVolume(5), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.minus,
+          label: 'Vol −',
+          onTap: () => _handle(service.nudgeVolume(-5), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.bluetooth,
+          label: 'Bluetooth',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.bluetooth), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.hdmi,
+          label: 'HDMI',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: muted ? CceIcons.volumeX : CceIcons.volume2,
+          label: muted ? 'Silenciado' : 'Mute',
+          iconColor: muted ? CceColors.danger : null,
+          onTap: () => _handle(service.toggleMute(), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.play,
+          label: 'Play',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.playpause), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.atmos,
+          label: 'ATMOS',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.heart,
+          label: 'Favorito',
+          iconColor: CceColors.danger,
+          onTap: () => _handle(service.playRadio(), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.bass,
+          label: 'BASS',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.bass), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.calibrate,
+          label: 'CALIBR',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.calibrate), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.rear,
+          label: 'REAR',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.rear), context),
+        ),
+        _RemoteKeyButton(
+          svg: CceIcons.surround,
+          label: 'Surround',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
+        ),
+      ],
+      [
+        _RemoteKeyButton(
+          svg: CceIcons.smart,
+          label: 'Smart',
+          onTap: () =>
+              _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
+        ),
+        null,
+      ],
+    ];
+
+    return Column(
+      children: [
+        for (final row in rows) ...[
           Row(
             children: [
-              Text('Volumen', style: CceText.caption),
-              const Spacer(),
-              if (hasVolume)
-                Text(
-                  '${service.volume}%',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: CceColors.textPrimary,
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (hasVolume) ...[
-            CceBrightnessSlider(
-              value: (service.volume / 100).clamp(0.0, 1.0),
-              activeColor: CceColors.accent,
-              onChanged: (v) => service.setVolume((v * 100).round()),
-              onChangeEnd: (v) => service.setVolume((v * 100).round()),
-            ),
-          ] else ...[
-            Opacity(
-              opacity: 0.4,
-              child: IgnorePointer(
-                child: CceBrightnessSlider(
-                  value: 0,
-                  activeColor: CceColors.accent,
-                  onChanged: (_) {},
-                ),
+              Expanded(
+                child: Center(child: row[0] ?? const SizedBox.shrink()),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text('Volumen no disponible', style: CceText.caption),
-          ],
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _NudgeButton(
-                icon: CceIcons.minus,
-                semanticLabel: 'Bajar volumen',
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  _handle(service.nudgeVolume(-5), context);
-                },
-              ),
-              const SizedBox(width: 12),
-              _NudgeButton(
-                icon: CceIcons.plus,
-                semanticLabel: 'Subir volumen',
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  _handle(service.nudgeVolume(5), context);
-                },
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _handle(service.toggleMute(), context),
-                icon: CceIcon(
-                  muted ? CceIcons.volumeX : CceIcons.volume2,
-                  size: 18,
-                  color:
-                      muted ? CceColors.danger : CceColors.textSecondary,
-                ),
-                label: Text(
-                  muted ? 'Silenciado' : 'Silenciar',
-                  style: TextStyle(
-                    color:
-                        muted ? CceColors.danger : CceColors.textSecondary,
-                  ),
-                ),
+              Expanded(
+                child: Center(child: row[1] ?? const SizedBox.shrink()),
               ),
             ],
           ),
+          const SizedBox(height: 20),
         ],
-      ),
+      ],
     );
   }
 }
 
-/// Botón circular −/+ del volumen.
-class _NudgeButton extends StatelessWidget {
-  const _NudgeButton({
-    required this.icon,
-    required this.semanticLabel,
+/// Celda del remote: botón circular neumórfico SVG + label opcional debajo.
+class _RemoteKeyButton extends StatelessWidget {
+  const _RemoteKeyButton({
+    required this.svg,
     required this.onTap,
+    this.label,
+    this.iconColor,
   });
 
-  final String icon;
-  final String semanticLabel;
+  final String svg;
+  final String? label;
+  final Color? iconColor;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return CceCard(
-      color: CceColors.surfaceHigh,
-      radius: CceRadii.pill,
-      padding: const EdgeInsets.all(12),
-      onTap: onTap,
-      child: Semantics(
-        button: true,
-        label: semanticLabel,
-        child: CceIcon(icon, size: 22, color: CceColors.textPrimary),
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CceNeoSvgIconButton(
+          svg: svg,
+          tooltip: label,
+          iconColor: iconColor,
+          onPressed: onTap,
+        ),
+        if (label != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            label!,
+            style: CceText.caption.copyWith(color: CceColors.neoTextSub),
+          ),
+        ],
+      ],
     );
   }
 }
 
-// ── Power ───────────────────────────────────────────────────────────────────
+/// Celda Power: envuelve el [CceNeoSvgIconButton] con el glow on cuando la
+/// barra está encendida (reusa el patrón del antiguo _PowerButton).
+class _PowerKey extends StatelessWidget {
+  const _PowerKey({required this.service, required this.isOn});
 
-/// Botón de encendido/apagado del parlante. Glow suave cuando está encendido.
-class _PowerButton extends StatelessWidget {
-  const _PowerButton({required this.service});
+  final JblService service;
+  final bool isOn;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: isOn ? CceShadows.glowOn(CceColors.ok) : null,
+          ),
+          child: CceNeoSvgIconButton(
+            svg: CceIcons.power,
+            tooltip: isOn ? 'Apagar' : 'Encender',
+            iconColor: isOn ? CceColors.ok : null,
+            onPressed: () => _handle(service.togglePower(), context),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          isOn ? 'Apagar' : 'Power',
+          style: CceText.caption.copyWith(color: CceColors.neoTextSub),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Sintonización (botón + bottom sheet de radios) ──────────────────────────
+
+/// Botón "Sintonización": abre el bottom sheet neumórfico con las radios.
+class _TuningButton extends StatelessWidget {
+  const _TuningButton({required this.service});
 
   final JblService service;
 
   @override
   Widget build(BuildContext context) {
-    final isOn = service.isOn;
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(CceRadii.control),
-        boxShadow: isOn ? CceShadows.glowOn(CceColors.ok) : null,
-      ),
-      child: FilledButton.tonal(
+    return Center(
+      child: CceNeoActionButton(
+        label: 'Sintonización',
         onPressed: () {
-          HapticFeedback.mediumImpact();
-          _handle(service.togglePower(), context);
+          HapticFeedback.selectionClick();
+          _openRadioSheet(context, service);
         },
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CceIcon(
-              CceIcons.power,
-              size: 20,
-              color: isOn ? CceColors.ok : CceColors.textSecondary,
-            ),
-            const SizedBox(width: 10),
-            Text(isOn ? 'Apagar' : 'Encender'),
-          ],
-        ),
       ),
     );
   }
+}
+
+/// Bottom sheet neumórfico (fondo neoBase) con las radios guardadas: tocar
+/// reproduce, mantener presionado borra (con confirmación). Funciona online y
+/// offline (las radios son server-side) — NO se gatea por online.
+Future<void> _openRadioSheet(BuildContext context, JblService service) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: CceColors.neoBase,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+    ),
+    builder: (sheetCtx) {
+      // El sheet escucha al service para reflejar guardar/borrar radios.
+      return AnimatedBuilder(
+        animation: service,
+        builder: (context, _) => SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: CceColors.neoTextSub,
+                      borderRadius: BorderRadius.circular(CceRadii.pill),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('Sintonización', style: CceText.title),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          _handle(service.saveCurrentRadio(), context),
+                      child: const Text('Guardar la actual'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Flexible(child: _RadioList(service: service, sheet: true)),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }
 
 // ── Radios ──────────────────────────────────────────────────────────────────
@@ -274,9 +399,13 @@ class _PowerButton extends StatelessWidget {
 /// long-press (con confirmación). Funciona aún con la barra offline
 /// (server-side); el 502 se reporta vía SnackBar.
 class _RadioList extends StatelessWidget {
-  const _RadioList({required this.service});
+  const _RadioList({required this.service, this.sheet = false});
 
   final JblService service;
+
+  /// Cuando se monta dentro del bottom sheet: lista scrolleable y al tocar una
+  /// radio se cierra el sheet.
+  final bool sheet;
 
   @override
   Widget build(BuildContext context) {
@@ -290,19 +419,25 @@ class _RadioList extends StatelessWidget {
     // [CRÍTICA-13] capturar en local antes de comparar con cada item.
     final src = service.source;
 
-    return Column(
-      children: [
-        for (final r in radios) ...[
-          _RadioTile(
-            radio: r,
-            playing: src != null && src == r.name,
-            onTap: () => _handle(service.playRadio(r.name), context),
-            onLongPress: () => _confirmDelete(context, r),
-          ),
-          const SizedBox(height: 12),
-        ],
+    final tiles = <Widget>[
+      for (final r in radios) ...[
+        _RadioTile(
+          radio: r,
+          playing: src != null && src == r.name,
+          onTap: () {
+            _handle(service.playRadio(r.name), context);
+            if (sheet) Navigator.of(context).maybePop();
+          },
+          onLongPress: () => _confirmDelete(context, r),
+        ),
+        const SizedBox(height: 12),
       ],
-    );
+    ];
+
+    if (sheet) {
+      return ListView(shrinkWrap: true, children: tiles);
+    }
+    return Column(children: tiles);
   }
 
   Future<void> _confirmDelete(BuildContext context, JblRadio r) async {

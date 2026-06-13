@@ -5,9 +5,8 @@ import '../../models/jbl_status.dart';
 import '../../services/jbl_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
-import '../../theme/components/brightness_slider.dart';
 import '../../theme/components/cce_card.dart';
-import '../../theme/components/section_header.dart';
+import '../../theme/components/cce_neo_button.dart';
 import '../../theme/components/status_dot.dart';
 import '../../theme/components/status_pill.dart';
 
@@ -45,7 +44,9 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
   Widget build(BuildContext context) {
     final service = widget.service;
     return Scaffold(
+      backgroundColor: CceColors.neoBase,
       appBar: AppBar(
+        backgroundColor: CceColors.neoBase,
         toolbarHeight: 64,
         title: const Text('Sonido', style: CceText.display),
         actions: [
@@ -85,7 +86,9 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
     }
 
     // [CRÍTICA-10] Rama 3: la barra respondió pero está offline (standby /
-    // inalcanzable a nivel UPnP). Las radios SÍ se muestran (server-side).
+    // inalcanzable a nivel UPnP). El remote SÍ se monta: varias teclas
+    // (tv/hdmi/bluetooth/playpause) despiertan la barra desde standby
+    // (sendRemoteKey no gatea por online). Las radios funcionan server-side.
     if (!service.online) {
       return ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -94,31 +97,23 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
             service: service,
             onConfigureIp: () => showIpDialog(context, service),
           ),
-          const SectionHeader(title: 'Radios'),
-          _RadioList(service: service),
+          const SizedBox(height: 16),
+          _RemoteGrid(service: service),
+          const SizedBox(height: 20),
+          _TuningButton(service: service),
         ],
       );
     }
 
-    // Rama 4: online — controles completos.
+    // Rama 4: online — Remote Control completo.
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         _SoundbarHeaderCard(service: service),
-        const SizedBox(height: 12),
-        _VolumeCard(service: service),
-        const SizedBox(height: 12),
-        _PowerButton(service: service),
-        SectionHeader(
-          title: 'Radios',
-          trailing: TextButton(
-            onPressed: service.canCommand
-                ? () => _handle(service.saveCurrentRadio(), context)
-                : null,
-            child: const Text('Guardar la actual'),
-          ),
-        ),
-        _RadioList(service: service),
+        const SizedBox(height: 20),
+        _RemoteGrid(service: service),
+        const SizedBox(height: 20),
+        _TuningButton(service: service),
       ],
     );
   }

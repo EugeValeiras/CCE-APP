@@ -337,6 +337,21 @@ class ApiService {
     return data['muted'] as bool;
   }
 
+  /// Envía una tecla del remote (allowlist server-side). El backend responde
+  /// 200 con { ok } incluso si la barra está offline/rechaza (NUNCA 5xx por
+  /// barra inalcanzable). Devuelve `ok == true` si la barra aceptó.
+  Future<bool> jblSendRemoteKey(String id) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/remote'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'key': id}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return data['ok'] == true;
+  }
+
   Future<void> jblPowerToggle() async {
     final resp = await http
         .post(Uri.parse('${config.baseUrl}/jbl/power/toggle'))
