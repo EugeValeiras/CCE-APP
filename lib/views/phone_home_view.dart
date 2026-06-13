@@ -4,6 +4,7 @@ import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/socket_service.dart';
 import '../theme/cce_icons.dart';
+import '../theme/cce_tokens.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'history_screen.dart';
@@ -87,43 +88,65 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
             SoundbarScreen(service: _jbl),
           ],
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _tab,
-          onDestinationSelected: (i) {
-            if (i == _tab && i == 0) {
-              _casaNavKey.currentState?.popUntil((r) => r.isFirst);
-            }
-            // Polla mientras se ve el soundbar: Casa (idx 0, card) o Sonido
-            // (idx 4, pantalla completa).
-            bool pollFor(int t) => t == 0 || t == 4;
-            if (pollFor(i) && !pollFor(_tab)) _jbl.startPolling();
-            if (!pollFor(i) && pollFor(_tab)) _jbl.stopPolling();
-            setState(() => _tab = i);
-          },
-          // El tinte selected/unselected lo provee el IconTheme del tema —
-          // nunca hardcodear color en estos CceIcon.
-          destinations: const [
-            NavigationDestination(
-              icon: CceIcon(CceIcons.allHouse, size: 26),
-              label: 'Casa',
+        // NavigationBar neumórfica (solo teléfono). Theme LOCAL: NO se toca
+        // cce_theme.dart. El relieve sale del DecoratedBox externo (neo());
+        // elevation:0 + shadowColor:transparent evitan la doble sombra Material.
+        bottomNavigationBar: DecoratedBox(
+          decoration: BoxDecoration(
+            color: CceColors.neoBase,
+            boxShadow: CceShadows.neo(blur: 16, offset: 6),
+          ),
+          child: NavigationBarTheme(
+            data: Theme.of(context).navigationBarTheme.copyWith(
+                  backgroundColor: CceColors.neoBase,
+                  // El indicador del tab activo se mantiene VIOLETA (accent@24%),
+                  // igual que el resto del shell. La nav es compartida por las 5
+                  // tabs del IndexedStack; usar un pill gris neoLight cambiaba el
+                  // indicador en TODA la app (Historial/Agente/Alarma/Sonido),
+                  // rompiendo su fidelidad. El neo aquí se limita al fondo/relieve.
+                  indicatorColor: CceColors.accent.withValues(alpha: 0.24),
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
+                ),
+            child: NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: (i) {
+                if (i == _tab && i == 0) {
+                  _casaNavKey.currentState?.popUntil((r) => r.isFirst);
+                }
+                // Polla mientras se ve el soundbar: Casa (idx 0, card) o Sonido
+                // (idx 4, pantalla completa).
+                bool pollFor(int t) => t == 0 || t == 4;
+                if (pollFor(i) && !pollFor(_tab)) _jbl.startPolling();
+                if (!pollFor(i) && pollFor(_tab)) _jbl.stopPolling();
+                setState(() => _tab = i);
+              },
+              // El tinte selected/unselected lo provee el IconTheme del tema —
+              // nunca hardcodear color en estos CceIcon.
+              destinations: const [
+                NavigationDestination(
+                  icon: CceIcon(CceIcons.allHouse, size: 26),
+                  label: 'Casa',
+                ),
+                NavigationDestination(
+                  icon: CceIcon(CceIcons.history, size: 26),
+                  label: 'Historial',
+                ),
+                NavigationDestination(
+                  icon: CceIcon(CceIcons.agent, size: 26),
+                  label: 'Agente',
+                ),
+                NavigationDestination(
+                  icon: CceIcon(CceIcons.alarmShield, size: 26),
+                  label: 'Alarma',
+                ),
+                NavigationDestination(
+                  icon: CceIcon(CceIcons.speaker, size: 26),
+                  label: 'Sonido',
+                ),
+              ],
             ),
-            NavigationDestination(
-              icon: CceIcon(CceIcons.history, size: 26),
-              label: 'Historial',
-            ),
-            NavigationDestination(
-              icon: CceIcon(CceIcons.agent, size: 26),
-              label: 'Agente',
-            ),
-            NavigationDestination(
-              icon: CceIcon(CceIcons.alarmShield, size: 26),
-              label: 'Alarma',
-            ),
-            NavigationDestination(
-              icon: CceIcon(CceIcons.speaker, size: 26),
-              label: 'Sonido',
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -50,6 +50,8 @@ class RoomsListScreen extends StatelessWidget {
 
         final rooms = service.rooms;
         return Scaffold(
+          // Fondo neumórfico (home teléfono): card y fondo comparten neoBase.
+          backgroundColor: CceColors.neoBase,
           appBar: AppBar(
             toolbarHeight: 64,
             title: const Text('Mi casa', style: CceText.display),
@@ -75,8 +77,9 @@ class RoomsListScreen extends StatelessWidget {
                     builder: (context) {
                       // Items líder: clima (0) + soundbar (1, si hay JBL).
                       final lead = <Widget>[
-                        TemperatureSummaryCard(service: service),
-                        if (jbl != null) SoundbarHomeCard(service: jbl!),
+                        TemperatureSummaryCard(service: service, neo: true),
+                        if (jbl != null)
+                          SoundbarHomeCard(service: jbl!, neo: true),
                       ];
                       return ListView.separated(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -85,9 +88,12 @@ class RoomsListScreen extends StatelessWidget {
                         separatorBuilder: (context, idx) =>
                             const SizedBox(height: 12),
                         itemBuilder: (context, i) {
-                          if (i < lead.length) return lead[i];
-                          final room = rooms[i - lead.length];
-                          return _buildRoomCard(context, room);
+                          // RepaintBoundary por ítem: aísla el repintado de las
+                          // sombras neumórficas (y del PulseOnUpdate) en el scroll.
+                          final Widget item = i < lead.length
+                              ? lead[i]
+                              : _buildRoomCard(context, rooms[i - lead.length]);
+                          return RepaintBoundary(child: item);
                         },
                       );
                     },
@@ -129,6 +135,7 @@ class RoomsListScreen extends StatelessWidget {
           ));
         },
         onToggle: (v) => service.setRoomOn(room, v),
+        neo: true,
       ),
     );
   }

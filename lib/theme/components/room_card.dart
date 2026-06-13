@@ -37,6 +37,7 @@ class RoomCard extends StatefulWidget {
     required this.onTap,
     required this.onToggle,
     this.onBrightnessCommitted,
+    this.neo = false,
   });
 
   final String title;
@@ -69,6 +70,13 @@ class RoomCard extends StatefulWidget {
   final VoidCallback onTap;
   final ValueChanged<bool> onToggle; // switch a la derecha
   final ValueChanged<double>? onBrightnessCommitted; // commit al soltar, 0..1
+
+  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
+  /// idéntico al actual (el sidebar del tablet no lo pasa, queda intacto).
+  /// OFF ⇒ extrusión gris [CceShadows.neo]; ON ⇒ solo el glow de color
+  /// [CceShadows.glowOn] (no se ensucia el halo). Badge y switch hundidos
+  /// vía [CceShadows.neoInset].
+  final bool neo;
 
   @override
   State<RoomCard> createState() => _RoomCardState();
@@ -152,13 +160,19 @@ class _RoomCardState extends State<RoomCard> {
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: widget.anyOn
-                ? Colors.black.withValues(alpha: 0.10)
-                : CceColors.surfaceHigh,
+            color: widget.neo
+                ? CceColors.neoSunken
+                : (widget.anyOn
+                    ? Colors.black.withValues(alpha: 0.10)
+                    : CceColors.surfaceHigh),
+            boxShadow: widget.neo ? CceShadows.neoInset() : null,
           ),
           alignment: Alignment.center,
           child: IconTheme.merge(
-            data: IconThemeData(color: fg, size: 22),
+            data: IconThemeData(
+              color: widget.neo ? CceColors.neoText : fg,
+              size: 22,
+            ),
             child: widget.icon,
           ),
         ),
@@ -213,9 +227,16 @@ class _RoomCardState extends State<RoomCard> {
           ),
         ),
         const SizedBox(width: 8),
-        SizedBox(
+        Container(
           width: 52,
           height: 36,
+          decoration: widget.neo
+              ? BoxDecoration(
+                  color: CceColors.neoSunken,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
+                )
+              : null,
           child: FittedBox(
             fit: BoxFit.contain,
             child: Switch.adaptive(
@@ -235,7 +256,11 @@ class _RoomCardState extends State<RoomCard> {
       gradient: gradient,
       color: widget.anyOn
           ? null
-          : (widget.selected ? CceColors.surfaceHigh : CceColors.cardOff),
+          : (widget.neo
+              ? CceColors.neoBase
+              : (widget.selected
+                  ? CceColors.surfaceHigh
+                  : CceColors.cardOff)),
       radius: CceRadii.hueCard,
       padding: EdgeInsets.fromLTRB(16, showSlider ? 10 : 8, 14, 8),
       onTap: () {
@@ -279,7 +304,7 @@ class _RoomCardState extends State<RoomCard> {
               borderRadius: BorderRadius.circular(CceRadii.hueCard),
               boxShadow: widget.anyOn
                   ? CceShadows.glowOn(mid)
-                  : const [],
+                  : (widget.neo ? CceShadows.neo() : const []),
             ),
             child: card,
           ),

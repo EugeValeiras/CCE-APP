@@ -11,7 +11,11 @@ import 'soundbar_screen.dart';
 /// estado + power rápido y abre la pantalla completa al tocarla.
 class SoundbarHomeCard extends StatefulWidget {
   final JblService service;
-  const SoundbarHomeCard({super.key, required this.service});
+
+  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
+  /// idéntico al actual.
+  final bool neo;
+  const SoundbarHomeCard({super.key, required this.service, this.neo = false});
 
   @override
   State<SoundbarHomeCard> createState() => _SoundbarHomeCardState();
@@ -49,6 +53,8 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
             ));
           },
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: widget.neo ? CceColors.neoBase : null,
+          neo: widget.neo,
           child: Row(
             children: [
               Container(
@@ -56,12 +62,19 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 height: 48,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: on
-                      ? CceColors.warm.withValues(alpha: 0.18)
-                      : CceColors.surfaceHigh,
+                  color: widget.neo
+                      ? CceColors.neoSunken
+                      : (on
+                          ? CceColors.warm.withValues(alpha: 0.18)
+                          : CceColors.surfaceHigh),
+                  boxShadow: widget.neo ? CceShadows.neoInset() : null,
                 ),
                 alignment: Alignment.center,
-                child: CceIcon(CceIcons.speaker, size: 24, color: accent),
+                child: CceIcon(
+                  CceIcons.speaker,
+                  size: 24,
+                  color: widget.neo ? CceColors.neoText : accent,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(

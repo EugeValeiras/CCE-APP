@@ -13,11 +13,16 @@ class TemperatureSummaryCard extends StatelessWidget {
   final DevicesService service;
   final RoomRef? room;
   final bool compact;
+
+  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
+  /// idéntico al actual (los 3 call-sites fuera de Home quedan byte-idénticos).
+  final bool neo;
   const TemperatureSummaryCard({
     super.key,
     required this.service,
     this.room,
     this.compact = false,
+    this.neo = false,
   });
 
   @override
@@ -47,8 +52,9 @@ class TemperatureSummaryCard extends StatelessWidget {
       child: CceCard(
         padding: EdgeInsets.symmetric(
             horizontal: 22, vertical: compact ? 12 : 16),
-        border: true,
-        color: CceColors.surface,
+        border: !neo,
+        color: neo ? CceColors.neoBase : CceColors.surface,
+        neo: neo,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [

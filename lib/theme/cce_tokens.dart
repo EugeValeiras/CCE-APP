@@ -43,6 +43,16 @@ abstract final class CceColors {
   static const triggerSensor = motion; // #5A8BFA
   static const triggerSchedule = warm; // #FFB46B
   static const triggerManual = accent; // #8A7CFF
+
+  // Neomorfismo dark (home teléfono). Base media-oscura, NO negro puro.
+  // Fuente de luz canónica: arriba-izquierda.
+  static const neoBase = Color(0xFF1C1E24); // fondo página + cards neo
+  static const neoLight = Color(0xFF2A2D37); // highlight (luz, sup-izq)
+  static const neoDark = Color(0xFF0C0D11); // sombra (inf-der en extrusión)
+  static const neoSunken = Color(0xFF141519); // fondo de superficies hundidas (badge/switch)
+  // Foreground canónico sobre superficies neo (CONTRATO: no improvisar):
+  static const neoText = textPrimary; // iconos/labels sobre neoBase/neoSunken
+  static const neoTextSub = textSecondary; // subtítulos
 }
 
 /// Pipeline de tint estilo Hue: ningún color derivado de luces se pinta
@@ -109,6 +119,44 @@ abstract final class CceShadows {
           color: c.withValues(alpha: 0.45),
           blurRadius: 18,
           spreadRadius: 2,
+        ),
+      ];
+
+  /// Relieve neumórfico EXTRUIDO (sale del fondo). Par de sombras EXTERNAS:
+  /// highlight sup-izq + sombra inf-der (luz canónica arriba-izquierda).
+  /// [intensity] escala opacidad.
+  static List<BoxShadow> neo({double blur = 14, double offset = 6, double intensity = 1}) => [
+        BoxShadow(
+          color: CceColors.neoDark.withValues(alpha: (0.70 * intensity).clamp(0, 1)),
+          blurRadius: blur,
+          offset: Offset(offset, offset),
+          spreadRadius: 1,
+        ),
+        BoxShadow(
+          color: CceColors.neoLight.withValues(alpha: (0.55 * intensity).clamp(0, 1)),
+          blurRadius: blur,
+          offset: Offset(-offset, -offset),
+          spreadRadius: 1,
+        ),
+      ];
+
+  /// Relieve neumórfico HUNDIDO (inner-shadow nativa vía BlurStyle.inner).
+  /// Va en la BoxDecoration de la superficie (NO es un overlay): nada se pinta
+  /// sobre el contenido. Sombra interna sup-izq + highlight interno inf-der.
+  static List<BoxShadow> neoInset({double blur = 8, double offset = 3, double intensity = 1}) => [
+        // sombra interna en sup-izq (la pared interna tapa la luz)
+        BoxShadow(
+          color: CceColors.neoDark.withValues(alpha: (0.85 * intensity).clamp(0, 1)),
+          blurRadius: blur,
+          offset: Offset(offset, offset),
+          blurStyle: BlurStyle.inner,
+        ),
+        // highlight interno en inf-der
+        BoxShadow(
+          color: CceColors.neoLight.withValues(alpha: (0.45 * intensity).clamp(0, 1)),
+          blurRadius: blur,
+          offset: Offset(-offset, -offset),
+          blurStyle: BlurStyle.inner,
         ),
       ];
 }
