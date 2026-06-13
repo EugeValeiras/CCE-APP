@@ -239,7 +239,8 @@ class _RoomCardState extends State<RoomCard> {
               onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
                   ? null
                   : widget.onToggle,
-              thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
+              activeTrackColor: Colors.white.withValues(alpha: 0.45),
+                      thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
             ),
           ),
         ),

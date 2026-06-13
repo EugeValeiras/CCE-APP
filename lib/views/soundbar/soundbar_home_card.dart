@@ -107,7 +107,8 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 Switch.adaptive(
                   value: on,
                   onChanged: (_) => jbl.togglePower(),
-                  thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
+                  activeTrackColor: Colors.white.withValues(alpha: 0.45),
+                      thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
                 )
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),

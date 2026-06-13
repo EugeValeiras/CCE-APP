@@ -330,6 +330,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   child: Switch.adaptive(
                     value: onCount > 0,
                     onChanged: (v) => _toggleAll(lights, v),
+                    activeTrackColor: Colors.white.withValues(alpha: 0.45),
                     thumbColor:
                         const WidgetStatePropertyAll<Color>(Colors.white),
                   ),

@@ -149,6 +149,7 @@ class LightCard extends StatelessWidget {
                     child: Switch.adaptive(
                       value: on,
                       onChanged: onToggle,
+                      activeTrackColor: Colors.white.withValues(alpha: 0.45),
                       thumbColor:
                           const WidgetStatePropertyAll<Color>(Colors.white),
                     ),
