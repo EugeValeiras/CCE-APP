@@ -16,7 +16,11 @@ import 'in_app_notification.dart';
 class AlarmView extends StatefulWidget {
   final ServerConfig? initialConfig;
 
-  const AlarmView({super.key, this.initialConfig});
+  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ el
+  /// shell del tablet lo deja idéntico.
+  final bool neo;
+
+  const AlarmView({super.key, this.initialConfig, this.neo = false});
 
   @override
   State<AlarmView> createState() => _AlarmViewState();
@@ -289,8 +293,9 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CceColors.bg,
+      backgroundColor: widget.neo ? CceColors.neoBase : CceColors.bg,
       appBar: AppBar(
+        backgroundColor: widget.neo ? CceColors.neoBase : null,
         title: Row(
           children: [
             Container(
@@ -419,8 +424,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             height: buttonSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: fill,
-              border: Border.all(color: borderColor, width: isTablet ? 6 : 4),
+              // Desarmada + neo: disco neumórfico elevado (neoBase, sin borde).
+              color: widget.neo && !_isArmed ? CceColors.neoBase : fill,
+              border: widget.neo && !_isArmed
+                  ? null
+                  : Border.all(color: borderColor, width: isTablet ? 6 : 4),
               boxShadow: _isArmed
                   ? [
                       BoxShadow(
@@ -429,7 +437,9 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                         spreadRadius: 5,
                       ),
                     ]
-                  : null,
+                  : (widget.neo
+                      ? CceShadows.neo(blur: 28, offset: 12, intensity: 1.1)
+                      : null),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
