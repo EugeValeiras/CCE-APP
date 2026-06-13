@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -97,21 +99,33 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
             service: service,
             onConfigureIp: () => showIpDialog(context, service),
           ),
-          const SizedBox(height: 16),
-          _RemoteGrid(service: service),
+          const SizedBox(height: 24),
+          // Sin volumen en standby (UPnP caído): solo fuentes/accesos (varias
+          // teclas despiertan la barra) + sintonización.
+          const _SectionLabel('FUENTES'),
+          _SourcesRow(service: service),
+          const SizedBox(height: 24),
+          const _SectionLabel('ACCESOS RÁPIDOS'),
+          _QuickAccessGrid(service: service),
           const SizedBox(height: 20),
           _TuningButton(service: service),
         ],
       );
     }
 
-    // Rama 4: online — Remote Control completo.
+    // Rama 4: online — control completo (dial de volumen + fuentes + accesos).
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
         _SoundbarHeaderCard(service: service),
-        const SizedBox(height: 20),
-        _RemoteGrid(service: service),
+        const SizedBox(height: 16),
+        _VolumeDialCard(service: service),
+        const SizedBox(height: 24),
+        const _SectionLabel('FUENTES'),
+        _SourcesRow(service: service),
+        const SizedBox(height: 24),
+        const _SectionLabel('ACCESOS RÁPIDOS'),
+        _QuickAccessGrid(service: service),
         const SizedBox(height: 20),
         _TuningButton(service: service),
       ],

@@ -100,17 +100,330 @@ class _SoundbarHeaderCard extends StatelessWidget {
   }
 }
 
-// ── Remote Control (grilla neumórfica de 2 columnas) ────────────────────────
+// ── Volumen (dial circular) ─────────────────────────────────────────────────
 
-/// Grilla del control remoto: 2 columnas que replican el remote oficial del
-/// JBL. Cada botón circular es un [CceNeoSvgIconButton] (variante SVG icons0,
-/// NO toca los defaults de [CceNeoIconButton]). El fondo es transparente: la
-/// pantalla ya pinta [CceColors.neoBase].
-///
-/// Power/Vol/Mute reusan los métodos existentes del service; el resto de las
-/// teclas van por `sendRemoteKey(id)`; el Heart/favorito por `playRadio()`.
-class _RemoteGrid extends StatelessWidget {
-  const _RemoteGrid({required this.service});
+const double _kVolStart = 135 * math.pi / 180; // 135° (arranca abajo-izquierda)
+const double _kVolSweep = 270 * math.pi / 180; // 270° de barrido (gap abajo)
+
+/// Card del volumen: dial circular neumórfico con arco de progreso (violeta→
+/// azul), número central grande, ícono de mute y botones − / +. Tocar el dial
+/// fija el volumen; − / + lo ajustan de a 5. Si la barra no expone volumen
+/// (UPnP caído) se atenúa y muestra "—".
+class _VolumeDialCard extends StatelessWidget {
+  const _VolumeDialCard({required this.service});
+
+  final JblService service;
+
+  static const double _dial = 188;
+
+  void _setFromLocal(Offset local) {
+    const center = Offset(_dial / 2, _dial / 2);
+    final v = local - center;
+    var delta = math.atan2(v.dy, v.dx) - _kVolStart; // canvas (y hacia abajo)
+    while (delta < 0) delta += 2 * math.pi;
+    while (delta >= 2 * math.pi) delta -= 2 * math.pi;
+    final double frac;
+    if (delta <= _kVolSweep) {
+      frac = delta / _kVolSweep;
+    } else {
+      // Dentro del gap inferior: pegar al extremo más cercano.
+      final gap = 2 * math.pi - _kVolSweep;
+      frac = (delta - _kVolSweep) > gap / 2 ? 0.0 : 1.0;
+    }
+    service.setVolume((frac * 100).round());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVolume = service.hasVolume;
+    final muted = service.muted;
+    final volume = service.volume;
+
+    return CceCard(
+      neo: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'VOLUMEN',
+            style: CceText.caption.copyWith(
+              color: CceColors.neoTextSub,
+              letterSpacing: 1.4,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              CceNeoSvgIconButton(
+                svg: CceIcons.minus,
+                tooltip: 'Bajar volumen',
+                size: 56,
+                onPressed: hasVolume
+                    ? () => _handle(service.nudgeVolume(-5), context)
+                    : null,
+              ),
+              Expanded(
+                child: Center(
+                  child: SizedBox(
+                    width: _dial,
+                    height: _dial,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp:
+                          hasVolume ? (d) => _setFromLocal(d.localPosition) : null,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CustomPaint(
+                            size: const Size(_dial, _dial),
+                            painter: _VolumeArcPainter(
+                              value: hasVolume
+                                  ? (volume / 100).clamp(0.0, 1.0)
+                                  : 0.0,
+                              enabled: hasVolume,
+                            ),
+                          ),
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                hasVolume ? '$volume' : '—',
+                                style: const TextStyle(
+                                  fontSize: 52,
+                                  fontWeight: FontWeight.w700,
+                                  color: CceColors.neoText,
+                                  height: 1,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              GestureDetector(
+                                onTap: hasVolume
+                                    ? () =>
+                                        _handle(service.toggleMute(), context)
+                                    : null,
+                                child: CceIcon(
+                                  muted ? CceIcons.volumeX : CceIcons.volume2,
+                                  size: 22,
+                                  color: muted
+                                      ? CceColors.danger
+                                      : CceColors.neoTextSub,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              CceNeoSvgIconButton(
+                svg: CceIcons.plus,
+                tooltip: 'Subir volumen',
+                size: 56,
+                onPressed: hasVolume
+                    ? () => _handle(service.nudgeVolume(5), context)
+                    : null,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Pinta el dial: carril hundido + arco de progreso con gradiente sweep
+/// (accent→info) y un punto luminoso en la punta.
+class _VolumeArcPainter extends CustomPainter {
+  _VolumeArcPainter({required this.value, required this.enabled});
+
+  final double value; // 0..1
+  final bool enabled;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 12.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2 - stroke / 2 - 2;
+    final rect = Rect.fromCircle(center: center, radius: radius);
+
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFF12141A);
+    canvas.drawArc(rect, _kVolStart, _kVolSweep, false, track);
+
+    if (!enabled || value <= 0) return;
+
+    final sweep = _kVolSweep * value.clamp(0.0, 1.0);
+    final progress = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..shader = const SweepGradient(
+        startAngle: _kVolStart,
+        endAngle: _kVolStart + _kVolSweep,
+        colors: [CceColors.accent, CceColors.info],
+      ).createShader(rect);
+    canvas.drawArc(rect, _kVolStart, sweep, false, progress);
+
+    // Punto luminoso en la punta del arco.
+    final tipAngle = _kVolStart + sweep;
+    final tip = Offset(
+      center.dx + radius * math.cos(tipAngle),
+      center.dy + radius * math.sin(tipAngle),
+    );
+    canvas.drawCircle(
+      tip,
+      stroke,
+      Paint()..color = CceColors.info.withValues(alpha: 0.28),
+    );
+    canvas.drawCircle(tip, stroke / 2 + 1, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(_VolumeArcPainter old) =>
+      old.value != value || old.enabled != enabled;
+}
+
+// ── Fuentes (FUENTES) ────────────────────────────────────────────────────────
+
+/// Fila horizontal de fuentes estilo "chips". La fuente activa (best-effort
+/// según `service.source`) se resalta con accent.
+class _SourcesRow extends StatelessWidget {
+  const _SourcesRow({required this.service});
+
+  final JblService service;
+
+  bool _isActive(String id) {
+    final src = service.source?.toLowerCase();
+    if (src == null) return false;
+    switch (id) {
+      case JblRemoteKeys.bluetooth:
+        return src.contains('bt') || src.contains('blue');
+      case JblRemoteKeys.hdmi:
+        return src.contains('hdmi') || src.contains('arc');
+      case JblRemoteKeys.tv:
+        return src.contains('tv') || src.contains('optic');
+      default:
+        return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = <Widget>[
+      _SourceChip(
+        svg: CceIcons.bluetooth,
+        label: 'Bluetooth',
+        active: _isActive(JblRemoteKeys.bluetooth),
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.bluetooth), context),
+      ),
+      _SourceChip(
+        svg: CceIcons.hdmi,
+        label: 'HDMI',
+        active: _isActive(JblRemoteKeys.hdmi),
+        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
+      ),
+      _SourceChip(
+        svg: CceIcons.tv,
+        label: 'TV',
+        active: _isActive(JblRemoteKeys.tv),
+        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
+      ),
+      _SourceChip(
+        svg: CceIcons.atmos,
+        label: 'Atmos',
+        active: false,
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
+      ),
+      _SourceChip(
+        svg: CceIcons.heart,
+        label: 'Favorito',
+        active: false,
+        iconColor: CceColors.danger,
+        onTap: () => _handle(service.playRadio(), context),
+      ),
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            items[i],
+            if (i != items.length - 1) const SizedBox(width: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceChip extends StatelessWidget {
+  const _SourceChip({
+    required this.svg,
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.iconColor,
+  });
+
+  final String svg;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        width: 76,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: active ? CceColors.accent : CceColors.neoBase,
+          borderRadius: BorderRadius.circular(CceRadii.control),
+          boxShadow: active ? null : CceShadows.neo(blur: 8, offset: 3),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CceIcon(
+              svg,
+              size: 22,
+              color: active ? Colors.white : (iconColor ?? CceColors.neoText),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CceText.caption.copyWith(
+                color: active ? Colors.white : CceColors.neoTextSub,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Accesos rápidos (ACCESOS RÁPIDOS) ────────────────────────────────────────
+
+/// Grilla 4-col de accesos rápidos (squircles neumórficos).
+class _QuickAccessGrid extends StatelessWidget {
+  const _QuickAccessGrid({required this.service});
 
   final JblService service;
 
@@ -118,231 +431,157 @@ class _RemoteGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final muted = service.muted;
     final isOn = service.isOn;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Botones GRANDES: ~64% del ancho de media columna, acotado para que
-        // se vean generosos tanto en teléfono como en iPad.
-        final cell = constraints.maxWidth / 2;
-        final btnSize = (cell * 0.64).clamp(96.0, 148.0).toDouble();
-
-        // Cada fila = par de celdas (izquierda, derecha). null = celda vacía.
-        final rows = <List<Widget?>>[
-          [
-            _PowerKey(service: service, isOn: isOn, size: btnSize),
-            _RemoteKeyButton(
-              svg: CceIcons.tv,
-              label: 'TV',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.plus,
-              label: 'Vol +',
-              size: btnSize,
-              onTap: () => _handle(service.nudgeVolume(5), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.minus,
-              label: 'Vol −',
-              size: btnSize,
-              onTap: () => _handle(service.nudgeVolume(-5), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.bluetooth,
-              label: 'Bluetooth',
-              size: btnSize,
-              onTap: () => _handle(
-                  service.sendRemoteKey(JblRemoteKeys.bluetooth), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.hdmi,
-              label: 'HDMI',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: muted ? CceIcons.volumeX : CceIcons.volume2,
-              label: muted ? 'Silenciado' : 'Mute',
-              iconColor: muted ? CceColors.danger : null,
-              size: btnSize,
-              onTap: () => _handle(service.toggleMute(), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.play,
-              label: 'Play',
-              size: btnSize,
-              onTap: () => _handle(
-                  service.sendRemoteKey(JblRemoteKeys.playpause), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.atmos,
-              label: 'ATMOS',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.heart,
-              label: 'Favorito',
-              iconColor: CceColors.danger,
-              size: btnSize,
-              onTap: () => _handle(service.playRadio(), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.bass,
-              label: 'BASS',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.bass), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.calibrate,
-              label: 'CALIBR',
-              size: btnSize,
-              onTap: () => _handle(
-                  service.sendRemoteKey(JblRemoteKeys.calibrate), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.rear,
-              label: 'REAR',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.rear), context),
-            ),
-            _RemoteKeyButton(
-              svg: CceIcons.surround,
-              label: 'Surround',
-              size: btnSize,
-              onTap: () => _handle(
-                  service.sendRemoteKey(JblRemoteKeys.surround), context),
-            ),
-          ],
-          [
-            _RemoteKeyButton(
-              svg: CceIcons.smart,
-              label: 'Smart',
-              size: btnSize,
-              onTap: () =>
-                  _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
-            ),
-            null,
-          ],
-        ];
-
-        return Column(
-          children: [
-            for (final row in rows) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Center(child: row[0] ?? const SizedBox.shrink()),
-                  ),
-                  Expanded(
-                    child: Center(child: row[1] ?? const SizedBox.shrink()),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-            ],
-          ],
-        );
-      },
+    final items = <Widget>[
+      _QuickButton(
+        svg: CceIcons.power,
+        label: 'Power',
+        active: isOn,
+        activeColor: CceColors.ok,
+        onTap: () => _handle(service.togglePower(), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.tv,
+        label: 'TV',
+        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
+      ),
+      _QuickButton(
+        svg: muted ? CceIcons.volumeX : CceIcons.volume2,
+        label: 'Mute',
+        active: muted,
+        activeColor: CceColors.danger,
+        onTap: () => _handle(service.toggleMute(), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.play,
+        label: 'Play',
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.playpause), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.bass,
+        label: 'Bass',
+        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.bass), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.calibrate,
+        label: 'Calibr',
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.calibrate), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.surround,
+        label: 'Surround',
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
+      ),
+      _QuickButton(
+        svg: CceIcons.smart,
+        label: 'Smart',
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
+      ),
+    ];
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.78,
+      children: items,
     );
   }
 }
 
-/// Celda del remote: botón circular neumórfico SVG + label opcional debajo.
-class _RemoteKeyButton extends StatelessWidget {
-  const _RemoteKeyButton({
+class _QuickButton extends StatefulWidget {
+  const _QuickButton({
     required this.svg,
+    required this.label,
     required this.onTap,
-    this.label,
-    this.iconColor,
-    this.size = 96,
+    this.active = false,
+    this.activeColor,
   });
 
   final String svg;
-  final String? label;
-  final Color? iconColor;
-  final double size;
+  final String label;
   final VoidCallback onTap;
+  final bool active;
+  final Color? activeColor;
+
+  @override
+  State<_QuickButton> createState() => _QuickButtonState();
+}
+
+class _QuickButtonState extends State<_QuickButton> {
+  bool _pressed = false;
+  void _set(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        CceNeoSvgIconButton(
-          svg: svg,
-          tooltip: label,
-          iconColor: iconColor,
-          size: size,
-          onPressed: onTap,
-        ),
-        if (label != null) ...[
-          const SizedBox(height: 8),
+    final accentColor = widget.activeColor ?? CceColors.accent;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _set(true),
+      onTapUp: (_) => _set(false),
+      onTapCancel: () => _set(false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap();
+      },
+      child: Column(
+        children: [
+          // Expanded: el squircle ocupa la altura disponible de la celda del
+          // GridView (evita overflow en pantallas angostas, ej. 320pt).
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: CceColors.neoBase,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: _pressed
+                    ? CceShadows.neoInset(blur: 6, offset: 2)
+                    : CceShadows.neo(blur: 8, offset: 3),
+              ),
+              alignment: Alignment.center,
+              child: CceIcon(
+                widget.svg,
+                size: 26,
+                color: widget.active ? accentColor : CceColors.neoText,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
           Text(
-            label!,
+            widget.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: CceText.caption.copyWith(color: CceColors.neoTextSub),
           ),
         ],
-      ],
+      ),
     );
   }
 }
 
-/// Celda Power: envuelve el [CceNeoSvgIconButton] con el glow on cuando la
-/// barra está encendida (reusa el patrón del antiguo _PowerButton).
-class _PowerKey extends StatelessWidget {
-  const _PowerKey({
-    required this.service,
-    required this.isOn,
-    this.size = 96,
-  });
-
-  final JblService service;
-  final bool isOn;
-  final double size;
+/// Encabezado de sección chico (FUENTES / ACCESOS RÁPIDOS).
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: isOn ? CceShadows.glowOn(CceColors.ok) : null,
-          ),
-          child: CceNeoSvgIconButton(
-            svg: CceIcons.power,
-            tooltip: isOn ? 'Apagar' : 'Encender',
-            iconColor: isOn ? CceColors.ok : null,
-            size: size,
-            onPressed: () => _handle(service.togglePower(), context),
-          ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+      child: Text(
+        text,
+        style: CceText.caption.copyWith(
+          color: CceColors.neoTextSub,
+          letterSpacing: 1.4,
+          fontWeight: FontWeight.w700,
         ),
-        const SizedBox(height: 8),
-        Text(
-          isOn ? 'Apagar' : 'Power',
-          style: CceText.caption.copyWith(color: CceColors.neoTextSub),
-        ),
-      ],
+      ),
     );
   }
 }
