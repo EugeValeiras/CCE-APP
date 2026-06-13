@@ -145,12 +145,10 @@ class LightCard extends StatelessWidget {
                   alignment: Alignment.center,
                   child: Transform.scale(
                     scale: 0.95,
+                    // Switch unificado al estilo del JBL (track por defecto).
                     child: Switch.adaptive(
                       value: on,
                       onChanged: onToggle,
-                      activeTrackColor: darkText
-                          ? CceTint.inkOnPastel.withValues(alpha: 0.30)
-                          : null,
                       thumbColor:
                           const WidgetStatePropertyAll<Color>(Colors.white),
                     ),

@@ -227,16 +227,11 @@ class _RoomCardState extends State<RoomCard> {
           ),
         ),
         const SizedBox(width: 8),
-        Container(
+        // Switch unificado al estilo del JBL: adaptive, thumb blanco, track
+        // por defecto (sin track oscuro custom ni wrapper inset).
+        SizedBox(
           width: 52,
           height: 36,
-          decoration: widget.neo
-              ? BoxDecoration(
-                  color: CceColors.neoSunken,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
-                )
-              : null,
           child: FittedBox(
             fit: BoxFit.contain,
             child: Switch.adaptive(
@@ -244,7 +239,6 @@ class _RoomCardState extends State<RoomCard> {
               onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
                   ? null
                   : widget.onToggle,
-              activeTrackColor: fg.withValues(alpha: 0.30),
               thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
             ),
           ),

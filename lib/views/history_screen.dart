@@ -462,6 +462,7 @@ class _GroupRow extends StatelessWidget {
               Container(
                 width: 40,
                 height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: neo
@@ -476,10 +477,14 @@ class _GroupRow extends StatelessWidget {
                         ),
                   boxShadow: neo ? CceShadows.neoInset() : null,
                 ),
-                child: Center(
-                  child: IconTheme.merge(
-                    data: IconThemeData(color: r.color, size: 22),
-                    child: r.icon,
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: Center(
+                    child: IconTheme.merge(
+                      data: IconThemeData(color: r.color, size: 22),
+                      child: r.icon,
+                    ),
                   ),
                 ),
               ),
