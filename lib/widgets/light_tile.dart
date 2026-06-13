@@ -80,7 +80,9 @@ class _LightTileState extends State<LightTile> {
 
     // Card expandida: ~2.5x el alto del tile, MISMO ancho, anclada al top del
     // tile, creciendo hacia abajo. Clamp al alto de pantalla menos un margen.
-    const double kExpandFactor = 2.5;
+    // El contenedor NO crece: la card del overlay conserva el tamaño del tile.
+    // El brillo se ve por el fill que sigue el dedo + el badge de % flotante.
+    const double kExpandFactor = 1.0;
     final media = MediaQuery.of(ctx);
     final double topMargin = media.padding.top + 8;
     const double bottomMargin = 24;
@@ -100,7 +102,10 @@ class _LightTileState extends State<LightTile> {
     if (anchorTop < topMargin) anchorTop = topMargin;
 
     _gestureTop = anchorTop;
-    _gestureHeight = expandedH;
+    // Sensibilidad del drag DESACOPLADA del tamaño visual: la card no crece,
+    // pero el recorrido de mapeo es ~2.5x el tile para conservar el tacto
+    // cómodo (no twitchy). El anti-salto (_grabOffset) alinea el 1er contacto.
+    _gestureHeight = tile.height * 2.5;
     _grabOffset = null; // se fija en el primer move (anti-salto)
 
     final double startBri = widget.device.state.on
@@ -326,7 +331,6 @@ class _DimOverlay extends StatelessWidget {
               builder: (_, bri, __) {
                 final double pct = (bri / 254).clamp(0.0, 1.0).toDouble();
                 final bool on = bri > 0;
-                final int pctInt = (pct * 100).round();
                 final Color fgBase = on
                     ? CceGradients.lightFullSampleColor(color, pct, reachable)
                     : CceColors.cardOff;
@@ -393,35 +397,43 @@ class _DimOverlay extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // Badge % arriba (pill negro semitransparente, siempre
-                      // legible sobre cualquier fill).
-                      Positioned(
-                        top: 10,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.55),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '$pctInt%',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 );
               },
+            ),
+          ),
+        ),
+        // (c) Badge de % FLOTANTE arriba de la card (el contenedor no crece).
+        Positioned(
+          left: left,
+          width: width,
+          top: math.max(8.0, top - 44),
+          child: IgnorePointer(
+            child: Center(
+              child: ValueListenableBuilder<double>(
+                valueListenable: liveBri,
+                builder: (_, bri, __) {
+                  final int pctInt =
+                      ((bri / 254).clamp(0.0, 1.0).toDouble() * 100).round();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$pctInt%',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
