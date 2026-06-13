@@ -19,6 +19,7 @@ class LightCard extends StatelessWidget {
     this.stateLabel,
     this.height = 132,
     this.onToggle,
+    this.neo = false,
   });
 
   final String name;
@@ -32,6 +33,9 @@ class LightCard extends StatelessWidget {
   final String? stateLabel; // 'Apagada' | 'Sin conexión' | null (encendida)
   final double height;
   final ValueChanged<bool>? onToggle; // null ⇒ switch deshabilitado
+
+  /// OPT-IN: relieve neumórfico (default false ⇒ render idéntico al actual).
+  final bool neo;
 
   /// Mutea el color para luces sin conexión (sat × 0.4).
   static Color _muted(Color c) {
@@ -59,8 +63,9 @@ class LightCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: CceColors.cardOff,
+          color: neo ? CceColors.neoBase : CceColors.cardOff,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
+          boxShadow: neo ? CceShadows.neo() : null,
         ),
         child: Stack(
           children: [

@@ -25,7 +25,11 @@ class LightTile extends StatefulWidget {
     required this.device,
     required this.service,
     this.size = TileSize.medium,
+    this.neo = false,
   });
+
+  /// OPT-IN: relieve neumórfico de la card (default false).
+  final bool neo;
 
   double get height => size.tileHeight;
 
@@ -134,6 +138,7 @@ class _LightTileState extends State<LightTile> {
           reachable: reachable,
           stateLabel: stateLabel,
           height: widget.height,
+          neo: widget.neo,
           // El switch de la franja prende/apaga directo.
           onToggle: reachable ? (_) => _toggle() : null,
         ),

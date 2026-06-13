@@ -21,7 +21,11 @@ class SensorTile extends StatelessWidget {
     required this.device,
     required this.service,
     this.size = TileSize.medium,
+    this.neo = false,
   });
+
+  /// OPT-IN: relieve neumórfico de la card (default false).
+  final bool neo;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +73,7 @@ class SensorTile extends StatelessWidget {
         height: size.sensorTileHeight,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: CceColors.cardOff,
+          color: neo ? CceColors.neoBase : CceColors.cardOff,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
           border: alert
               ? Border.all(color: color.withValues(alpha: 0.6), width: 1.5)
@@ -82,7 +86,7 @@ class SensorTile extends StatelessWidget {
                     spreadRadius: 1,
                   ),
                 ]
-              : null,
+              : (neo ? CceShadows.neo() : null),
         ),
         child: Stack(
           children: [

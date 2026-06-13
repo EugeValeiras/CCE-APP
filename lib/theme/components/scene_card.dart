@@ -19,6 +19,7 @@ class SceneCard extends StatelessWidget {
     this.isSmart = false,
     this.busy = false,
     required this.onTap,
+    this.neo = false,
   });
 
   final String name;
@@ -28,6 +29,9 @@ class SceneCard extends StatelessWidget {
   final bool isSmart; // badge "auto"
   final bool busy; // spinner mientras aplica
   final VoidCallback onTap;
+
+  /// OPT-IN: relieve neumórfico (default false ⇒ render idéntico al actual).
+  final bool neo;
 
   static const double _height = 132;
   static const double _circle = 60;
@@ -114,12 +118,13 @@ class SceneCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: CceColors.cardOffHigh,
+          color: neo ? CceColors.neoBase : CceColors.cardOffHigh,
           borderRadius: borderRadius,
           border: active
               ? Border.all(
                   color: Colors.white.withValues(alpha: 0.85), width: 1.4)
               : null,
+          boxShadow: neo ? CceShadows.neo(blur: 10, offset: 4) : null,
         ),
         child: Material(
           type: MaterialType.transparency,

@@ -36,7 +36,10 @@ class RoomDetailScreen extends StatelessWidget {
         final onCount = lights.where((l) => l.state.on).length;
 
         return Scaffold(
+          // Fondo neumórfico (igual que la home): card y fondo comparten neoBase.
+          backgroundColor: CceColors.neoBase,
           appBar: AppBar(
+            backgroundColor: CceColors.neoBase,
             title: Text(title),
             actions: [
               if (lights.isNotEmpty)
@@ -91,7 +94,7 @@ class RoomDetailScreen extends StatelessWidget {
                           listenable: service,
                           builder: (ctx, _) {
                             final d = service.byId(lights[i].id) ?? lights[i];
-                            return LightTile(device: d, service: service, size: TileSize.medium);
+                            return LightTile(device: d, service: service, size: TileSize.medium, neo: true);
                           },
                         ),
                         childCount: lights.length,
@@ -103,7 +106,7 @@ class RoomDetailScreen extends StatelessWidget {
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: ScenesSection(service: service, room: room),
+                      child: ScenesSection(service: service, room: room, neo: true),
                     ),
                   ),
                 if (sensors.isNotEmpty) ...[
@@ -127,7 +130,7 @@ class RoomDetailScreen extends StatelessWidget {
                           listenable: service,
                           builder: (ctx, _) {
                             final d = service.byId(sensors[i].id) ?? sensors[i];
-                            return SensorTile(device: d, service: service, size: TileSize.medium);
+                            return SensorTile(device: d, service: service, size: TileSize.medium, neo: true);
                           },
                         ),
                         childCount: sensors.length,

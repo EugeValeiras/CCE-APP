@@ -22,12 +22,16 @@ class ScenesSection extends StatefulWidget {
     this.room,
     this.title = 'Mis escenas',
     this.maxCrossAxisExtent = 150,
+    this.neo = false,
   });
 
   final DevicesService service;
   final RoomRef? room;
   final String title;
   final double maxCrossAxisExtent;
+
+  /// OPT-IN: relieve neumórfico en las scene cards (default false).
+  final bool neo;
 
   @override
   State<ScenesSection> createState() => _ScenesSectionState();
@@ -144,6 +148,7 @@ class _ScenesSectionState extends State<ScenesSection> {
                 active: s.isActive,
                 isSmart: s.isSmart,
                 busy: _busyId == s.id,
+                neo: widget.neo,
                 onTap: () =>
                     _run(s.id, () => widget.service.recallHueScene(s)),
               ),
@@ -155,6 +160,7 @@ class _ScenesSectionState extends State<ScenesSection> {
                 name: s.name,
                 icon: _cceIcon(s),
                 busy: _busyId == s.id,
+                neo: widget.neo,
                 onTap: () => _run(s.id, () => widget.service.applyScene(s)),
               ),
             ),
