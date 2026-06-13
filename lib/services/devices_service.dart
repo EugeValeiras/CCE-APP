@@ -185,6 +185,18 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Simula la pulsación de un botón de un switch/dial → dispara la acción
+  /// configurada en el backend. Devuelve false si falló.
+  Future<bool> simulateButton(Device d, {required int key, int? outlet}) async {
+    try {
+      await _api.simulateButton(d.id, key: key, outlet: outlet);
+      return true;
+    } catch (e) {
+      debugPrint('simulateButton error: $e');
+      return false;
+    }
+  }
+
   Future<void> setBrightness(Device d, int bri) async {
     final clamped = bri.clamp(0, 254);
     final wantOn = clamped > 0;

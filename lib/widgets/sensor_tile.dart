@@ -5,6 +5,7 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
+import '../views/dial_switch_screen.dart';
 import '../views/switch_detail_screen.dart';
 import 'pulse_on_update.dart';
 
@@ -186,13 +187,14 @@ class SensorTile extends StatelessWidget {
     );
 
     if (!isSwitch) return tile;
-    // Switch: tocá la card para abrir su pantalla con el switch grande.
+    // Switch: multi-botón (Tap Dial) → pantalla del dial; resto → switch grande.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) =>
-              SwitchDetailScreen(device: device, service: service),
+          builder: (_) => device.isMultiButton
+              ? DialSwitchScreen(device: device, service: service)
+              : SwitchDetailScreen(device: device, service: service),
         ),
       ),
       child: tile,

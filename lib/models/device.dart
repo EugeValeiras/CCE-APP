@@ -63,8 +63,21 @@ class DeviceSensor {
   final bool? motion;
   final bool? contact;
   final String? brightness;
+  // Switches multi-botón (Hue Tap Dial / remotes): cantidad de botones y la
+  // última tecla pulsada (0=click, 1=doble, 2=long).
+  final int? outlets;
+  final int? lastKey;
 
-  DeviceSensor({this.temperature, this.humidity, this.battery, this.motion, this.contact, this.brightness});
+  DeviceSensor({
+    this.temperature,
+    this.humidity,
+    this.battery,
+    this.motion,
+    this.contact,
+    this.brightness,
+    this.outlets,
+    this.lastKey,
+  });
 
   factory DeviceSensor.fromJson(Map<String, dynamic> json) {
     return DeviceSensor(
@@ -74,6 +87,8 @@ class DeviceSensor {
       motion: json['motion'] as bool?,
       contact: json['contact'] as bool?,
       brightness: json['brightness'] as String?,
+      outlets: (json['outlets'] as num?)?.toInt(),
+      lastKey: (json['lastKey'] as num?)?.toInt(),
     );
   }
 }
@@ -146,6 +161,10 @@ class Device {
   /// Device tipo switch/control (botón, switch, remote, dial). Pueden caer en
   /// la lista de sensores; son clickeables para abrir su pantalla de switch.
   bool get isSwitch => _isSwitch();
+
+  /// Switch multi-botón (Hue Tap Dial / remote de 4 botones): tiene outlets>1.
+  bool get isMultiButton => (sensor?.outlets ?? 0) > 1;
+  int get outletCount => sensor?.outlets ?? 1;
 
   bool _isSensor() {
     if (sensor != null) return true;

@@ -32,6 +32,24 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
   }
 
+  /// Simula la pulsación de un botón de un switch/dial (POST
+  /// /devices/:id/simulate-button) → dispara la acción configurada en el
+  /// backend. key: 0=click, 1=doble, 2=long; outlet = botón (0-based).
+  Future<void> simulateButton(String deviceId,
+      {required int key, int? outlet}) async {
+    await http
+        .post(
+          Uri.parse(
+              '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/simulate-button'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'key': key,
+            if (outlet != null) 'outlet': outlet,
+          }),
+        )
+        .timeout(const Duration(seconds: 6));
+  }
+
   Future<EventsPage> getEvents({
     String? eventName,
     String? channel,
