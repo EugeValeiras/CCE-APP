@@ -176,8 +176,14 @@ class RoomPanel extends StatelessWidget {
     }
 
     return CustomScrollView(
-      // Orden: Luces → Escenas → Sensores.
+      // Orden: Escenas → Luces → Sensores.
       slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          sliver: SliverToBoxAdapter(
+            child: ScenesSection(service: service, room: room),
+          ),
+        ),
         if (lights.isNotEmpty) ...[
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -211,12 +217,6 @@ class RoomPanel extends StatelessWidget {
             ),
           ),
         ],
-        SliverPadding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
-          sliver: SliverToBoxAdapter(
-            child: ScenesSection(service: service, room: room),
-          ),
-        ),
         if (sensors.isNotEmpty) ...[
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
