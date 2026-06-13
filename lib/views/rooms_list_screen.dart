@@ -19,7 +19,17 @@ import 'soundbar/soundbar_home_card.dart';
 class RoomsListScreen extends StatelessWidget {
   final DevicesService service;
   final JblService? jbl;
-  const RoomsListScreen({super.key, required this.service, this.jbl});
+  final void Function(BuildContext)? onOpenHistory;
+  final void Function(BuildContext)? onOpenAgent;
+  final void Function(BuildContext)? onOpenAlarm;
+  const RoomsListScreen({
+    super.key,
+    required this.service,
+    this.jbl,
+    this.onOpenHistory,
+    this.onOpenAgent,
+    this.onOpenAlarm,
+  });
 
   /// Ícono de la habitación: el configurado (iconName) resuelto vía
   /// IconResolver con un device representativo, o el genérico de sala.
@@ -56,10 +66,27 @@ class RoomsListScreen extends StatelessWidget {
             toolbarHeight: 64,
             title: const Text('CCE', style: CceText.display),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh, color: CceColors.textSecondary),
-                onPressed: service.refresh,
-              ),
+              if (onOpenHistory != null)
+                IconButton(
+                  tooltip: 'Historial',
+                  icon: const CceIcon(CceIcons.history,
+                      color: CceColors.textSecondary),
+                  onPressed: () => onOpenHistory!(context),
+                ),
+              if (onOpenAgent != null)
+                IconButton(
+                  tooltip: 'Agente',
+                  icon: const CceIcon(CceIcons.agent,
+                      color: CceColors.textSecondary),
+                  onPressed: () => onOpenAgent!(context),
+                ),
+              if (onOpenAlarm != null)
+                IconButton(
+                  tooltip: 'Alarma',
+                  icon: const CceIcon(CceIcons.alarmShield,
+                      color: CceColors.textSecondary),
+                  onPressed: () => onOpenAlarm!(context),
+                ),
             ],
           ),
           body: rooms.isEmpty

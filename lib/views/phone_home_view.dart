@@ -3,15 +3,23 @@ import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/socket_service.dart';
-import '../theme/cce_icons.dart';
-import '../theme/cce_tokens.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'history_screen.dart';
 import 'rooms_list_screen.dart';
-import 'soundbar/soundbar_screen.dart';
 
-/// iPhone root: "Casa" tab (rooms → room detail with color control) + "Alarma" tab.
+/// iPhone root: "Casa" (RoomsListScreen) como única pantalla raíz. Historial,
+/// Agente y Alarma se abren desde el header de la home, pusheados al Navigator
+/// raíz de MaterialApp (swipe-back nativo iOS). Sonido se abre desde la
+/// SoundbarHomeCard. Sin bottom navbar / IndexedStack / navegador anidado.
+///
+/// Nota de comportamiento (cambio conocido vs. el shell anterior con
+/// IndexedStack): ChatScreen ya no se mantiene vivo en segundo plano. Cada vez
+/// que se abre Agente desde el header se construye una ChatScreen nueva (arma su
+/// propio ChatService) → la conversación en memoria se reinicia entre aperturas.
+/// Historial re-suscribe limpio al socket compartido (vive en _devices, que el
+/// shell mantiene vivo) y solo pierde estado de filtros/scroll, lo cual es
+/// benigno para una pantalla de log.
 class PhoneHomeView extends StatefulWidget {
   final ServerConfig config;
   const PhoneHomeView({super.key, required this.config});
@@ -24,8 +32,6 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
   late SocketService _socket;
   late DevicesService _devices;
   late final JblService _jbl;
-  int _tab = 0;
-  final _casaNavKey = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -35,8 +41,8 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
     _jbl = JblService(config: widget.config);
-    // La tab inicial es Casa (0), que ahora muestra la card del soundbar →
-    // arrancamos el polling para que su estado esté fresco.
+    // El home muestra la card del soundbar y está siempre vivo → arrancamos el
+    // polling una sola vez para que la card se mantenga fresca toda la sesión.
     _jbl.startPolling();
   }
 
@@ -48,107 +54,24 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     super.dispose();
   }
 
-  Future<bool> _onWillPop() async {
-    // If we're in Casa tab and the nested navigator can pop, do that instead.
-    if (_tab == 0) {
-      final nav = _casaNavKey.currentState;
-      if (nav != null && nav.canPop()) {
-        nav.pop();
-        return false;
-      }
-    }
-    return true;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        await _onWillPop();
-      },
-      child: Scaffold(
-        body: IndexedStack(
-          index: _tab,
-          children: [
-            Navigator(
-              key: _casaNavKey,
-              onGenerateRoute: (routeSettings) {
-                return MaterialPageRoute(
-                  settings: routeSettings,
-                  builder: (_) =>
-                      RoomsListScreen(service: _devices, jbl: _jbl),
-                );
-              },
-            ),
-            HistoryScreen(config: widget.config, devices: _devices, neo: true),
-            ChatScreen(config: widget.config),
-            AlarmView(initialConfig: widget.config, neo: true),
-            SoundbarScreen(service: _jbl),
-          ],
+    return RoomsListScreen(
+      service: _devices,
+      jbl: _jbl,
+      onOpenHistory: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
+        builder: (_) => HistoryScreen(
+          config: widget.config,
+          devices: _devices,
+          neo: true,
         ),
-        // NavigationBar neumórfica (solo teléfono). Theme LOCAL: NO se toca
-        // cce_theme.dart. El relieve sale del DecoratedBox externo (neo());
-        // elevation:0 + shadowColor:transparent evitan la doble sombra Material.
-        bottomNavigationBar: DecoratedBox(
-          decoration: BoxDecoration(
-            color: CceColors.neoBase,
-            boxShadow: CceShadows.neo(blur: 16, offset: 6),
-          ),
-          child: NavigationBarTheme(
-            data: Theme.of(context).navigationBarTheme.copyWith(
-                  backgroundColor: CceColors.neoBase,
-                  // El indicador del tab activo se mantiene VIOLETA (accent@24%),
-                  // igual que el resto del shell. La nav es compartida por las 5
-                  // tabs del IndexedStack; usar un pill gris neoLight cambiaba el
-                  // indicador en TODA la app (Historial/Agente/Alarma/Sonido),
-                  // rompiendo su fidelidad. El neo aquí se limita al fondo/relieve.
-                  indicatorColor: CceColors.accent.withValues(alpha: 0.24),
-                  elevation: 0,
-                  shadowColor: Colors.transparent,
-                ),
-            child: NavigationBar(
-              selectedIndex: _tab,
-              onDestinationSelected: (i) {
-                if (i == _tab && i == 0) {
-                  _casaNavKey.currentState?.popUntil((r) => r.isFirst);
-                }
-                // Polla mientras se ve el soundbar: Casa (idx 0, card) o Sonido
-                // (idx 4, pantalla completa).
-                bool pollFor(int t) => t == 0 || t == 4;
-                if (pollFor(i) && !pollFor(_tab)) _jbl.startPolling();
-                if (!pollFor(i) && pollFor(_tab)) _jbl.stopPolling();
-                setState(() => _tab = i);
-              },
-              // El tinte selected/unselected lo provee el IconTheme del tema —
-              // nunca hardcodear color en estos CceIcon.
-              destinations: const [
-                NavigationDestination(
-                  icon: CceIcon(CceIcons.allHouse, size: 26),
-                  label: 'Casa',
-                ),
-                NavigationDestination(
-                  icon: CceIcon(CceIcons.history, size: 26),
-                  label: 'Historial',
-                ),
-                NavigationDestination(
-                  icon: CceIcon(CceIcons.agent, size: 26),
-                  label: 'Agente',
-                ),
-                NavigationDestination(
-                  icon: CceIcon(CceIcons.alarmShield, size: 26),
-                  label: 'Alarma',
-                ),
-                NavigationDestination(
-                  icon: CceIcon(CceIcons.speaker, size: 26),
-                  label: 'Sonido',
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+      )),
+      onOpenAgent: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
+        builder: (_) => ChatScreen(config: widget.config),
+      )),
+      onOpenAlarm: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
+        builder: (_) => AlarmView(initialConfig: widget.config, neo: true),
+      )),
     );
   }
 }
