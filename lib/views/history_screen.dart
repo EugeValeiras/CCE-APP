@@ -68,7 +68,16 @@ class _Entry {
 class HistoryScreen extends StatefulWidget {
   final ServerConfig config;
   final DevicesService devices;
-  const HistoryScreen({super.key, required this.config, required this.devices});
+
+  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ el
+  /// historial del tablet queda idéntico.
+  final bool neo;
+  const HistoryScreen({
+    super.key,
+    required this.config,
+    required this.devices,
+    this.neo = false,
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -324,8 +333,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final entries = _buildEntries();
+    final neo = widget.neo;
     return Scaffold(
+      backgroundColor: neo ? CceColors.neoBase : null,
       appBar: AppBar(
+        backgroundColor: neo ? CceColors.neoBase : null,
         title: Row(
           children: [
             const Text('Historial'),
@@ -398,6 +410,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           devices: widget.devices,
                           expanded: _expanded.contains(g.latest.id),
                           onToggleExpand: () => _toggleExpanded(g),
+                          neo: neo,
                         );
                       },
                     ),
@@ -416,11 +429,14 @@ class _GroupRow extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggleExpand;
 
+  final bool neo;
+
   const _GroupRow({
     required this.group,
     required this.devices,
     required this.expanded,
     required this.onToggleExpand,
+    this.neo = false,
   });
 
   @override
@@ -433,7 +449,9 @@ class _GroupRow extends StatelessWidget {
     return CceCard(
       radius: CceRadii.tile,
       padding: const EdgeInsets.all(14),
-      border: true,
+      border: !neo,
+      color: neo ? CceColors.neoBase : null,
+      neo: neo,
       onTap: grouped ? onToggleExpand : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,12 +464,17 @@ class _GroupRow extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: r.color.withValues(alpha: 0.18),
-                  border: Border.all(
-                    color: isAlarm
-                        ? CceColors.danger.withValues(alpha: 0.40)
-                        : r.color.withValues(alpha: 0.30),
-                  ),
+                  color: neo
+                      ? CceColors.neoSunken
+                      : r.color.withValues(alpha: 0.18),
+                  border: neo
+                      ? null
+                      : Border.all(
+                          color: isAlarm
+                              ? CceColors.danger.withValues(alpha: 0.40)
+                              : r.color.withValues(alpha: 0.30),
+                        ),
+                  boxShadow: neo ? CceShadows.neoInset() : null,
                 ),
                 child: Center(
                   child: IconTheme.merge(

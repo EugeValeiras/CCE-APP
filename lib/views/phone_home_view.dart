@@ -82,7 +82,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
                 );
               },
             ),
-            HistoryScreen(config: widget.config, devices: _devices),
+            HistoryScreen(config: widget.config, devices: _devices, neo: true),
             ChatScreen(config: widget.config),
             AlarmView(initialConfig: widget.config),
             SoundbarScreen(service: _jbl),
