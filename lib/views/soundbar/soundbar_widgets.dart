@@ -119,125 +119,149 @@ class _RemoteGrid extends StatelessWidget {
     final muted = service.muted;
     final isOn = service.isOn;
 
-    // Cada fila = par de celdas (izquierda, derecha). null = celda vacía.
-    final rows = <List<Widget?>>[
-      [
-        _PowerKey(service: service, isOn: isOn),
-        _RemoteKeyButton(
-          svg: CceIcons.tv,
-          label: 'TV',
-          onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.plus,
-          label: 'Vol +',
-          onTap: () => _handle(service.nudgeVolume(5), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.minus,
-          label: 'Vol −',
-          onTap: () => _handle(service.nudgeVolume(-5), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.bluetooth,
-          label: 'Bluetooth',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.bluetooth), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.hdmi,
-          label: 'HDMI',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: muted ? CceIcons.volumeX : CceIcons.volume2,
-          label: muted ? 'Silenciado' : 'Mute',
-          iconColor: muted ? CceColors.danger : null,
-          onTap: () => _handle(service.toggleMute(), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.play,
-          label: 'Play',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.playpause), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.atmos,
-          label: 'ATMOS',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.heart,
-          label: 'Favorito',
-          iconColor: CceColors.danger,
-          onTap: () => _handle(service.playRadio(), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.bass,
-          label: 'BASS',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.bass), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.calibrate,
-          label: 'CALIBR',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.calibrate), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.rear,
-          label: 'REAR',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.rear), context),
-        ),
-        _RemoteKeyButton(
-          svg: CceIcons.surround,
-          label: 'Surround',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
-        ),
-      ],
-      [
-        _RemoteKeyButton(
-          svg: CceIcons.smart,
-          label: 'Smart',
-          onTap: () =>
-              _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
-        ),
-        null,
-      ],
-    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Botones GRANDES: ~64% del ancho de media columna, acotado para que
+        // se vean generosos tanto en teléfono como en iPad.
+        final cell = constraints.maxWidth / 2;
+        final btnSize = (cell * 0.64).clamp(96.0, 148.0).toDouble();
 
-    return Column(
-      children: [
-        for (final row in rows) ...[
-          Row(
-            children: [
-              Expanded(
-                child: Center(child: row[0] ?? const SizedBox.shrink()),
+        // Cada fila = par de celdas (izquierda, derecha). null = celda vacía.
+        final rows = <List<Widget?>>[
+          [
+            _PowerKey(service: service, isOn: isOn, size: btnSize),
+            _RemoteKeyButton(
+              svg: CceIcons.tv,
+              label: 'TV',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.plus,
+              label: 'Vol +',
+              size: btnSize,
+              onTap: () => _handle(service.nudgeVolume(5), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.minus,
+              label: 'Vol −',
+              size: btnSize,
+              onTap: () => _handle(service.nudgeVolume(-5), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.bluetooth,
+              label: 'Bluetooth',
+              size: btnSize,
+              onTap: () => _handle(
+                  service.sendRemoteKey(JblRemoteKeys.bluetooth), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.hdmi,
+              label: 'HDMI',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: muted ? CceIcons.volumeX : CceIcons.volume2,
+              label: muted ? 'Silenciado' : 'Mute',
+              iconColor: muted ? CceColors.danger : null,
+              size: btnSize,
+              onTap: () => _handle(service.toggleMute(), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.play,
+              label: 'Play',
+              size: btnSize,
+              onTap: () => _handle(
+                  service.sendRemoteKey(JblRemoteKeys.playpause), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.atmos,
+              label: 'ATMOS',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.heart,
+              label: 'Favorito',
+              iconColor: CceColors.danger,
+              size: btnSize,
+              onTap: () => _handle(service.playRadio(), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.bass,
+              label: 'BASS',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.bass), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.calibrate,
+              label: 'CALIBR',
+              size: btnSize,
+              onTap: () => _handle(
+                  service.sendRemoteKey(JblRemoteKeys.calibrate), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.rear,
+              label: 'REAR',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.rear), context),
+            ),
+            _RemoteKeyButton(
+              svg: CceIcons.surround,
+              label: 'Surround',
+              size: btnSize,
+              onTap: () => _handle(
+                  service.sendRemoteKey(JblRemoteKeys.surround), context),
+            ),
+          ],
+          [
+            _RemoteKeyButton(
+              svg: CceIcons.smart,
+              label: 'Smart',
+              size: btnSize,
+              onTap: () =>
+                  _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
+            ),
+            null,
+          ],
+        ];
+
+        return Column(
+          children: [
+            for (final row in rows) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Center(child: row[0] ?? const SizedBox.shrink()),
+                  ),
+                  Expanded(
+                    child: Center(child: row[1] ?? const SizedBox.shrink()),
+                  ),
+                ],
               ),
-              Expanded(
-                child: Center(child: row[1] ?? const SizedBox.shrink()),
-              ),
+              const SizedBox(height: 24),
             ],
-          ),
-          const SizedBox(height: 20),
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -249,11 +273,13 @@ class _RemoteKeyButton extends StatelessWidget {
     required this.onTap,
     this.label,
     this.iconColor,
+    this.size = 96,
   });
 
   final String svg;
   final String? label;
   final Color? iconColor;
+  final double size;
   final VoidCallback onTap;
 
   @override
@@ -265,6 +291,7 @@ class _RemoteKeyButton extends StatelessWidget {
           svg: svg,
           tooltip: label,
           iconColor: iconColor,
+          size: size,
           onPressed: onTap,
         ),
         if (label != null) ...[
@@ -282,10 +309,15 @@ class _RemoteKeyButton extends StatelessWidget {
 /// Celda Power: envuelve el [CceNeoSvgIconButton] con el glow on cuando la
 /// barra está encendida (reusa el patrón del antiguo _PowerButton).
 class _PowerKey extends StatelessWidget {
-  const _PowerKey({required this.service, required this.isOn});
+  const _PowerKey({
+    required this.service,
+    required this.isOn,
+    this.size = 96,
+  });
 
   final JblService service;
   final bool isOn;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -301,6 +333,7 @@ class _PowerKey extends StatelessWidget {
             svg: CceIcons.power,
             tooltip: isOn ? 'Apagar' : 'Encender',
             iconColor: isOn ? CceColors.ok : null,
+            size: size,
             onPressed: () => _handle(service.togglePower(), context),
           ),
         ),
