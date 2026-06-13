@@ -107,8 +107,6 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
           const SizedBox(height: 24),
           const _SectionLabel('ACCESOS RÁPIDOS'),
           _QuickAccessGrid(service: service),
-          const SizedBox(height: 20),
-          _TuningButton(service: service),
         ],
       );
     }
@@ -126,8 +124,6 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
         const SizedBox(height: 24),
         const _SectionLabel('ACCESOS RÁPIDOS'),
         _QuickAccessGrid(service: service),
-        const SizedBox(height: 20),
-        _TuningButton(service: service),
       ],
     );
   }

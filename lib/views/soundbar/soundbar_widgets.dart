@@ -49,19 +49,22 @@ class _SoundbarHeaderCard extends StatelessWidget {
     final src = service.source;
 
     return CceCard(
+      neo: true,
       child: Row(
         children: [
           Container(
-            width: 56,
-            height: 56,
-            decoration: const BoxDecoration(
-              color: CceColors.surfaceHigh,
-              shape: BoxShape.circle,
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: service.isOn
+                  ? CceColors.accent.withValues(alpha: 0.18)
+                  : CceColors.surfaceHigh,
+              borderRadius: BorderRadius.circular(14),
             ),
             alignment: Alignment.center,
             child: CceIcon(
               CceIcons.speaker,
-              size: 32,
+              size: 28,
               color: service.isOn ? CceColors.accent : CceColors.textSecondary,
             ),
           ),
@@ -94,6 +97,15 @@ class _SoundbarHeaderCard extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 12),
+          // Power al header (movido desde Accesos rápidos): accent cuando ON.
+          CceNeoSvgIconButton(
+            svg: CceIcons.power,
+            tooltip: service.isOn ? 'Apagar' : 'Encender',
+            iconColor: service.isOn ? CceColors.accent : CceColors.neoTextSub,
+            size: 48,
+            onPressed: () => _handle(service.togglePower(), context),
+          ),
         ],
       ),
     );
@@ -114,10 +126,8 @@ class _VolumeDialCard extends StatelessWidget {
 
   final JblService service;
 
-  static const double _dial = 188;
-
-  void _setFromLocal(Offset local) {
-    const center = Offset(_dial / 2, _dial / 2);
+  void _setFromLocal(Offset local, double dim) {
+    final center = Offset(dim / 2, dim / 2);
     final v = local - center;
     var delta = math.atan2(v.dy, v.dx) - _kVolStart; // canvas (y hacia abajo)
     while (delta < 0) delta += 2 * math.pi;
@@ -164,27 +174,34 @@ class _VolumeDialCard extends StatelessWidget {
                     : null,
               ),
               Expanded(
-                child: Center(
-                  child: SizedBox(
-                    width: _dial,
-                    height: _dial,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp:
-                          hasVolume ? (d) => _setFromLocal(d.localPosition) : null,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CustomPaint(
-                            size: const Size(_dial, _dial),
-                            painter: _VolumeArcPainter(
-                              value: hasVolume
-                                  ? (volume / 100).clamp(0.0, 1.0)
-                                  : 0.0,
-                              enabled: hasVolume,
-                            ),
-                          ),
-                          Column(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Dial cuadrado responsivo: nunca desborda (teléfonos
+                    // angostos) ni queda enorme en iPad.
+                    final dim =
+                        constraints.maxWidth.clamp(132.0, 196.0).toDouble();
+                    return Center(
+                      child: SizedBox(
+                        width: dim,
+                        height: dim,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: hasVolume
+                              ? (d) => _setFromLocal(d.localPosition, dim)
+                              : null,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CustomPaint(
+                                size: Size(dim, dim),
+                                painter: _VolumeArcPainter(
+                                  value: hasVolume
+                                      ? (volume / 100).clamp(0.0, 1.0)
+                                      : 0.0,
+                                  enabled: hasVolume,
+                                ),
+                              ),
+                              Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
@@ -216,8 +233,10 @@ class _VolumeDialCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ),
-              ),
+                        );
+                      },
+                    ),
+                  ),
               CceNeoSvgIconButton(
                 svg: CceIcons.plus,
                 tooltip: 'Subir volumen',
@@ -342,20 +361,14 @@ class _SourcesRow extends StatelessWidget {
         onTap: () =>
             _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
       ),
-      _SourceChip(
-        svg: CceIcons.heart,
-        label: 'Favorito',
-        active: false,
-        iconColor: CceColors.danger,
-        onTap: () => _handle(service.playRadio(), context),
-      ),
     ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // Panel neumórfico con 4 chips repartidos (Expanded).
+    return CceCard(
+      neo: true,
       child: Row(
         children: [
           for (var i = 0; i < items.length; i++) ...[
-            items[i],
+            Expanded(child: items[i]),
             if (i != items.length - 1) const SizedBox(width: 10),
           ],
         ],
@@ -364,23 +377,24 @@ class _SourcesRow extends StatelessWidget {
   }
 }
 
+/// Chip de fuente: plano dentro del panel. Activo = borde accent + contenido
+/// accent (look del mockup); inactivo = borde tenue [CceColors.stroke].
 class _SourceChip extends StatelessWidget {
   const _SourceChip({
     required this.svg,
     required this.label,
     required this.active,
     required this.onTap,
-    this.iconColor,
   });
 
   final String svg;
   final String label;
   final bool active;
   final VoidCallback onTap;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
+    final fg = active ? CceColors.accent : CceColors.neoText;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -388,28 +402,27 @@ class _SourceChip extends StatelessWidget {
         onTap();
       },
       child: Container(
-        width: 76,
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: active ? CceColors.accent : CceColors.neoBase,
+          color: CceColors.neoBase,
           borderRadius: BorderRadius.circular(CceRadii.control),
-          boxShadow: active ? null : CceShadows.neo(blur: 8, offset: 3),
+          border: Border.all(
+            color: active ? CceColors.accent : CceColors.stroke,
+            width: active ? 1.6 : 1,
+          ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CceIcon(
-              svg,
-              size: 22,
-              color: active ? Colors.white : (iconColor ?? CceColors.neoText),
-            ),
+            CceIcon(svg, size: 22, color: fg),
             const SizedBox(height: 8),
             Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: CceText.caption.copyWith(
-                color: active ? Colors.white : CceColors.neoTextSub,
+                color: active ? CceColors.accent : CceColors.neoTextSub,
               ),
             ),
           ],
@@ -421,7 +434,9 @@ class _SourceChip extends StatelessWidget {
 
 // ── Accesos rápidos (ACCESOS RÁPIDOS) ────────────────────────────────────────
 
-/// Grilla 4-col de accesos rápidos (squircles neumórficos).
+/// Fila compacta de accesos rápidos (panel neumórfico). El 1er ítem es
+/// Favoritos → abre el bottom sheet de sintonización (reemplaza al botón
+/// "Sintonización", que ya no existe). Power se movió al header.
 class _QuickAccessGrid extends StatelessWidget {
   const _QuickAccessGrid({required this.service});
 
@@ -430,14 +445,13 @@ class _QuickAccessGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = service.muted;
-    final isOn = service.isOn;
     final items = <Widget>[
       _QuickButton(
-        svg: CceIcons.power,
-        label: 'Power',
-        active: isOn,
-        activeColor: CceColors.ok,
-        onTap: () => _handle(service.togglePower(), context),
+        svg: CceIcons.heart,
+        label: 'Favori',
+        active: true,
+        activeColor: CceColors.danger,
+        onTap: () => _openRadioSheet(context, service),
       ),
       _QuickButton(
         svg: CceIcons.tv,
@@ -470,7 +484,7 @@ class _QuickAccessGrid extends StatelessWidget {
       ),
       _QuickButton(
         svg: CceIcons.surround,
-        label: 'Surround',
+        label: 'Surr',
         onTap: () =>
             _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
       ),
@@ -481,18 +495,18 @@ class _QuickAccessGrid extends StatelessWidget {
             _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
       ),
     ];
-    return GridView.count(
-      crossAxisCount: 4,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 0.78,
-      children: items,
+    return CceCard(
+      neo: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [for (final it in items) Expanded(child: it)],
+      ),
     );
   }
 }
 
+/// Botón compacto de acceso rápido (ícono + label chico). Plano dentro del
+/// panel; el estado activo tiñe el ícono (mute / favorito). Press = atenúa.
 class _QuickButton extends StatefulWidget {
   const _QuickButton({
     required this.svg,
@@ -520,7 +534,9 @@ class _QuickButtonState extends State<_QuickButton> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = widget.activeColor ?? CceColors.accent;
+    final color = widget.active
+        ? (widget.activeColor ?? CceColors.accent)
+        : CceColors.neoText;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => _set(true),
@@ -530,36 +546,26 @@ class _QuickButtonState extends State<_QuickButton> {
         HapticFeedback.selectionClick();
         widget.onTap();
       },
-      child: Column(
-        children: [
-          // Expanded: el squircle ocupa la altura disponible de la celda del
-          // GridView (evita overflow en pantallas angostas, ej. 320pt).
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: CceColors.neoBase,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: _pressed
-                    ? CceShadows.neoInset(blur: 6, offset: 2)
-                    : CceShadows.neo(blur: 8, offset: 3),
-              ),
-              alignment: Alignment.center,
-              child: CceIcon(
-                widget.svg,
-                size: 26,
-                color: widget.active ? accentColor : CceColors.neoText,
+      child: Opacity(
+        opacity: _pressed ? 0.5 : 1,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CceIcon(widget.svg, size: 24, color: color),
+            const SizedBox(height: 6),
+            Text(
+              widget.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w600,
+                color: CceColors.neoTextSub,
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            widget.label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: CceText.caption.copyWith(color: CceColors.neoTextSub),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -586,27 +592,9 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-// ── Sintonización (botón + bottom sheet de radios) ──────────────────────────
-
-/// Botón "Sintonización": abre el bottom sheet neumórfico con las radios.
-class _TuningButton extends StatelessWidget {
-  const _TuningButton({required this.service});
-
-  final JblService service;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: CceNeoActionButton(
-        label: 'Sintonización',
-        onPressed: () {
-          HapticFeedback.selectionClick();
-          _openRadioSheet(context, service);
-        },
-      ),
-    );
-  }
-}
+// ── Sintonización (bottom sheet de radios) ──────────────────────────────────
+// El acceso al sheet ahora es el botón Favoritos de ACCESOS RÁPIDOS
+// (`_openRadioSheet`); ya no existe un botón "Sintonización" aparte.
 
 /// Bottom sheet neumórfico (fondo neoBase) con las radios guardadas: tocar
 /// reproduce, mantener presionado borra (con confirmación). Funciona online y
