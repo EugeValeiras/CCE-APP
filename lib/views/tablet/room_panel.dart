@@ -6,6 +6,7 @@ import '../../services/devices_service.dart';
 import '../../services/ui_settings_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../theme/components/cce_neo_button.dart';
 import '../../theme/components/cce_segmented.dart';
 import '../../theme/components/section_header.dart';
 import '../../widgets/light_tile.dart';
@@ -28,6 +29,7 @@ class RoomPanel extends StatelessWidget {
     required this.tileSize,
     required this.onCycleTileSize,
     required this.onRefresh,
+    this.neo = false,
   });
 
   final DevicesService service;
@@ -36,6 +38,7 @@ class RoomPanel extends StatelessWidget {
   final TileSize tileSize;
   final VoidCallback onCycleTileSize;
   final VoidCallback onRefresh;
+  final bool neo;
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -106,31 +109,59 @@ class RoomPanel extends StatelessWidget {
                           ),
                         ],
                         onChanged: (m) => ui.setPanelMode(room.id, m),
+                        neo: neo,
                       ),
                     ),
                     const SizedBox(width: 12),
                   ],
-                  FilledButton.tonal(
-                    onPressed: stats.lightsTotal == 0
-                        ? null
-                        : () {
-                            HapticFeedback.mediumImpact();
-                            _toggleRoom(context, !stats.anyOn);
-                          },
-                    child: Text(stats.anyOn ? 'Apagar todo' : 'Encender'),
-                  ),
-                  const SizedBox(width: 4),
-                  Tooltip(
-                    message: 'Tamaño: ${tileSize.label}',
-                    child: IconButton(
-                      icon: Icon(_sizeIcon(tileSize)),
+                  // Encender/Apagar: el haptic lo dispara el call-site (el
+                  // botón neumórfico no trae haptic propio).
+                  if (neo)
+                    CceNeoActionButton(
+                      label: stats.anyOn ? 'Apagar todo' : 'Encender',
+                      onPressed: stats.lightsTotal == 0
+                          ? null
+                          : () {
+                              HapticFeedback.mediumImpact();
+                              _toggleRoom(context, !stats.anyOn);
+                            },
+                    )
+                  else
+                    FilledButton.tonal(
+                      onPressed: stats.lightsTotal == 0
+                          ? null
+                          : () {
+                              HapticFeedback.mediumImpact();
+                              _toggleRoom(context, !stats.anyOn);
+                            },
+                      child: Text(stats.anyOn ? 'Apagar todo' : 'Encender'),
+                    ),
+                  const SizedBox(width: 8),
+                  if (neo) ...[
+                    CceNeoIconButton(
+                      icon: _sizeIcon(tileSize),
+                      tooltip: 'Tamaño: ${tileSize.label}',
                       onPressed: onCycleTileSize,
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: onRefresh,
-                  ),
+                    const SizedBox(width: 8),
+                    CceNeoIconButton(
+                      icon: Icons.refresh,
+                      tooltip: 'Actualizar',
+                      onPressed: onRefresh,
+                    ),
+                  ] else ...[
+                    Tooltip(
+                      message: 'Tamaño: ${tileSize.label}',
+                      child: IconButton(
+                        icon: Icon(_sizeIcon(tileSize)),
+                        onPressed: onCycleTileSize,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: onRefresh,
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -142,6 +173,7 @@ class RoomPanel extends StatelessWidget {
                 service: service,
                 room: room,
                 compact: true,
+                neo: neo,
               ),
             ),
             Expanded(
@@ -152,6 +184,7 @@ class RoomPanel extends StatelessWidget {
                       planId: room.planId,
                       showPlanChips: false,
                       dotSize: tileSize.floorPlanDotSize,
+                      neo: neo,
                     )
                   : _buildLights(),
             ),
@@ -181,7 +214,7 @@ class RoomPanel extends StatelessWidget {
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           sliver: SliverToBoxAdapter(
-            child: ScenesSection(service: service, room: room),
+            child: ScenesSection(service: service, room: room, neo: neo),
           ),
         ),
         if (lights.isNotEmpty) ...[
@@ -209,6 +242,7 @@ class RoomPanel extends StatelessWidget {
                       device: d,
                       service: service,
                       size: tileSize,
+                      neo: neo,
                     );
                   },
                 ),
@@ -242,6 +276,7 @@ class RoomPanel extends StatelessWidget {
                       device: d,
                       service: service,
                       size: tileSize,
+                      neo: neo,
                     );
                   },
                 ),

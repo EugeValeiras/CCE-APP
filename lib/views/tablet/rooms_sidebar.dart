@@ -21,11 +21,13 @@ class RoomsSidebar extends StatefulWidget {
     required this.service,
     required this.selectedRoomId,
     required this.onSelect,
+    this.neo = false,
   });
 
   final DevicesService service;
   final String? selectedRoomId;
   final ValueChanged<String?> onSelect; // null = Toda la casa
+  final bool neo;
 
   @override
   State<RoomsSidebar> createState() => _RoomsSidebarState();
@@ -136,6 +138,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
                       selected: widget.selectedRoomId == null,
                       subtitleOverride: allSubtitle,
                       toggleEnabled: !_allHouseBusy,
+                      neo: widget.neo,
                       onTap: () => widget.onSelect(null),
                       onToggle: _toggleAllHouse,
                     );
@@ -158,6 +161,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
                       selected: widget.selectedRoomId == room.id,
                       motion: stats.anyMotion,
                       contactOpen: stats.anyContactOpen,
+                      neo: widget.neo,
                       onTap: () => widget.onSelect(room.id),
                       onToggle: (v) => _toggleRoom(room, v),
                       onBrightnessCommitted: (v) =>

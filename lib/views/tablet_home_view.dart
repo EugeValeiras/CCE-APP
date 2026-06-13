@@ -7,6 +7,7 @@ import '../services/socket_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_neo_button.dart';
 import '../theme/components/cce_segmented.dart';
 import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
@@ -87,13 +88,14 @@ class _TabletHomeViewState extends State<TabletHomeView> {
         final tabs = <Widget>[
           _CasaSplit(devices: _devices, ui: _ui),
           AutomationsView(devices: _devices, config: widget.config),
-          HistoryScreen(config: widget.config, devices: _devices),
+          HistoryScreen(config: widget.config, devices: _devices, neo: true),
           ChatScreen(config: widget.config),
-          AlarmView(initialConfig: widget.config),
+          AlarmView(initialConfig: widget.config, neo: true),
           SoundbarScreen(service: _jbl),
         ];
 
         return Scaffold(
+          backgroundColor: CceColors.neoBase,
           body: SafeArea(
             child: Column(
               children: [
@@ -147,28 +149,33 @@ class _HueBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 64,
-      decoration: const BoxDecoration(
-        color: CceColors.surface,
-        border: Border(top: BorderSide(color: CceColors.stroke)),
+    // Mismo patrón que el phone: barra neoBase con relieve raised (la sombra
+    // inferior sale del viewport; el highlight superior es el borde visible).
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: CceColors.neoBase,
+        boxShadow: CceShadows.neo(blur: 16, offset: 6),
       ),
-      child: Row(
-        children: [
-          for (var i = 0; i < _items.length; i++)
-            Expanded(
-              child: _NavItem(
-                svg: _items[i].$1,
-                label: _items[i].$2,
-                // Ajustes (último) no es tab: abre la pantalla y no queda
-                // marcado como activo.
-                active: i == selected && i < _items.length - 1,
-                onTap: i == _items.length - 1
-                    ? onSettings
-                    : () => onSelect(i),
+      child: Container(
+        height: 64,
+        color: CceColors.neoBase,
+        child: Row(
+          children: [
+            for (var i = 0; i < _items.length; i++)
+              Expanded(
+                child: _NavItem(
+                  svg: _items[i].$1,
+                  label: _items[i].$2,
+                  // Ajustes (último) no es tab: abre la pantalla y no queda
+                  // marcado como activo.
+                  active: i == selected && i < _items.length - 1,
+                  onTap: i == _items.length - 1
+                      ? onSettings
+                      : () => onSelect(i),
+                ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -189,26 +196,39 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? Colors.white : CceColors.textTertiary;
+    final color = active ? CceColors.neoText : CceColors.textTertiary;
     return InkWell(
       onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CceIcon(svg, size: 22, color: color),
-          const SizedBox(height: 4),
-          Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.1,
-              color: color,
+      // El ripple sigue la esquina redondeada del item neumórfico.
+      borderRadius: BorderRadius.circular(CceRadii.control),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+        decoration: BoxDecoration(
+          // color opaco obligatorio para que el BlurStyle.inner se vea.
+          color: CceColors.neoBase,
+          borderRadius: BorderRadius.circular(CceRadii.control),
+          // Item activo HUNDIDO; inactivos planos (sin sombra) para no pisar
+          // los relieves entre items contiguos.
+          boxShadow: active ? CceShadows.neoInset(blur: 6, offset: 2) : const [],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CceIcon(svg, size: 22, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.1,
+                color: color,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -265,6 +285,7 @@ class _CasaSplitState extends State<_CasaSplit> {
                 service: widget.devices,
                 selectedRoomId: _selectedRoomId,
                 onSelect: (id) => setState(() => _selectedRoomId = id),
+                neo: true,
               ),
             ),
             const VerticalDivider(),
@@ -278,6 +299,7 @@ class _CasaSplitState extends State<_CasaSplit> {
                       tileSize: widget.ui.tileSize,
                       onCycleTileSize: widget.ui.cycle,
                       onRefresh: widget.devices.refresh,
+                      neo: true,
                     ),
             ),
           ],
@@ -328,30 +350,32 @@ class _CasaSplitState extends State<_CasaSplit> {
                     ),
                   ],
                   onChanged: (m) => widget.ui.setPanelMode(_allHouseKey, m),
+                  neo: true,
                 ),
               ),
               const SizedBox(width: 12),
-              Tooltip(
-                message: 'Tamaño: ${tileSize.label}',
-                child: IconButton(
-                  icon: Icon(_sizeIcon(tileSize)),
-                  onPressed: widget.ui.cycle,
-                ),
+              CceNeoIconButton(
+                icon: _sizeIcon(tileSize),
+                tooltip: 'Tamaño: ${tileSize.label}',
+                onPressed: widget.ui.cycle,
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
+              const SizedBox(width: 8),
+              CceNeoIconButton(
+                icon: Icons.refresh,
+                tooltip: 'Actualizar',
                 onPressed: widget.devices.refresh,
               ),
             ],
           ),
           const SizedBox(height: 8),
-          TemperatureSummaryCard(service: widget.devices),
+          TemperatureSummaryCard(service: widget.devices, neo: true),
           Expanded(
             child: mode == RoomPanelMode.plan
                 ? FloorPlanPanel(
                     service: widget.devices,
                     ui: widget.ui,
                     dotSize: tileSize.floorPlanDotSize,
+                    neo: true,
                   )
                 : _AllHouseLights(
                     service: widget.devices,
@@ -405,6 +429,7 @@ class _AllHouseLights extends StatelessWidget {
                     device: d,
                     service: service,
                     size: tileSize,
+                    neo: true,
                   );
                 },
               ),
@@ -432,6 +457,7 @@ class _AllHouseLights extends StatelessWidget {
                     device: d,
                     service: service,
                     size: tileSize,
+                    neo: true,
                   );
                 },
               ),

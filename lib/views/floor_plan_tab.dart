@@ -25,6 +25,10 @@ class FloorPlanPanel extends StatefulWidget {
   final String? planId;
   final double dotSize;
   final bool showPlanChips;
+
+  /// Opt-in neumórfico (solo el TABLET lo activa). Default `false` deja el
+  /// render actual intacto (phone / room_detail montan flat).
+  final bool neo;
   const FloorPlanPanel({
     super.key,
     required this.service,
@@ -32,6 +36,7 @@ class FloorPlanPanel extends StatefulWidget {
     this.planId,
     this.dotSize = 56,
     this.showPlanChips = true,
+    this.neo = false,
   });
 
   @override
@@ -72,6 +77,7 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
           for (final p in fp.plans) CceSegment(value: p.id, label: p.name),
         ],
         onChanged: _selectPlan,
+        neo: widget.neo,
       );
     }
     return SingleChildScrollView(
@@ -86,17 +92,28 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                 child: Container(
                   height: 40,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: p.id == active.id
-                        ? CceColors.accent.withValues(alpha: 0.24)
-                        : CceColors.surfaceHigh,
-                    borderRadius: BorderRadius.circular(CceRadii.pill),
-                    border: Border.all(
-                      color: p.id == active.id
-                          ? CceColors.accent.withValues(alpha: 0.60)
-                          : Colors.transparent,
-                    ),
-                  ),
+                  // Neo: sólo la pill ACTIVA lleva relieve (hundida); las
+                  // inactivas quedan PLANAS (neoBase sin boxShadow) para no
+                  // pisar sombras entre pills contiguas. Flat: render actual.
+                  decoration: widget.neo
+                      ? BoxDecoration(
+                          color: CceColors.neoBase,
+                          borderRadius: BorderRadius.circular(CceRadii.pill),
+                          boxShadow: p.id == active.id
+                              ? CceShadows.neoInset(blur: 6, offset: 2)
+                              : null,
+                        )
+                      : BoxDecoration(
+                          color: p.id == active.id
+                              ? CceColors.accent.withValues(alpha: 0.24)
+                              : CceColors.surfaceHigh,
+                          borderRadius: BorderRadius.circular(CceRadii.pill),
+                          border: Border.all(
+                            color: p.id == active.id
+                                ? CceColors.accent.withValues(alpha: 0.60)
+                                : Colors.transparent,
+                          ),
+                        ),
                   alignment: Alignment.center,
                   child: Text(
                     p.name,
@@ -168,6 +185,7 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                 positions: positions,
                 service: widget.service,
                 dotSize: widget.dotSize,
+                neo: widget.neo,
               ),
             ),
           ],
@@ -182,12 +200,14 @@ class _PlanCanvas extends StatelessWidget {
   final Map<String, LightPosition> positions;
   final DevicesService service;
   final double dotSize;
+  final bool neo;
 
   const _PlanCanvas({
     required this.plan,
     required this.positions,
     required this.service,
     required this.dotSize,
+    this.neo = false,
   });
 
   /// Parser completo del viewBox: comillas simples o dobles, captura los 4
@@ -239,9 +259,22 @@ class _PlanCanvas extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 3.5,
-              child: SizedBox(
+              // Neo: relieve raised por DETRÁS del ClipRRect. intensity:1 y
+              // offset:8 porque el contraste neoBase→neoLight es bajo (con los
+              // defaults el relieve sería casi invisible). El color opaco
+              // neoBase asienta la sombra; el RadialGradient interno y el
+              // borde hairline se conservan dentro del ClipRRect.
+              child: Container(
                 width: w,
                 height: h,
+                decoration: neo
+                    ? BoxDecoration(
+                        color: CceColors.neoBase,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow:
+                            CceShadows.neo(blur: 20, offset: 8, intensity: 1),
+                      )
+                    : null,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
