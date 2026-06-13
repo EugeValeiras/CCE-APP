@@ -47,9 +47,12 @@ LightColorResult resolveLightColor(DeviceState s) {
       sat01: hsv.saturation,
     );
   }
-  // 2. Modo ct: blanco real según mireds (hue/sat están stale).
+  // 2. Modo ct: el bridge suele traer un xy fresco que es el color real.
+  // Preferir xy cuando es válido (descartar [0,0]); caer a ct sólo si no.
   if (s.colormode == 'ct' && s.ct != null) {
-    return LightColorResult(color: ctToWhiteColor(s.ct!), isWhite: true);
+    final hasXy = s.xy != null && s.xy![0] > 0 && s.xy![1] > 0;
+    final c = hasXy ? xyToColor(s.xy![0], s.xy![1]) : ctToWhiteColor(s.ct!);
+    return LightColorResult(color: c, isWhite: true);
   }
   // 3. Modo hs explícito, o sin colormode (matter): hue/sat canónicos frescos.
   if (s.hue != null && s.sat != null) {
@@ -98,11 +101,11 @@ Color xyToColor(double x, double y) {
 }
 
 /// Mireds → blanco real. Interpolación LINEAL EN RGB entre anclas:
-/// 153 mireds → 0xFFDDE6F0 (frío), 370 mireds → 0xFFFFE3A0 (cálido, ámbar
-/// amarillo — 2700K se ve claramente cálido, no gris). ct > 370 clampea.
+/// 153 mireds → 0xFFDDE6F0 (frío), 370 mireds → 0xFFFFCF77 (cálido, oro Hue
+/// — 2700K se ve claramente cálido, no gris). ct > 370 clampea.
 Color ctToWhiteColor(int ct) {
   const cold = Color(0xFFDDE6F0); // 153 mireds
-  const warm = Color(0xFFFFE3A0); // 370 mireds (más amarillo)
+  const warm = Color(0xFFFFCF77); // 370 mireds (oro Hue: RGB 255,207,119)
   final t = ((ct - 153) / (370 - 153)).clamp(0.0, 1.0).toDouble();
   return Color.lerp(cold, warm, t)!;
 }

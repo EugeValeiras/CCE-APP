@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../cce_tokens.dart';
 
 /// Card visual de una luz (SOLO presentacion; los gestos los pone LightTile).
-/// Card compacta estilo Hue (mismo tamaño que las scene cards): el BRILLO se
-/// representa como un RELLENO de color que sube desde abajo (no como texto %).
-/// Apagada = card oscura; encendida = relleno pastel del color real con altura
-/// proporcional al brillo; sin conexión = color muteado + ícono wifi-off.
+/// Card compacta estilo Hue (mismo tamaño que las scene cards): encendida =
+/// card SIEMPRE llena con gradiente vertical del color real (CceGradients
+/// .lightFull); el BRILLO modula lightness/saturación, NO la altura (sin línea
+/// dura). Apagada = card oscura; sin conexión = gris apagado + ícono wifi-off.
 class LightCard extends StatelessWidget {
   const LightCard({
     super.key,
@@ -27,7 +27,7 @@ class LightCard extends StatelessWidget {
   /// (necesario para tintar SVGs de icons0, que no respetan IconTheme).
   final Widget Function(Color color) iconBuilder;
   final bool on;
-  final double? brightness; // 0..1 → altura del relleno
+  final double? brightness; // 0..1 → modula lightness/saturación del fill
   final Color? color; // color real de la luz (default CceColors.warm)
   final bool reachable;
   final String? stateLabel; // 'Apagada' | 'Sin conexión' | null (encendida)
@@ -49,14 +49,12 @@ class LightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = color ?? CceColors.warm;
     final displayColor = reachable ? base : _muted(base);
-    // Altura del relleno: brillo real (mínimo visible 0.10 para que se note).
-    final double fill =
-        on ? (brightness ?? 1.0).clamp(0.10, 1.0).toDouble() : 0.0;
-    // Texto oscuro solo si el relleno cubre el centro de la card (~mitad).
-    final darkText = on && fill >= 0.5;
-    final fg = darkText ? CceTint.inkOnPastel : CceColors.textPrimary;
-    final fgSub =
-        darkText ? CceTint.inkOnPastelSub : CceColors.textSecondary;
+    // Color representativo del fill (promedio top/mid) para decidir contraste.
+    final fgBase = on
+        ? CceGradients.lightFullSampleColor(displayColor, brightness ?? 1.0, reachable)
+        : (neo ? CceColors.neoBase : CceColors.cardOff);
+    final fg = on ? CceTint.textOn(fgBase) : CceColors.textPrimary;
+    final fgSub = on ? CceTint.subTextOn(fgBase) : CceColors.textSecondary;
 
     return SizedBox(
       height: height,
@@ -69,17 +67,14 @@ class LightCard extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Relleno de brillo: sube desde abajo, gradiente pastel del color.
+            // Fill COMPLETO estilo Hue: card siempre llena cuando on, gradiente
+            // vertical modulado por brillo (sin línea dura). Off/neo intactos.
             if (on)
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: FractionallySizedBox(
-                  heightFactor: fill,
-                  widthFactor: 1,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: CceGradients.huePastel([displayColor]),
-                    ),
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: CceGradients.lightFull(
+                        displayColor, brightness ?? 1.0, reachable),
                   ),
                 ),
               ),
@@ -136,7 +131,7 @@ class LightCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
-                        color: on
+                        color: (on && fgBase.computeLuminance() > 0.45)
                             ? Colors.black.withValues(alpha: 0.16)
                             : Colors.white.withValues(alpha: 0.10),
                       ),

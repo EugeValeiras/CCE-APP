@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 /// Paleta del design system CCE Home (estilo Hue, dark-first).
@@ -227,6 +229,56 @@ abstract final class CceGradients {
     return LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: pastels);
   }
 
+  /// Fill COMPLETO de LightCard estilo Hue: card siempre llena, gradiente
+  /// vertical claro→profundo SIN línea dura. El brillo modula lightness y
+  /// saturación (no la altura). NO pasa por CceTint.pastel (preserva el oro).
+  /// [brightness] 0..1; [reachable] false ⇒ gris apagado aunque on sea true.
+  static LinearGradient lightFull(Color color, double brightness, bool reachable) {
+    final hsl = HSLColor.fromColor(color);
+    final double b = brightness.clamp(0.0, 1.0).toDouble();
+    // Saturación: alta a full, baja un poco al atenuar; piso 0.45 conserva el oro.
+    double satP = (0.55 + 0.45 * b).clamp(0.45, 1.0).toDouble();
+    // Lightness base modulada por brillo.
+    final double lFull = (0.62 + 0.16 * b).clamp(0.62, 0.78).toDouble();
+    const double lDim = 0.34;
+    double lMid = (lDim + (lFull - lDim) * b);
+    // Sin conexión: gris apagado, llena igual.
+    if (!reachable) {
+      satP *= 0.6;
+      lMid = math.min(lMid, 0.55);
+    }
+    final double lTop = (lMid + 0.09).clamp(0.0, 0.86).toDouble();
+    final double lBot = (lMid - 0.11).clamp(0.18, 1.0).toDouble();
+    Color at(double l) => hsl
+        .withSaturation(satP)
+        .withLightness(l)
+        .withAlpha(1.0)
+        .toColor();
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [at(lTop), at(lMid), at(lBot)],
+      stops: const [0.0, 0.55, 1.0],
+    );
+  }
+
+  /// Color representativo (promedio Top/Mid) del gradiente lightFull, para
+  /// decidir contraste de texto vía CceTint.textOn.
+  static Color lightFullSampleColor(Color color, double brightness, bool reachable) {
+    final hsl = HSLColor.fromColor(color);
+    final double b = brightness.clamp(0.0, 1.0).toDouble();
+    double satP = (0.55 + 0.45 * b).clamp(0.45, 1.0).toDouble();
+    final double lFull = (0.62 + 0.16 * b).clamp(0.62, 0.78).toDouble();
+    const double lDim = 0.34;
+    double lMid = (lDim + (lFull - lDim) * b);
+    if (!reachable) {
+      satP *= 0.6;
+      lMid = math.min(lMid, 0.55);
+    }
+    final double lTop = (lMid + 0.09).clamp(0.0, 0.86).toDouble();
+    return hsl.withSaturation(satP).withLightness((lTop + lMid) / 2).withAlpha(1.0).toColor();
+  }
+
   // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static LinearGradient roomOn([Color? tint]) {
     return const LinearGradient(
@@ -243,7 +295,9 @@ abstract final class CceGradients {
     colors: [Color(0xFF22242C), Color(0xFF191A20)],
   );
 
-  /// Fill de LightCard desde abajo, proporcional a brightness 0..1.
+  /// LEGACY: fill de LightCard desde abajo, proporcional a brightness 0..1.
+  /// Reemplazado por [lightFull] (card llena, sin línea dura). Sin callers tras
+  /// la migración de LightCard; conservado como fallback / referencia.
   static LinearGradient lightFill(Color color, double brightness) {
     final double b = brightness.clamp(0.0, 1.0).toDouble();
     final transparent = color.withValues(alpha: 0.0);
