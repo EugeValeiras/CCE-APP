@@ -35,6 +35,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   static const _defaultOrder = ['scenes', 'lights', 'sensors'];
   List<String> _order = List.of(_defaultOrder);
 
+  // Orden de los elementos (deviceIds) por sección, persistido por habitación.
+  List<String> _lightOrder = [];
+  List<String> _sensorOrder = [];
+
+  String get _roomKey => widget.room?.id ?? widget.title;
+
   @override
   void initState() {
     super.initState();
@@ -45,11 +51,17 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_orderKey);
-      if (saved != null &&
-          saved.length == _defaultOrder.length &&
-          _defaultOrder.every(saved.contains)) {
-        setState(() => _order = saved);
-      }
+      final lo = prefs.getStringList('room.$_roomKey.lightOrder');
+      final so = prefs.getStringList('room.$_roomKey.sensorOrder');
+      setState(() {
+        if (saved != null &&
+            saved.length == _defaultOrder.length &&
+            _defaultOrder.every(saved.contains)) {
+          _order = saved;
+        }
+        if (lo != null) _lightOrder = lo;
+        if (so != null) _sensorOrder = so;
+      });
     } catch (_) {}
   }
 
@@ -58,6 +70,29 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_orderKey, _order);
     } catch (_) {}
+  }
+
+  Future<void> _saveItemOrder(String section, List<String> ids) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('room.$_roomKey.${section}Order', ids);
+    } catch (_) {}
+  }
+
+  /// Ordena [items] según [order] (los conocidos en ese orden; el resto al
+  /// final, alfabético). Si [order] está vacío → alfabético.
+  List<Device> _applyOrder(List<Device> items, List<String> order) {
+    items.sort((a, b) => a.name.compareTo(b.name));
+    if (order.isEmpty) return items;
+    final idx = {for (var i = 0; i < order.length; i++) order[i]: i};
+    items.sort((a, b) {
+      final ia = idx[a.id], ib = idx[b.id];
+      if (ia != null && ib != null) return ia.compareTo(ib);
+      if (ia != null) return -1;
+      if (ib != null) return 1;
+      return a.name.compareTo(b.name);
+    });
+    return items;
   }
 
   DevicesService get service => widget.service;
@@ -90,6 +125,18 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               onTap: () {
                 Navigator.of(context).pop();
                 _openReorder();
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.drag_indicator, color: CceColors.textPrimary),
+              title: const Text('Reordenar elementos',
+                  style: TextStyle(color: CceColors.textPrimary)),
+              subtitle: const Text('Ordená las luces y sensores de la habitación',
+                  style: TextStyle(color: CceColors.textTertiary)),
+              onTap: () {
+                Navigator.of(context).pop();
+                _openReorderItems();
               },
             ),
             const SizedBox(height: 8),
@@ -188,6 +235,125 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     );
   }
 
+  void _openReorderItems() {
+    final devices =
+        widget.deviceIds.map(service.byId).whereType<Device>().toList();
+    final lightIds = _applyOrder(
+            devices.where((d) => d.isLight && !d.isSensorDevice).toList(),
+            _lightOrder)
+        .map((d) => d.id)
+        .toList();
+    final sensorIds = _applyOrder(
+            devices.where((d) => d.isSensorDevice).toList(), _sensorOrder)
+        .map((d) => d.id)
+        .toList();
+    if (lightIds.isEmpty && sensorIds.isEmpty) return;
+
+    String nameOf(String id) {
+      final d = service.byId(id);
+      return d != null ? service.displayName(d) : id;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CceColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+      ),
+      builder: (_) {
+        final lo = List.of(lightIds);
+        final so = List.of(sensorIds);
+        return StatefulBuilder(
+          builder: (context, setSheet) {
+            Widget reorderTile(String id) => Container(
+                  key: ValueKey(id),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: CceColors.surfaceHigh,
+                    borderRadius: BorderRadius.circular(CceRadii.control),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(nameOf(id),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: CceColors.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                      const Icon(Icons.drag_handle,
+                          color: CceColors.textTertiary),
+                    ],
+                  ),
+                );
+
+            Widget section(String title, List<String> ids,
+                void Function(int, int) onReorder) {
+              if (ids.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 8),
+                    child: Text(title.toUpperCase(), style: CceText.section),
+                  ),
+                  ReorderableListView(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    onReorder: onReorder,
+                    children: [for (final id in ids) reorderTile(id)],
+                  ),
+                ],
+              );
+            }
+
+            return SafeArea(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Reordenar elementos', style: CceText.title),
+                      const SizedBox(height: 4),
+                      const Text('Mantené y arrastrá cada elemento.',
+                          style: TextStyle(color: CceColors.textTertiary)),
+                      section('Luces', lo, (oldI, newI) {
+                        setSheet(() {
+                          if (newI > oldI) newI -= 1;
+                          lo.insert(newI, lo.removeAt(oldI));
+                        });
+                        setState(() => _lightOrder = List.of(lo));
+                        _saveItemOrder('light', lo);
+                      }),
+                      section('Sensores', so, (oldI, newI) {
+                        setSheet(() {
+                          if (newI > oldI) newI -= 1;
+                          so.insert(newI, so.removeAt(oldI));
+                        });
+                        setState(() => _sensorOrder = List.of(so));
+                        _saveItemOrder('sensor', so);
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _circleButton(IconData icon, VoidCallback onTap, {String? tooltip}) {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -214,12 +380,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
       builder: (context, _) {
         final devices =
             widget.deviceIds.map(service.byId).whereType<Device>().toList();
-        final lights = devices
-            .where((d) => d.isLight && !d.isSensorDevice)
-            .toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-        final sensors = devices.where((d) => d.isSensorDevice).toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
+        final lights = _applyOrder(
+            devices.where((d) => d.isLight && !d.isSensorDevice).toList(),
+            _lightOrder);
+        final sensors = _applyOrder(
+            devices.where((d) => d.isSensorDevice).toList(), _sensorOrder);
         final onCount = lights.where((l) => l.state.on).length;
 
         // Slivers por sección, renderizados según _order.
@@ -314,11 +479,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
           backgroundColor: CceColors.neoBase,
           appBar: AppBar(
             backgroundColor: CceColors.neoBase,
-            titleSpacing: 4,
-            // Back circular (estilo Hue).
-            leading: _circleButton(
-                Icons.arrow_back, () => Navigator.of(context).maybePop()),
-            leadingWidth: 56,
+            // Sin flecha de atrás: se vuelve con el swipe nativo de iOS.
+            automaticallyImplyLeading: false,
+            titleSpacing: 16,
             title: Text(widget.title),
             actions: [
               // Menú "..." (incluye Reordenar secciones).
