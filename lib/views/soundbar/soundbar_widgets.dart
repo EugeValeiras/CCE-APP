@@ -495,11 +495,17 @@ class _QuickAccessGrid extends StatelessWidget {
             _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
       ),
     ];
+    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 8.
     return CceCard(
       neo: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [for (final it in items) Expanded(child: it)],
+      child: GridView.count(
+        crossAxisCount: 4,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 0.92,
+        children: items,
       ),
     );
   }
@@ -534,9 +540,9 @@ class _QuickButtonState extends State<_QuickButton> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.active
-        ? (widget.activeColor ?? CceColors.accent)
-        : CceColors.neoText;
+    final accent = widget.activeColor ?? CceColors.accent;
+    final fg = widget.active ? accent : CceColors.neoText;
+    // Caja grande con borde, igual estilo que los chips de FUENTES.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: (_) => _set(true),
@@ -547,24 +553,32 @@ class _QuickButtonState extends State<_QuickButton> {
         widget.onTap();
       },
       child: Opacity(
-        opacity: _pressed ? 0.5 : 1,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CceIcon(widget.svg, size: 24, color: color),
-            const SizedBox(height: 6),
-            Text(
-              widget.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w600,
-                color: CceColors.neoTextSub,
-              ),
+        opacity: _pressed ? 0.55 : 1,
+        child: Container(
+          decoration: BoxDecoration(
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(CceRadii.control),
+            border: Border.all(
+              color: widget.active ? accent : CceColors.stroke,
+              width: widget.active ? 1.6 : 1,
             ),
-          ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CceIcon(widget.svg, size: 24, color: fg),
+              const SizedBox(height: 8),
+              Text(
+                widget.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: CceText.caption.copyWith(
+                  color: widget.active ? accent : CceColors.neoTextSub,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
