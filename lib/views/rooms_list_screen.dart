@@ -54,7 +54,7 @@ class RoomsListScreen extends StatelessWidget {
           backgroundColor: CceColors.neoBase,
           appBar: AppBar(
             toolbarHeight: 64,
-            title: const Text('Mi casa', style: CceText.display),
+            title: const Text('CCE', style: CceText.display),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh, color: CceColors.textSecondary),

@@ -116,7 +116,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
           children: [
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
-              child: Text('Mi casa', style: CceText.display),
+              child: Text('CCE', style: CceText.display),
             ),
             Expanded(
               child: ListView.separated(
