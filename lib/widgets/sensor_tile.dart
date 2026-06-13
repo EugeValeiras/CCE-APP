@@ -58,13 +58,6 @@ class SensorTile extends StatelessWidget {
       color = CceColors.info;
     }
 
-    // Lectura numérica grande para temp/humedad (los binarios y switches ya
-    // comunican su estado en la franja inferior).
-    final String? bigReading =
-        device.isContactSensor || device.isMotionSensor || isSwitch
-            ? null
-            : stateLabel;
-
     final tile = PulseOnUpdate(
       triggerAt: device.lastEventAt,
       color: color,
@@ -92,74 +85,65 @@ class SensorTile extends StatelessWidget {
           children: [
             Column(
               children: [
-                // Zona superior centrada (misma familia que LightCard). El
-                // FittedBox evita overflow en la card compacta (132 px).
+                // Zona superior centrada — MISMA estructura que LightCard:
+                // ícono + nombre (el estado vive en la franja inferior).
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                          height: size.iconSize,
+                    padding: const EdgeInsets.fromLTRB(10, 12, 10, 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          height: 24,
                           child: Center(
                             child: IconResolver.widget(
                               device,
                               configuredIcon: service.iconFor(device.id),
                               customIcons: service.customIcons,
                               displayName: service.displayName(device),
-                              size: size.iconSize,
+                              size: 24,
                               color: color,
                             ),
                           ),
                         ),
-                          const SizedBox(height: 6),
-                          SizedBox(
-                            width: 124,
-                            child: Text(
-                              service.displayName(device),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: CceColors.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.1,
-                                height: 1.15,
-                              ),
+                        const SizedBox(height: 6),
+                        Flexible(
+                          child: Text(
+                            service.displayName(device),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: CceColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.1,
+                              height: 1.15,
                             ),
                           ),
-                          if (bigReading != null) ...[
-                            const SizedBox(height: 3),
-                            Text(
-                              bigReading,
-                              maxLines: 1,
-                              style: TextStyle(
-                                color: CceColors.textPrimary,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                // Franja inferior: dot de estado + label (sensores no se
-                // togglean — acá va el estado en lugar del switch).
+                // Franja inferior con borde superior (como el switch de la luz);
+                // acá va el estado del sensor centrado (dot + label).
                 Container(
-                  height: 36,
-                  color: Colors.white.withValues(alpha: 0.045),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  alignment: Alignment.centerLeft,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      top: BorderSide(
+                        color: neo
+                            ? Colors.black.withValues(alpha: 0.16)
+                            : Colors.white.withValues(alpha: 0.07),
+                      ),
+                    ),
+                  ),
+                  alignment: Alignment.center,
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      StatusDot(color, semanticLabel: stateLabel),
+                      StatusDot(color, pulse: alert, semanticLabel: stateLabel),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
@@ -167,7 +151,7 @@ class SensorTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12,
+                            fontSize: 12.5,
                             fontWeight: FontWeight.w600,
                             color: alert ? color : CceColors.textSecondary,
                           ),
