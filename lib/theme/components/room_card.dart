@@ -87,22 +87,6 @@ class _RoomCardState extends State<RoomCard> {
     super.dispose();
   }
 
-  // Queda por compatibilidad de la firma (lightsOn/lightsTotal/
-  // subtitleOverride); el subtítulo ya NO se renderiza (look Hue: solo nombre).
-  // ignore: unused_element
-  String get _subtitle {
-    final override = widget.subtitleOverride;
-    if (override != null) return override;
-    if (widget.contactOpen) {
-      return 'Puerta abierta · ${widget.lightsOn}/${widget.lightsTotal}';
-    }
-    if (widget.lightsOn > 0) {
-      return '${widget.lightsOn}/${widget.lightsTotal} encendidas';
-    }
-    if (widget.lightsTotal == 0) return 'Sin luces';
-    return '${widget.lightsTotal} luces';
-  }
-
   /// Promedio RGB simple de las paradas del gradiente (para decidir el fg).
   static Color _avgColor(List<Color> colors) {
     if (colors.isEmpty) return CceColors.warm;
@@ -150,56 +134,81 @@ class _RoomCardState extends State<RoomCard> {
     // pasteles oscuros → texto blanco, claros → casi-negro.
     final mid = CceTint.pastel(_avgColor(colors));
     final fg = widget.anyOn ? CceTint.textOn(mid) : CceColors.textPrimary;
-    // Sin subtítulo renderizado: fgSub queda documentado para futuros usos.
-    // ignore: unused_local_variable
     final fgSub =
         widget.anyOn ? CceTint.subTextOn(mid) : CceColors.textSecondary;
 
+    // Subtítulo de estado (como la card del JBL): override > conteo > apagado.
+    final lo = widget.lightsOn, lt = widget.lightsTotal;
+    final subtitle = widget.subtitleOverride ??
+        (lt == 0
+            ? 'Sin luces'
+            : (widget.anyOn ? '$lo de $lt encendidas' : 'Apagado'));
+
     final headerRow = Row(
       children: [
-        // Ícono plano, sin contenedor circular (look Hue).
-        SizedBox(
-          width: 30,
+        // Ícono en badge circular (como la card del JBL).
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: widget.anyOn
+                ? Colors.black.withValues(alpha: 0.10)
+                : CceColors.surfaceHigh,
+          ),
+          alignment: Alignment.center,
           child: IconTheme.merge(
-            data: IconThemeData(color: fg, size: 24),
+            data: IconThemeData(color: fg, size: 22),
             child: widget.icon,
           ),
         ),
-        const SizedBox(width: 12),
-        // SOLO el nombre (look Hue), centrado verticalmente; dots de estado
-        // inline a la derecha del título.
+        const SizedBox(width: 14),
+        // Nombre + subtítulo de estado (dos líneas).
         Expanded(
-          child: Row(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Flexible(
-                child: Text(
-                  widget.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                    color: fg,
-                  ),
+              Text(
+                widget.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                  color: fg,
                 ),
               ),
-              if (widget.contactOpen) ...[
-                const SizedBox(width: 8),
-                const StatusDot(
-                  CceColors.contact,
-                  pulse: true,
-                  semanticLabel: 'Puerta abierta',
-                ),
-              ],
-              if (widget.motion) ...[
-                const SizedBox(width: 8),
-                const StatusDot(
-                  CceColors.motion,
-                  pulse: true,
-                  semanticLabel: 'Movimiento',
-                ),
-              ],
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  if (widget.contactOpen) ...[
+                    const StatusDot(
+                      CceColors.contact,
+                      pulse: true,
+                      semanticLabel: 'Puerta abierta',
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  if (widget.motion) ...[
+                    const StatusDot(
+                      CceColors.motion,
+                      pulse: true,
+                      semanticLabel: 'Movimiento',
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  Flexible(
+                    child: Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.caption.copyWith(color: fgSub),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -215,8 +224,7 @@ class _RoomCardState extends State<RoomCard> {
                   ? null
                   : widget.onToggle,
               activeTrackColor: fg.withValues(alpha: 0.30),
-              thumbColor:
-                  const WidgetStatePropertyAll<Color>(Colors.white),
+              thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
             ),
           ),
         ),
