@@ -7,11 +7,13 @@ import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 
-/// Pantalla del switch multi-botón (Hue Tap Dial / remote de 4 botones), al
-/// estilo de la app de Hue: un dial redondo dividido en cuadrantes. Tocar un
-/// cuadrante simula la pulsación (key 0) y dispara la acción configurada en el
-/// backend; mantener presionado simula long-press (key 2). Girar la rueda es
-/// físico (ajusta el brillo de los targets server-side).
+/// Pantalla del switch multi-botón (Hue Tap Dial / remote de 4 botones): un
+/// dial neumórfico oscuro dividido en 4 cuadrantes que se hunden al tocarlos.
+/// Tocar un cuadrante simula la pulsación (key 0) y dispara la acción
+/// configurada en el backend; mantener presionado simula long-press (key 2).
+///
+/// Cada cuadrante es su PROPIO [GestureDetector] (sin overlays ni ClipOval que
+/// roben el tap), con feedback instantáneo en `onTapDown` (hundido + glow).
 class DialSwitchScreen extends StatefulWidget {
   final Device device;
   final DevicesService service;
@@ -26,28 +28,36 @@ class DialSwitchScreen extends StatefulWidget {
 }
 
 class _DialSwitchScreenState extends State<DialSwitchScreen> {
-  int? _pressed; // outlet con feedback activo
+  int? _pressed; // cuadrante con feedback visual activo
   String? _feedback; // 'Click' / 'Mantenido'
+  Timer? _flashTimer;
   Timer? _fbTimer;
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     _fbTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _press(int outlet, int key) async {
-    HapticFeedback.selectionClick();
-    setState(() {
-      _pressed = outlet;
-      _feedback = key == 2 ? 'Mantenido' : 'Click';
-    });
-    _fbTimer?.cancel();
-    _fbTimer = Timer(const Duration(milliseconds: 900), () {
+  /// Hundido instantáneo al apoyar el dedo (no espera al backend).
+  void _flash(int outlet) {
+    setState(() => _pressed = outlet);
+    _flashTimer?.cancel();
+    _flashTimer = Timer(const Duration(milliseconds: 240), () {
       if (mounted) setState(() => _pressed = null);
     });
-    final ok =
-        await widget.service.simulateButton(widget.device, key: key, outlet: outlet);
+  }
+
+  Future<void> _press(int outlet, int key) async {
+    HapticFeedback.mediumImpact();
+    setState(() => _feedback = key == 2 ? 'Mantenido' : 'Click');
+    _fbTimer?.cancel();
+    _fbTimer = Timer(const Duration(milliseconds: 1100), () {
+      if (mounted) setState(() => _feedback = null);
+    });
+    final ok = await widget.service
+        .simulateButton(widget.device, key: key, outlet: outlet);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo accionar el botón')),
@@ -73,7 +83,8 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
               _feedback ?? 'Tocá un botón',
               style: CceText.display.copyWith(
                 fontSize: 22,
-                color: _feedback != null ? CceColors.warm : CceColors.textSecondary,
+                color:
+                    _feedback != null ? CceColors.warm : CceColors.textSecondary,
               ),
             ),
             const SizedBox(height: 6),
@@ -81,9 +92,9 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
               'Tocá para accionar · mantené para long-press',
               style: TextStyle(color: CceColors.textTertiary, fontSize: 13),
             ),
-            const SizedBox(height: 36),
+            const SizedBox(height: 40),
             _dial(count),
-            const SizedBox(height: 28),
+            const SizedBox(height: 32),
             Text(
               d.type,
               style: CceText.caption.copyWith(color: CceColors.textTertiary),
@@ -94,128 +105,149 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
     );
   }
 
+  /// El dial: 4 cuadrantes elevados dentro de un "pozo" circular hundido para
+  /// dar profundidad (relieve dentro de relieve). El gap entre cuadrantes hace
+  /// la cruz divisoria — sin painter encima que tape el tap.
   Widget _dial(int count) {
-    const d = 280.0;
+    const well = 300.0;
+    const pad = 16.0;
     return Container(
-      width: d,
-      height: d,
+      width: well,
+      height: well,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // Disco elevado neumórfico: highlight sup-izq + sombra inf-der, más un
-        // glow cálido sutil debajo.
+        color: CceColors.neoBase,
+        // Pozo: hundido profundo + un glow cálido tenue por fuera.
         boxShadow: [
-          ...CceShadows.neo(blur: 26, offset: 12, intensity: 1.1),
+          ...CceShadows.neoInset(blur: 24, offset: 10, intensity: 1.2),
           BoxShadow(
-            color: CceColors.warm.withValues(alpha: 0.16),
-            blurRadius: 50,
-            spreadRadius: 2,
+            color: CceColors.warm.withValues(
+              alpha: _pressed != null ? 0.22 : 0.10,
+            ),
+            blurRadius: 48,
+            spreadRadius: 1,
           ),
         ],
       ),
-      child: ClipOval(
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: RadialGradient(
-              center: Alignment(-0.2, -0.3),
-              radius: 1.0,
-              colors: [Color(0xFFF6F2EA), Color(0xFFC9C3B8)],
+      padding: const EdgeInsets.all(pad),
+      child: Column(
+        children: [
+          Expanded(
+            child: Row(
+              children: [
+                _quad(0, count),
+                const SizedBox(width: 8),
+                _quad(1, count),
+              ],
             ),
           ),
-          child: Stack(
-            children: [
-              // Cuadrantes (2×2). Outlet 0=arriba-izq … 3=abajo-der; los
-              // puntos (1..4) identifican el botón como en el Tap Dial.
-              Column(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        _quad(0, count),
-                        _quad(1, count),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        _quad(2, count),
-                        _quad(3, count),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              // Cruz divisoria sutil.
-              const Center(
-                child: SizedBox.expand(
-                  child: CustomPaint(painter: _CrossPainter()),
-                ),
-              ),
-            ],
+          const SizedBox(height: 8),
+          Expanded(
+            child: Row(
+              children: [
+                _quad(2, count),
+                const SizedBox(width: 8),
+                _quad(3, count),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
+  /// Radios del cuadrante: la esquina EXTERNA muy redondeada (forma de cuarto
+  /// de disco), las internas casi rectas — juntos arman el disco con cruz.
+  BorderRadius _radii(int outlet) {
+    const r = Radius.circular(128); // esquina externa (borde del disco)
+    const s = Radius.circular(14); // esquinas internas
+    switch (outlet) {
+      case 0:
+        return const BorderRadius.only(
+            topLeft: r, topRight: s, bottomLeft: s, bottomRight: s);
+      case 1:
+        return const BorderRadius.only(
+            topRight: r, topLeft: s, bottomLeft: s, bottomRight: s);
+      case 2:
+        return const BorderRadius.only(
+            bottomLeft: r, topLeft: s, topRight: s, bottomRight: s);
+      default:
+        return const BorderRadius.only(
+            bottomRight: r, topLeft: s, topRight: s, bottomLeft: s);
+    }
+  }
+
   Widget _quad(int outlet, int count) {
-    if (outlet >= count) return const Expanded(child: SizedBox.shrink());
+    final radii = _radii(outlet);
+    // Cuadrante inexistente (switch de <4 botones): pad estático, sin tap, para
+    // que el disco quede entero.
+    if (outlet >= count) {
+      return Expanded(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: CceColors.neoBase,
+            borderRadius: radii,
+            boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
+          ),
+        ),
+      );
+    }
+
     final active = _pressed == outlet;
     return Expanded(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        onTapDown: (_) => _flash(outlet),
         onTap: () => _press(outlet, 0),
         onLongPress: () => _press(outlet, 2),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          // Pulsado = cuadrante "hundido": sombra interna sutil sobre la cara.
-          decoration: BoxDecoration(
-            color: active
-                ? Colors.black.withValues(alpha: 0.06)
-                : Colors.transparent,
-            boxShadow: active ? CceShadows.neoInset(blur: 10, offset: 4) : null,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 110),
+          scale: active ? 0.95 : 1,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              color: CceColors.neoBase,
+              borderRadius: radii,
+              // Reposo = cuadrante ELEVADO; pulsado = HUNDIDO profundo + glow.
+              boxShadow: active
+                  ? CceShadows.neoInset(blur: 12, offset: 5, intensity: 1.2)
+                  : CceShadows.neo(blur: 16, offset: 8, intensity: 1.1),
+            ),
+            child: Center(child: _dots(outlet + 1, active)),
           ),
-          child: Center(child: _dots(outlet + 1)),
         ),
       ),
     );
   }
 
-  /// n puntos (1..4) que identifican el botón, como el Hue Tap Dial.
-  Widget _dots(int n) {
+  /// n puntos (1..4) que identifican el botón, como el Hue Tap Dial. Se
+  /// iluminan (cálido) cuando el cuadrante está activo.
+  Widget _dots(int n, bool active) {
+    final color = active ? CceColors.warm : CceColors.neoTextSub;
     Widget dot() => Container(
-          width: 9,
-          height: 9,
-          decoration: const BoxDecoration(
-            color: Color(0xFF3C3A36),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
             shape: BoxShape.circle,
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: CceColors.warm.withValues(alpha: 0.6),
+                      blurRadius: 8,
+                    ),
+                  ]
+                : null,
           ),
         );
     return SizedBox(
-      width: 30,
+      width: 34,
       child: Wrap(
         alignment: WrapAlignment.center,
-        spacing: 6,
-        runSpacing: 6,
+        spacing: 7,
+        runSpacing: 7,
         children: [for (var i = 0; i < n; i++) dot()],
       ),
     );
   }
-}
-
-class _CrossPainter extends CustomPainter {
-  const _CrossPainter();
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = Colors.black.withValues(alpha: 0.10)
-      ..strokeWidth = 1.5;
-    canvas.drawLine(
-        Offset(size.width / 2, 8), Offset(size.width / 2, size.height - 8), p);
-    canvas.drawLine(
-        Offset(8, size.height / 2), Offset(size.width - 8, size.height / 2), p);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
