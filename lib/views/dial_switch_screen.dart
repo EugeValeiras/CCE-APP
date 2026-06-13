@@ -60,7 +60,7 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
     final d = widget.service.byId(widget.device.id) ?? widget.device;
     final count = d.outletCount.clamp(1, 4);
     return Scaffold(
-      backgroundColor: CceColors.bg,
+      backgroundColor: CceColors.neoBase,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text(widget.service.displayName(d), style: CceText.title),
@@ -101,11 +101,14 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
       height: d,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        // Disco elevado neumórfico: highlight sup-izq + sombra inf-der, más un
+        // glow cálido sutil debajo.
         boxShadow: [
+          ...CceShadows.neo(blur: 26, offset: 12, intensity: 1.1),
           BoxShadow(
-            color: CceColors.warm.withValues(alpha: 0.30),
-            blurRadius: 60,
-            spreadRadius: 4,
+            color: CceColors.warm.withValues(alpha: 0.16),
+            blurRadius: 50,
+            spreadRadius: 2,
           ),
         ],
       ),
@@ -165,9 +168,13 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
         onLongPress: () => _press(outlet, 2),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          color: active
-              ? CceColors.warm.withValues(alpha: 0.35)
-              : Colors.transparent,
+          // Pulsado = cuadrante "hundido": sombra interna sutil sobre la cara.
+          decoration: BoxDecoration(
+            color: active
+                ? Colors.black.withValues(alpha: 0.06)
+                : Colors.transparent,
+            boxShadow: active ? CceShadows.neoInset(blur: 10, offset: 4) : null,
+          ),
           child: Center(child: _dots(outlet + 1)),
         ),
       ),
