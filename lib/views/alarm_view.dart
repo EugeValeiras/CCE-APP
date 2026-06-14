@@ -438,8 +438,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                       center: const Alignment(-0.32, -0.4),
                       radius: 1.05,
                       colors: [
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.26)!,
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.07)!,
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.62)!,
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.44)!,
                       ],
                     )
                   : null,
