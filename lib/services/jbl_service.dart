@@ -4,12 +4,12 @@ import '../models/jbl_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 
-/// Tope del control de volumen en la UI: 0-33, step 1. Es la escala de DISPLAY
+/// Tope del control de volumen en la UI: 0-31, step 1. Es la escala de DISPLAY
 /// de la barra (lo que muestra el equipo); la API expone/acepta el volumen en
 /// esta misma escala y convierte a la UPnP nativa (0-100) internamente, así el
 /// número de la app coincide con el de la barra. El dial y los botones − / +
 /// (setVolume / nudgeVolume) clampan contra esto.
-const int kJblVolMax = 33;
+const int kJblVolMax = 31;
 
 /// Allowlist de ids del remote JBL (espejo del enum compartido del backend —
 /// ver remote-keys.ts / contrato 0.1). El `deviceKey` real vive SOLO
