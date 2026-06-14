@@ -348,7 +348,9 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
         );
       case _SaveState.done:
-        child = const CceIcon(CceIcons.check, size: 20, color: Colors.white);
+        // Check blanco sobre FilledButton accent: el relieve sobra -> flat.
+        child = const CceIcon(CceIcons.check,
+            size: 20, color: Colors.white, emboss: false);
       case _SaveState.idle:
         child = const Text('Guardar');
     }

@@ -50,7 +50,9 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
       appBar: AppBar(
         backgroundColor: CceColors.neoBase,
         toolbarHeight: 64,
-        title: const CceIcon(CceIcons.jbl, size: 38, color: CceColors.textPrimary),
+        // Wordmark JBL: logo, no glyph de UI -> sin relieve neumorfico.
+        title: const CceIcon(CceIcons.jbl,
+            size: 38, color: CceColors.textPrimary, emboss: false),
         actions: [
           IconButton(
             icon: const Icon(Icons.tune, color: CceColors.textSecondary),

@@ -636,7 +636,14 @@ class _Marker extends StatelessWidget {
             right: 0,
             top: 0,
             height: 2 * headCy, // caja [0, 2*headCy] → centro vertical = headCy
-            child: Center(child: content),
+            // El pin es un fill de color saturado: se aplana el relieve del
+            // glyph (sombra oscura ensuciaria la cabeza). `shadows: []` apaga
+            // el emboss del Icon de Material y del CceIcon por igual. (Text no
+            // se ve afectado.)
+            child: IconTheme.merge(
+              data: const IconThemeData(shadows: <Shadow>[]),
+              child: Center(child: content),
+            ),
           ),
         ],
       ),

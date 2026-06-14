@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -159,25 +161,129 @@ abstract final class CceIcons {
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m0 5.265l2.022 4.589l2.022-4.59zm2.022 7.6c.698 0 1.266-.565 1.266-1.26c0-.699-.568-1.262-1.266-1.262a1.262 1.262 0 1 0 0 2.523M.928 16.228c0 .957.862 2.509 3.315 2.509s3.315-1.188 3.315-2.51V5.266H5.369l.001 11.342c0 .62-.503 1.14-1.126 1.14a1.127 1.127 0 0 1-1.128-1.124l-.001-2.311H.928zm8.289 2.311V5.265h4.374c.845 0 2.187.693 2.187 2.162v2.261c0 .662-.58 1.833-1.44 1.833c.86 0 1.44.742 1.44 1.305v3.979c0 .676-.546 1.733-2.187 1.733zm3.38-7.559c.796 0 .995-.134.995-2.214s-.2-2.246-.995-2.246h-1.195v4.457zm.995 3.811c0-2.081 0-2.69-.864-2.69h-1.326v5.348l1.326.003c.863 0 .863-.581.863-2.66m3.779 3.748H24v-4.226h-2.189l.002 2.31a1.126 1.126 0 0 1-2.255 0V5.265H17.37Z"/></svg>';
 }
 
-/// Renderiza un SVG de [CceIcons] tintado. Si no se pasa [color], usa el
-/// color del IconTheme ambiente, para que NavigationBar/NavigationRail
-/// tinten correctamente los estados selected/unselected.
+/// Tokens del relieve neumorfico ("hoja que sobresale"): luz arriba-izquierda
+/// + sombra abajo-derecha. UNA sola fuente de verdad, compartida por [CceIcon]
+/// (ghost SVG) y el IconTheme global de `CceTheme` (Icon de Material/Mdi), para
+/// que ambas tecnicas converjan en el mismo relieve app-wide.
+abstract final class CceEmboss {
+  /// Sombra proyectada abajo-derecha (da el volumen).
+  static const Shadow shadow = Shadow(
+    color: Color(0xCC05060A),
+    offset: Offset(1.3, 2.2),
+    blurRadius: 2.0,
+  );
+
+  /// Realce tenue arriba-izquierda (luz neumorfica).
+  static const Shadow highlight = Shadow(
+    color: Color(0x1FFFFFFF),
+    offset: Offset(-1.1, -1.4),
+    blurRadius: 1.1,
+  );
+
+  /// Lista lista para `IconThemeData.shadows` / `Icon.shadows` (Material/Mdi).
+  static const List<Shadow> iconShadows = [shadow, highlight];
+
+  /// Por debajo de este tamano el ghost-blur ensucia el glyph -> sin emboss.
+  static const double minSize = 18.0;
+}
+
+/// Renderiza un SVG de [CceIcons] tintado, con relieve neumorfico por defecto
+/// (el glyph sobresale: realce arriba-izquierda + sombra abajo-derecha,
+/// tecnica "ghost" = 2 copias tintadas+desenfocadas detras del glyph real).
+///
+/// Si no se pasa [color], usa el color del IconTheme ambiente, para que
+/// NavigationBar/NavigationRail tinten correctamente los estados
+/// selected/unselected.
+///
+/// El emboss se desactiva automaticamente para [size] < [CceEmboss.minSize]
+/// (glifos chicos donde el blur ensucia) o pasando `emboss: false` (util para
+/// iconos blancos sobre fills de color saturado, logos, o chrome). El
+/// constructor sigue siendo `const`, asi que los call-sites `const CceIcon(...)`
+/// no se rompen.
 class CceIcon extends StatelessWidget {
-  const CceIcon(this.svg, {super.key, this.size = 24, this.color});
+  const CceIcon(
+    this.svg, {
+    super.key,
+    this.size = 24,
+    this.color,
+    this.emboss = true,
+  });
 
   final String svg;
   final double size;
   final Color? color;
 
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? IconTheme.of(context).color;
+  /// Opt-out del relieve neumorfico. Default true (auto-emboss app-wide).
+  final bool emboss;
+
+  /// El SVG tintado con [tint] (o el color ambiente si [tint] es null).
+  Widget _raw(Color? tint) {
     return SvgPicture.string(
       svg,
       width: size,
       height: size,
       colorFilter:
-          c != null ? ColorFilter.mode(c, BlendMode.srcIn) : null,
+          tint != null ? ColorFilter.mode(tint, BlendMode.srcIn) : null,
+    );
+  }
+
+  /// Copia tintada+desenfocada y desplazada detras del glyph real ("ghost").
+  Widget _ghost(Color tint, Offset off, double blur) {
+    return Transform.translate(
+      offset: off,
+      child: ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: ColorFiltered(
+          colorFilter: ColorFilter.mode(tint, BlendMode.srcATop),
+          child: _raw(tint),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final iconTheme = IconTheme.of(context);
+    final c = color ?? iconTheme.color;
+    final base = _raw(c);
+
+    // Senal de aplanado del ambiente: si un ancestro fija `shadows: []` en su
+    // IconTheme (p.ej. el badge de RoomCard sobre fill tintado, donde el
+    // relieve ensuciaria el halo), CceIcon se aplana igual que el Icon de
+    // Material -> UN solo mecanismo de opt-out flatten para ambas tecnicas.
+    final ambientFlat =
+        iconTheme.shadows != null && iconTheme.shadows!.isEmpty;
+
+    // Sin emboss: glifo chico, opt-out explicito, ambiente aplanado, o sin
+    // color resoluble.
+    if (!emboss || ambientFlat || size < CceEmboss.minSize || c == null) {
+      return base;
+    }
+
+    // RepaintBoundary: aisla las 3 capas (caro: 2 ImageFilter.blur) del
+    // repaint del resto de la lista/card en scroll y animaciones de glow.
+    return RepaintBoundary(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            _ghost(
+              CceEmboss.shadow.color,
+              CceEmboss.shadow.offset,
+              CceEmboss.shadow.blurRadius,
+            ),
+            _ghost(
+              CceEmboss.highlight.color,
+              CceEmboss.highlight.offset,
+              CceEmboss.highlight.blurRadius,
+            ),
+            base,
+          ],
+        ),
+      ),
     );
   }
 }

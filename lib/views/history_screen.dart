@@ -7,7 +7,6 @@ import '../services/devices_service.dart';
 import '../services/socket_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/embossed_icon.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/time_format.dart';
 import 'history/event_grouping.dart';
@@ -551,10 +550,14 @@ class _GroupRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            // Sin contenedor: el ícono sobresale como una "goma" neumórfica
-            // (realce arriba-izquierda + sombra abajo-derecha). Conserva el
-            // color semántico del evento.
-            EmbossedIcon(color: c, child: r.icon),
+            // El relieve neumorfico ya lo aplican el IconTheme global (Icon de
+            // Material/Mdi) y el ghost interno de CceIcon -> sin wrapper para
+            // evitar doble emboss. r.icon no fija color propio: el tinte
+            // semantico `c` se inyecta via IconTheme para Material y CceIcon.
+            IconTheme.merge(
+              data: IconThemeData(color: c),
+              child: r.icon,
+            ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(

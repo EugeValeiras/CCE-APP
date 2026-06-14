@@ -7,7 +7,6 @@ import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/embossed_icon.dart';
 import '../theme/components/room_card.dart';
 import '../utils/icon_resolver.dart';
 import '../widgets/pulse_on_update.dart';
@@ -131,18 +130,21 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               if (widget.onOpenHistory != null)
                 IconButton(
                   tooltip: 'Historial',
-                  icon: const EmbossedIcon(
+                  // CceIcon ya embossa solo (size 22 >= 18) -> sin wrapper.
+                  icon: const CceIcon(
+                    CceIcons.history,
+                    size: 22,
                     color: CceColors.textSecondary,
-                    child: CceIcon(CceIcons.history, size: 22),
                   ),
                   onPressed: () => widget.onOpenHistory!(context),
                 ),
               if (widget.onOpenAgent != null)
                 IconButton(
                   tooltip: 'Agente',
-                  icon: const EmbossedIcon(
+                  icon: const CceIcon(
+                    CceIcons.agent,
+                    size: 22,
                     color: CceColors.textSecondary,
-                    child: CceIcon(CceIcons.agent, size: 22),
                   ),
                   onPressed: () => widget.onOpenAgent!(context),
                 ),
@@ -150,11 +152,12 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 IconButton(
                   tooltip: 'Alarma',
                   // Rojo cuando la alarma está armada (estado en vivo del service).
-                  icon: EmbossedIcon(
+                  icon: CceIcon(
+                    CceIcons.alarmShield,
+                    size: 22,
                     color: service.alarmArmed
                         ? CceColors.danger
                         : CceColors.textSecondary,
-                    child: const CceIcon(CceIcons.alarmShield, size: 22),
                   ),
                   onPressed: () => widget.onOpenAlarm!(context),
                 ),

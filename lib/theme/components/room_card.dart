@@ -188,9 +188,16 @@ class _RoomCardState extends State<RoomCard> {
           ),
           alignment: Alignment.center,
           child: IconTheme.merge(
+            // Mismo criterio que badgeShadow: glyph sobre fill tintado (ON con
+            // color) -> sin relieve neumorfico (la sombra ensuciaria el halo).
+            // `shadows: []` aplana AMBAS tecnicas: el Icon de Material (usa
+            // shadows ?? iconTheme) y el CceIcon (lee este IconTheme.shadows
+            // vacio como senal de flatten). El badge generico usa
+            // CceIcon(CceIcons.room); los configurados, Icon(MdiIcons...).
             data: IconThemeData(
               color: badgeGlyph,
               size: 22,
+              shadows: badgeTint != null ? const <Shadow>[] : null,
             ),
             child: widget.icon,
           ),

@@ -306,7 +306,8 @@ class _ImageChip extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               padding: const EdgeInsets.all(2),
-              child: const Icon(Icons.close, size: 14, color: Colors.white),
+              // Badge blanco minusculo sobre circulo oscuro -> sin emboss.
+              child: const Icon(Icons.close, size: 14, color: Colors.white, shadows: []),
             ),
           ),
         ),
@@ -350,6 +351,8 @@ class _SendButton extends StatelessWidget {
             streaming ? Icons.stop : Icons.arrow_upward,
             color: enabled || streaming ? Colors.white : Colors.white38,
             size: 22,
+            // Glyph blanco sobre fill accent: el relieve sobra -> sin emboss.
+            shadows: const [],
           ),
         ),
       ),

@@ -90,7 +90,21 @@ class LightCard extends StatelessWidget {
                       children: [
                         SizedBox(
                           height: 26,
-                          child: Center(child: iconBuilder(fg)),
+                          // Encendida la card es un fill de color saturado: el
+                          // relieve neumorfico (sombra oscura) ensuciaria el
+                          // glyph -> se aplana (mismo criterio que RoomCard /
+                          // boton accent). `shadows: []` apaga el emboss tanto
+                          // del Icon de Material como del CceIcon (que lee este
+                          // IconTheme.shadows vacio). Apagada conserva relieve.
+                          child: Center(
+                            child: on
+                                ? IconTheme.merge(
+                                    data: const IconThemeData(
+                                        shadows: <Shadow>[]),
+                                    child: iconBuilder(fg),
+                                  )
+                                : iconBuilder(fg),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Flexible(

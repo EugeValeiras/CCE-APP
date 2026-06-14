@@ -568,7 +568,14 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
           color: accent,
           boxShadow: shadows,
         ),
-        child: _iconWidget(size * 0.52, CceTint.textOn(accent)),
+        // Dot activo: glyph sobre fill accent saturado -> sin relieve (mismo
+        // criterio que RoomCard / LightCard). `shadows: []` aplana el Icon de
+        // Material y el CceIcon por igual; el dot apagado (sobre superficie
+        // oscura) conserva su relieve.
+        child: IconTheme.merge(
+          data: const IconThemeData(shadows: <Shadow>[]),
+          child: _iconWidget(size * 0.52, CceTint.textOn(accent)),
+        ),
       );
     }
     // Apagado / sin actividad: ghost dark sobre el canvas.
@@ -612,6 +619,8 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
               Icons.wifi_off,
               size: size * 0.22,
               color: CceColors.danger,
+              // Badge minusculo (~10px) en circulo: el relieve lo ensuciaria.
+              shadows: const [],
             ),
           ),
         ),

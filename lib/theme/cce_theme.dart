@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'cce_icons.dart'; // CceEmboss: tokens del relieve neumorfico
 import 'cce_tokens.dart';
 
 /// ThemeData global del rebranding estilo Hue.
@@ -15,7 +16,13 @@ abstract final class CceTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: CceColors.bg,
       canvasColor: CceColors.bg,
-      iconTheme: const IconThemeData(color: CceColors.textSecondary),
+      // Relieve neumorfico app-wide para TODO Icon(Icons.*)/Icon(MdiIcons.*)
+      // que no fije shadows propios (Icon usa `widget.shadows ?? iconTheme`).
+      // Mismos tokens que el ghost de CceIcon -> Material y SVG convergen.
+      iconTheme: const IconThemeData(
+        color: CceColors.textSecondary,
+        shadows: CceEmboss.iconShadows,
+      ),
       dividerTheme: const DividerThemeData(
         color: CceColors.stroke,
         thickness: 1,
@@ -29,7 +36,10 @@ abstract final class CceTheme {
         centerTitle: false,
         foregroundColor: CceColors.textPrimary,
         titleTextStyle: CceText.title,
-        iconTheme: IconThemeData(color: CceColors.textSecondary),
+        iconTheme: IconThemeData(
+          color: CceColors.textSecondary,
+          shadows: CceEmboss.iconShadows,
+        ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
