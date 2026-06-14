@@ -4,9 +4,11 @@ import '../models/jbl_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 
-/// Tope del control de volumen expuesto en la UI (pedido del usuario): 0-33,
-/// step 1. La API soporta 0-100; acá acotamos el rango seteable/mostrado. Tanto
-/// el dial como los botones − / + (setVolume / nudgeVolume) clampan contra esto.
+/// Tope del control de volumen en la UI: 0-33, step 1. Es la escala de DISPLAY
+/// de la barra (lo que muestra el equipo); la API expone/acepta el volumen en
+/// esta misma escala y convierte a la UPnP nativa (0-100) internamente, así el
+/// número de la app coincide con el de la barra. El dial y los botones − / +
+/// (setVolume / nudgeVolume) clampan contra esto.
 const int kJblVolMax = 33;
 
 /// Allowlist de ids del remote JBL (espejo del enum compartido del backend —
@@ -143,7 +145,8 @@ class JblService extends ChangeNotifier {
   /// Slider: pisa optimista, NO revierte en catch (igual que setBrightness).
   Future<bool> setVolume(int volume) async {
     if (!canCommand) return false;
-    // UI/control acotado a 0-[kJblVolMax] (pedido del usuario); API soporta 0-100.
+    // UI/control acotado a 0-[kJblVolMax] = escala de display de la barra
+    // (la API la convierte a UPnP nativo).
     final clamped = volume.clamp(0, kJblVolMax);
     _status = _status!.copyWith(volume: clamped);
     _safeNotify();

@@ -10,7 +10,7 @@ class JblStatus {
   final bool online;
   final String? ip;
   final String name;
-  final int? volume; // 0..100 | null (transporte UPnP falló)
+  final int? volume; // 0..33 (escala de display de la barra) | null (UPnP falló)
   final bool? muted; // true | false | null
   final String power; // 'on' | 'off' | 'unknown'
   final String? source;
