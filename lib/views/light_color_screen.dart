@@ -85,6 +85,19 @@ class _LightColorScreenState extends State<LightColorScreen> {
   double _ctForFrac(Offset f) =>
       (_ctMax - f.dy * (_ctMax - _ctMin)).clamp(_ctMin, _ctMax);
 
+  /// Color que muestra el pin en modo blanco/CT, derivado de la posición
+  /// vertical (mismos stops que el gradiente del disco en _ColorDisk).
+  Color _ctSwatchForFrac(Offset f) {
+    final t = f.dy.clamp(0.0, 1.0).toDouble();
+    const warm = Color(0xFFFFD08A);
+    const midW = Color(0xFFFFF3E0);
+    const white = Colors.white;
+    const cool = Color(0xFFD6ECFF);
+    if (t < 0.42) return Color.lerp(warm, midW, t / 0.42)!;
+    if (t < 0.60) return Color.lerp(midW, white, (t - 0.42) / 0.18)!;
+    return Color.lerp(white, cool, (t - 0.60) / 0.40)!;
+  }
+
   /// (Re)calcula el marcador de cada luz seleccionada desde su estado real,
   /// según el modo actual.
   void _recomputeMarkers() {
@@ -335,6 +348,11 @@ class _LightColorScreenState extends State<LightColorScreen> {
     final clusters = _clusters();
     for (final cl in clusters) {
       final single = cl.ids.length == 1;
+      // Color vivo bajo la punta de este cluster (rellena el pin).
+      final pinColor = _mode == _Mode.color
+          ? _colorForFrac(cl.pos)
+          : _ctSwatchForFrac(cl.pos);
+      final ink = _Marker.inkFor(pinColor); // auto-contraste (CceTint.textOn)
       Widget? child;
       if (single) {
         final d = widget.service.byId(cl.ids.first) ?? widget.device;
@@ -344,14 +362,19 @@ class _LightColorScreenState extends State<LightColorScreen> {
           customIcons: widget.service.customIcons,
           displayName: widget.service.displayName(d),
           size: 24,
-          color: const Color(0xFF1A1A1E),
+          color: ink, // tinta auto-contraste en vez del 0xFF1A1A1E fijo
         );
       }
       markers.add(Positioned(
         // El aro inferior (la punta) queda exactamente en el punto de color.
         left: cl.pos.dx * size - _Marker.w / 2,
         top: cl.pos.dy * size - _Marker.tipY,
-        child: _Marker(child: child, label: single ? null : '${cl.ids.length}'),
+        child: _Marker(
+          child: child,
+          label: single ? null : '${cl.ids.length}',
+          color: pinColor,
+          ink: ink,
+        ),
       ));
     }
 
@@ -555,31 +578,48 @@ class _ColorDisk extends StatelessWidget {
   }
 }
 
+/// Pin color-aware estilo Apple Home / Hue: lozenge redondeado RELLENO con el
+/// color seleccionado (el color viaja con el marcador), con gloss superior y un
+/// DOBLE contorno (aro blanco + keyline oscuro) que lo separa de cualquier fondo
+/// del disco. El contenido (ícono o contador) usa tinta auto-contraste [ink] y
+/// la punta es un bullseye con núcleo blanco que marca el punto exacto sin
+/// ambigüedad incluso cuando el color del pin iguala el fondo.
 class _Marker extends StatelessWidget {
-  final Widget? child; // ícono del device (cluster de 1)
+  final Widget? child; // ícono del device (cluster de 1), ya teñido con [ink]
   final String? label; // contador (cluster > 1)
-  const _Marker({this.child, this.label});
+  final Color color; // color seleccionado bajo la punta (rellena el cuerpo)
+  final Color ink; // tinta auto-contraste para ícono/contador (CceTint.textOn)
+  const _Marker({
+    this.child,
+    this.label,
+    required this.color,
+    required this.ink,
+  });
 
   static const double w = 52; // ancho del lozenge
   static const double lozengeH = 46; // alto del lozenge (zona del ícono)
-  static const double h = 72; // alto total con cola + punto
-  static const double tipY = 64; // centro del punto inferior (la punta)
-  static const double tipR = 7; // radio del punto sólido
+  static const double h = 78; // alto total (lozenge + cuello + punta + halo)
+  static const double tipY = 64; // centro de la punta = punto de color exacto
+  static const double tipR = 7; // radio de la punta
+
+  /// Tinta auto-contraste para el contenido sobre [c]. Reusa el token del DS
+  /// para no divergir del resto de la app.
+  static Color inkFor(Color c) => CceTint.textOn(c);
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
       size: const Size(w, h),
-      painter: _PinPainter(),
+      painter: _PinPainter(color: color, ink: ink),
       child: Padding(
-        // Reserva la cola/punto abajo → el contenido queda en el lozenge.
+        // Reserva cuello + punta + halo abajo → el contenido queda en el lozenge.
         padding: const EdgeInsets.only(bottom: h - lozengeH),
         child: Center(
           child: label != null
               ? Text(
                   label!,
-                  style: const TextStyle(
-                    color: Color(0xFF1A1A1E),
+                  style: TextStyle(
+                    color: ink,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
@@ -591,10 +631,29 @@ class _Marker extends StatelessWidget {
   }
 }
 
-/// Pin estilo Hue: lozenge blanco redondeado con el ícono, cuello que baja a un
-/// punto sólido blanco que marca el lugar exacto — todo una sola pieza con
-/// sombra suave.
+/// Pin color-aware: una sola pieza (lozenge ∪ cuello ∪ base de punta) rellena
+/// con el color seleccionado, con gloss superior y DOBLE contorno (aro blanco +
+/// keyline oscuro) que la separa de cualquier fondo del disco. La punta es un
+/// bullseye con NÚCLEO BLANCO que marca el punto exacto sin ambigüedad.
 class _PinPainter extends CustomPainter {
+  final Color color; // relleno (color seleccionado, literal)
+  final Color ink; // tinta del contenido (para repintar al cambiar color)
+  const _PinPainter({required this.color, required this.ink});
+
+  /// Color para glow/keyline que no se rompe en el centro desaturado: si la
+  /// saturación es casi nula (hue inestable cerca del blanco) cae a un neutro
+  /// fijo para evitar el shimmer arcoíris al arrastrar por el centro.
+  Color get _signal {
+    final hsl = HSLColor.fromColor(color);
+    if (hsl.saturation < 0.12) {
+      return const Color(0xFF8A8A92);
+    }
+    return hsl
+        .withSaturation(hsl.saturation.clamp(0.45, 1.0).toDouble())
+        .withLightness(hsl.lightness.clamp(0.42, 0.60).toDouble())
+        .toColor();
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
@@ -602,40 +661,126 @@ class _PinPainter extends CustomPainter {
     const tipCy = _Marker.tipY;
     const tipR = _Marker.tipR;
     final cx = w / 2;
+    final signal = _signal;
 
+    // --- Silueta unificada: lozenge ∪ cuello ∪ base de la punta ------------
     final lozenge = Path()
       ..addRRect(RRect.fromRectAndRadius(
         Rect.fromLTWH(0, 0, w, lozengeH),
         const Radius.circular(16),
       ));
-    // Cuello: trapecio de la base del lozenge hacia el punto.
     final neck = Path()
       ..moveTo(cx - 8, lozengeH - 4)
       ..lineTo(cx - tipR * 0.7, tipCy)
       ..lineTo(cx + tipR * 0.7, tipCy)
       ..lineTo(cx + 8, lozengeH - 4)
       ..close();
-    final tip = Path()
+    final tipBase = Path()
       ..addOval(Rect.fromCircle(center: Offset(cx, tipCy), radius: tipR));
 
     var body = Path.combine(PathOperation.union, lozenge, neck);
-    body = Path.combine(PathOperation.union, body, tip);
+    body = Path.combine(PathOperation.union, body, tipBase);
 
-    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.42), 5, false);
-    canvas.drawPath(body, Paint()..color = Colors.white);
-    // Anillo sutil en el punto para darle profundidad.
+    // --- 1) Glow de color suave bajo la punta (premium, color-aware) -------
     canvas.drawCircle(
       Offset(cx, tipCy),
-      tipR - 1.5,
+      tipR + 4,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.10)
+        ..color = signal.withValues(alpha: 0.40)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+
+    // --- 2) Sombra de elevación (despega del centro blanco del disco) ------
+    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.45), 5, false);
+
+    // --- 3) Relleno con el color seleccionado -----------------------------
+    canvas.drawPath(
+      body,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+
+    // --- 4) Gloss superior (look gema/premium) ----------------------------
+    final sheen = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.white.withValues(alpha: 0.24),
+          Colors.white.withValues(alpha: 0.0),
+        ],
+        stops: const [0.0, 0.6],
+      ).createShader(Rect.fromLTWH(0, 0, w, lozengeH));
+    canvas.save();
+    canvas.clipPath(lozenge);
+    canvas.drawRect(Rect.fromLTWH(0, 0, w, lozengeH), sheen);
+    canvas.restore();
+
+    // --- 5) DOBLE CONTORNO adaptativo (clave de legibilidad universal) -----
+    // 5a) Keyline oscuro EXTERIOR a alpha real → carga la silueta sobre el
+    //     centro blanco del disco y sobre colores claros (amarillo/cian).
+    canvas.drawPath(
+      body,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.30)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1,
+        ..strokeWidth = 3.0
+        ..strokeJoin = StrokeJoin.round
+        ..isAntiAlias = true,
+    );
+    // 5b) Aro blanco crujiente ENCIMA → separa de bordes saturados y del
+    //     gradiente CT (rojo-sobre-rojo, azul-sobre-azul, cálido-sobre-cálido).
+    canvas.drawPath(
+      body,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0
+        ..strokeJoin = StrokeJoin.round
+        ..isAntiAlias = true,
+    );
+
+    // --- 6) Punta BULLSEYE: blanco → color literal → núcleo BLANCO ----------
+    // El núcleo blanco marca el punto EXACTO incluso si el color iguala el
+    // fondo (mismo hue): siempre hay blanco-sobre-color en el punto preciso.
+    canvas.drawCircle(
+      Offset(cx, tipCy),
+      tipR,
+      Paint()
+        ..color = Colors.white
+        ..isAntiAlias = true,
+    );
+    canvas.drawCircle(
+      Offset(cx, tipCy),
+      tipR - 1.6,
+      Paint()
+        ..color = color // color LITERAL del punto
+        ..isAntiAlias = true,
+    );
+    canvas.drawCircle(
+      Offset(cx, tipCy),
+      2.4,
+      Paint()
+        ..color = Colors.white
+        ..isAntiAlias = true,
+    );
+    // Hairline oscuro del borde de la punta → definición sobre fondo claro.
+    canvas.drawCircle(
+      Offset(cx, tipCy),
+      tipR,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.22)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..isAntiAlias = true,
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PinPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.ink != ink;
 }
 
 class _ModeToggle extends StatelessWidget {
