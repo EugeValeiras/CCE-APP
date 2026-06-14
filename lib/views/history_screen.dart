@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../models/event_record.dart';
 import '../models/server_config.dart';
@@ -245,33 +244,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final selected = f == _filter;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
+            // Chip neumórfico monocromo: seleccionado = relieve neo + texto/
+            // borde neoText; inactivo = plano con hairline + neoTextSub.
             child: DecoratedBox(
-              decoration: selected
-                  ? BoxDecoration(
-                      borderRadius: BorderRadius.circular(100),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _Glass.accent.withValues(alpha: 0.40),
-                          blurRadius: 14,
-                        ),
-                      ],
-                    )
-                  : const BoxDecoration(),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(100),
+                boxShadow: selected ? CceShadows.neo(blur: 7, offset: 3) : null,
+              ),
               child: ChoiceChip(
                 label: Text(f.label),
                 selected: selected,
                 showCheckmark: false,
                 onSelected: (_) => setState(() => _filter = f),
                 shape: const StadiumBorder(),
-                backgroundColor: _Glass.glassFill,
-                selectedColor: _Glass.accent.withValues(alpha: 0.22),
+                backgroundColor: CceColors.neoBase,
+                selectedColor: CceColors.neoBase,
                 labelStyle: TextStyle(
-                  color: selected ? Colors.white : _Glass.textMuted,
+                  color: selected ? CceColors.neoText : CceColors.neoTextSub,
                   fontWeight: FontWeight.w600,
                 ),
-                side: selected
-                    ? const BorderSide(color: _Glass.accent, width: 1.2)
-                    : const BorderSide(color: _Glass.glassBorder),
+                side: BorderSide(
+                  color: selected
+                      ? CceColors.neoText.withValues(alpha: 0.45)
+                      : _Glass.glassBorder,
+                  width: selected ? 1.2 : 1,
+                ),
               ),
             ),
           );
@@ -512,18 +509,12 @@ class _GroupRow extends StatelessWidget {
         r.color != CceColors.textTertiary && r.color != CceColors.textSecondary;
     final Color c = semantic ? r.color : _Glass.accent;
 
-    // Glass simulado por fila (sin BackdropFilter en lista larga): fondo
-    // translúcido + borde acento + sombra. La sombra va FUERA del clip.
+    // Fila = "elemento del home apagado": neoBase + relieve neumórfico suave
+    // (CceShadows.neo, FUERA del clip), hairline sutil y padding fino.
     final card = DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(_Glass.cardRadius),
-        boxShadow: const [
-          BoxShadow(
-            color: _Glass.cardShadow,
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
+        boxShadow: CceShadows.neo(blur: 10, offset: 4),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(_Glass.cardRadius),
@@ -537,7 +528,7 @@ class _GroupRow extends StatelessWidget {
                 border: Border.all(color: _Glass.cardBorder, width: 1.0),
                 borderRadius: BorderRadius.circular(_Glass.cardRadius),
               ),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(14, 11, 12, 11),
               child: _buildBody(c, r, isLive, grouped),
             ),
           ),
@@ -560,29 +551,22 @@ class _GroupRow extends StatelessWidget {
         Row(
           children: [
             Container(
-              width: 40,
-              height: 40,
+              width: 34,
+              height: 34,
               alignment: Alignment.center,
+              // Badge oscuro hundido (como el badge de una card apagada del
+              // home); el ícono conserva el color semántico del evento.
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: c.withValues(alpha: 0.16),
-                border: Border.all(
-                  color: c.withValues(alpha: 0.45),
-                  width: 1.0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: c.withValues(alpha: 0.25),
-                    blurRadius: 10,
-                  ),
-                ],
+                color: CceColors.neoSunken,
+                boxShadow: CceShadows.neoInset(blur: 5, offset: 2),
               ),
               child: SizedBox(
-                width: 22,
-                height: 22,
+                width: 19,
+                height: 19,
                 child: Center(
                   child: IconTheme.merge(
-                    data: IconThemeData(color: c, size: 22),
+                    data: IconThemeData(color: c, size: 19),
                     child: r.icon,
                   ),
                 ),
@@ -626,7 +610,7 @@ class _GroupRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               if (isLive) ...[
-                const StatusDot(_Glass.accentBright,
+                const StatusDot(_Glass.live,
                     size: 6, pulse: true, semanticLabel: 'En vivo'),
                 const SizedBox(width: 6),
               ],
@@ -652,7 +636,7 @@ class _GroupRow extends StatelessWidget {
             const SizedBox(height: 8),
             for (final e in group.events)
               Padding(
-                padding: const EdgeInsets.only(left: 52, top: 4),
+                padding: const EdgeInsets.only(left: 46, top: 4),
                 child: Row(
                   children: [
                     Expanded(
@@ -773,63 +757,43 @@ class _LiveToggleButton extends StatelessWidget {
       padding: const EdgeInsets.only(right: 4),
       child: Tooltip(
         message: enabled ? 'Pausar vivo' : 'Ver en vivo',
-        child: DecoratedBox(
-          decoration: BoxDecoration(
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(CceRadii.pill),
-            boxShadow: enabled
-                ? [
-                    BoxShadow(
-                      color: _Glass.accent.withValues(alpha: 0.45),
-                      blurRadius: 14,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(CceRadii.pill),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-              child: InkWell(
-                onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              // Neumórfico: activo = hundido (neoInset) + verde "live";
+              // inactivo = elevado (neo) + gris.
+              decoration: BoxDecoration(
+                color: CceColors.neoBase,
                 borderRadius: BorderRadius.circular(CceRadii.pill),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: enabled
-                        ? _Glass.accent.withValues(alpha: 0.22)
-                        : _Glass.glassFill,
-                    borderRadius: BorderRadius.circular(CceRadii.pill),
-                    border: Border.all(
-                      color: enabled ? _Glass.accent : _Glass.glassBorder,
-                      width: 1.2,
+                boxShadow: enabled
+                    ? CceShadows.neoInset(blur: 6, offset: 2)
+                    : CceShadows.neo(blur: 8, offset: 3),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    enabled
+                        ? Icons.fiber_manual_record
+                        : Icons.play_circle_outline,
+                    color: enabled ? _Glass.live : _Glass.textMuted,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'LIVE',
+                    style: TextStyle(
+                      color: enabled ? CceColors.neoText : _Glass.textMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        enabled
-                            ? Icons.fiber_manual_record
-                            : Icons.play_circle_outline,
-                        color:
-                            enabled ? _Glass.accentBright : _Glass.textMuted,
-                        size: 14,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'LIVE',
-                        style: TextStyle(
-                          color: enabled ? Colors.white : _Glass.textMuted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                ],
               ),
             ),
           ),
@@ -872,10 +836,10 @@ class _LivePulseState extends State<_LivePulse> with SingleTickerProviderStateMi
           height: 10,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Color.lerp(_Glass.accent, _Glass.accentBright, v),
+            color: _Glass.live,
             boxShadow: [
               BoxShadow(
-                color: _Glass.accent.withValues(alpha: 0.4 + v * 0.4),
+                color: _Glass.live.withValues(alpha: 0.4 + v * 0.4),
                 blurRadius: 8 + v * 6,
                 spreadRadius: 1 + v * 1.5,
               ),
@@ -887,38 +851,43 @@ class _LivePulseState extends State<_LivePulse> with SingleTickerProviderStateMi
   }
 }
 
-/// Tokens glass-azul AUTOCONTENIDOS de esta pantalla. No tocan cce_tokens ni
-/// afectan otras vistas. Mantener todo privado a history_screen.dart.
+/// Tokens de la estética "elemento del home APAGADO": neumórfico oscuro, fino,
+/// monocromo (sin glass-azul). Autocontenidos en history_screen.dart; no tocan
+/// cce_tokens ni afectan otras vistas. (Se conservan los nombres de campo para
+/// no reescribir todos los call-sites; cambian sólo los valores.)
 class _Glass {
   _Glass._();
 
-  // FONDO
-  static const Color bgBase = Color(0xFF080A12);
-  static const Color glowColor = Color(0xFF16386B);
-  static const Color glowColor2 = Color(0xFF0E2247);
+  // FONDO = home: neoBase plano. Los "glow" se igualan a neoBase → al
+  // mezclarse con el fondo quedan imperceptibles (sin viñeta oscura).
+  static const Color bgBase = CceColors.neoBase;
+  static const Color glowColor = CceColors.neoBase;
+  static const Color glowColor2 = CceColors.neoBase;
 
-  // ACCENT
-  static const Color accent = Color(0xFF3D8BFF);
-  static const Color accentBright = Color(0xFF5BA0FF);
+  // ACENTOS NEUTROS (como una card apagada del home).
+  static const Color accent = CceColors.neoText;
+  static const Color accentBright = CceColors.neoTextSub; // time / spinner
+  static const Color live = CceColors.ok; // único acento: estado "en vivo"
 
   // TEXTO
-  static const Color textMuted = Color(0xFF8A93A6); // subtítulos / inactivo
-  static const Color iconBtn = Color(0xFFB6BEC8); // íconos botón glass
+  static const Color textMuted = CceColors.neoTextSub;
+  static const Color iconBtn = CceColors.neoTextSub;
 
-  // CARD
-  static const double cardRadius = 22;
-  static const Color cardFill = Color(0x0BFFFFFF); // white @ ~0.045
-  static const Color cardBorder = Color(0x293D8BFF); // accent @ ~0.16
-  static const Color cardShadow = Color(0x59000000); // black @ ~0.35
+  // CARD off-home: fill = fondo + relieve neo (CceShadows.neo en la fila);
+  // radio un poco más fino.
+  static const double cardRadius = 18;
+  static const Color cardFill = CceColors.neoBase;
+  static const Color cardBorder = Color(0x12FFFFFF); // hairline sutil
+  static const Color cardShadow = Color(0x66000000); // legacy (no usado)
 
-  // GLASS NEUTRO (chips / botones / live inactivo)
-  static const Color glassFill = Color(0x0DFFFFFF); // white @ 0.05
-  static const Color glassBorder = Color(0x1AFFFFFF); // white @ 0.10
-  static const Color glassBorderThin = Color(0x14FFFFFF); // white @ 0.08
+  // CHIPS / BOTONES neumórficos.
+  static const Color glassFill = CceColors.neoBase;
+  static const Color glassBorder = Color(0x14FFFFFF);
+  static const Color glassBorderThin = Color(0x0DFFFFFF);
 }
 
-/// Botón circular glass para los actions del AppBar (limpiar / refresh).
-/// Usa BackdropFilter real porque son 1-3 instancias únicas (no por fila).
+/// Botón circular neumórfico (raised) para los actions del AppBar
+/// (limpiar / refresh), al tono de un elemento del home apagado.
 class _GlassIconButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
@@ -934,27 +903,22 @@ class _GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _Glass.glassFill,
-            border: Border.all(color: _Glass.glassBorderThin),
-          ),
-          child: IconButton(
-            iconSize: 20,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-            icon: Icon(icon, color: color),
-            tooltip: tooltip,
-            onPressed: onPressed,
-          ),
-        ),
+    final enabled = onPressed != null;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: CceColors.neoBase,
+        boxShadow: enabled ? CceShadows.neo(blur: 8, offset: 3) : null,
+      ),
+      child: IconButton(
+        iconSize: 20,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        icon: Icon(icon, color: color),
+        tooltip: tooltip,
+        onPressed: onPressed,
       ),
     );
   }
