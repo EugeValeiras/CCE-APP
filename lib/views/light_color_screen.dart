@@ -34,16 +34,14 @@ class _LightColorScreenState extends State<LightColorScreen>
     with SingleTickerProviderStateMixin {
   // Posición del marcador (fracción 0..1 del disco) para CADA luz del ambiente.
   final Map<String, Offset> _markerFrac = {};
-  // Luces "activas": se ven como pin. El resto del ambiente se ven como dots.
-  final Set<String> _engaged = {};
-  // Grupo de cada luz activa: las que comparten id se mueven y colorean juntas.
-  final Map<String, int> _groupOf = {};
-  int _nextGroup = 0;
+  // ÚNICA selección activa: 1 luz, o varias si están agrupadas (se ven como una
+  // sola pin y se mueven/colorean juntas). El resto del ambiente son dots.
+  final Set<String> _active = {};
 
   _Mode _mode = _Mode.color;
   double _bri = 254; // 0..254 (compartido en la UI)
-  List<String> _dragIds = const []; // grupo que se está arrastrando
-  String? _mergeTarget; // luz/dot bajo la pin arrastrada (preview de fusión)
+  bool _dragging = false; // se está arrastrando la pin activa
+  String? _mergeTarget; // dot bajo la pin activa al arrastrar (preview de fusión)
 
   Timer? _debounce;
   static const double _ctMin = 153, _ctMax = 500;
@@ -67,7 +65,7 @@ class _LightColorScreenState extends State<LightColorScreen>
         : _Mode.color;
     _initMarkers();
     // La luz abierta arranca activa (pin); el resto del ambiente, como dots.
-    _engage(widget.device.id);
+    _active.add(widget.device.id);
     _hopController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 620),
@@ -154,48 +152,48 @@ class _LightColorScreenState extends State<LightColorScreen>
     }
   }
 
-  /// Recalcula posiciones desde el estado (al cambiar de modo). Cada grupo
-  /// activo se reunifica en una sola posición para no dispersarse.
+  /// Recalcula posiciones desde el estado (al cambiar de modo). El grupo activo
+  /// (si tiene >1) se reunifica en una sola posición para no dispersarse.
   void _recomputeMarkers() {
     for (final d in _roomLights()) {
       _markerFrac[d.id] = _fracForLight(widget.service.byId(d.id) ?? d);
     }
-    for (final g in _engagedGroups()) {
-      if (g.ids.length > 1) {
-        final pos = _markerFrac[g.ids.first]!;
-        for (final id in g.ids) {
-          _markerFrac[id] = pos;
-        }
+    if (_active.length > 1) {
+      final pos = _markerFrac[_active.first]!;
+      for (final id in _active) {
+        _markerFrac[id] = pos;
       }
     }
   }
 
-  /// Activa [id] como pin sola (grupo nuevo propio).
-  void _engage(String id) {
-    _engaged.add(id);
-    _groupOf[id] = _nextGroup++;
-  }
+  /// Posición (compartida) de la pin activa.
+  Offset? _activePos() => _active.isEmpty ? null : _markerFrac[_active.first];
 
-  /// Miembros activos del mismo grupo que [id] (incluye a [id]).
-  List<String> _members(String id) {
-    final g = _groupOf[id];
-    if (g == null) return [id];
-    return _engaged.where((e) => _groupOf[e] == g).toList();
-  }
-
-  /// Grupos activos: una entrada por grupo, con su posición compartida.
-  List<({Offset pos, List<String> ids})> _engagedGroups() {
-    final byGroup = <int, List<String>>{};
-    for (final id in _engaged) {
-      final g = _groupOf[id];
-      if (g == null) continue;
-      (byGroup[g] ??= []).add(id);
-    }
-    final out = <({Offset pos, List<String> ids})>[];
-    byGroup.forEach((g, ids) {
-      out.add((pos: _markerFrac[ids.first] ?? const Offset(0.5, 0.5), ids: ids));
+  /// Selecciona UNA sola luz como activa (deselecciona el resto → dots).
+  void _selectSingle(String id) {
+    setState(() {
+      _active
+        ..clear()
+        ..add(id);
     });
-    return out;
+    _hop();
+  }
+
+  /// Dot (luz NO activa) más cercano a [f], dentro de [within]. null si no hay.
+  String? _nearestDot(Offset f, double within) {
+    String? best;
+    var bestD = within;
+    for (final d in _roomLights()) {
+      if (_active.contains(d.id)) continue;
+      final p = _markerFrac[d.id];
+      if (p == null) continue;
+      final dist = (p - f).distance;
+      if (dist <= bestD) {
+        bestD = dist;
+        best = d.id;
+      }
+    }
+    return best;
   }
 
   /// Aplica el color/temperatura (según el marcador) a las luces [ids].
@@ -226,120 +224,88 @@ class _LightColorScreenState extends State<LightColorScreen>
     return Offset(0.5 + dx * k, 0.5 + dy * k);
   }
 
+  // onPanDown se dispara en CADA toque (tap o inicio de arrastre), así que es el
+  // único punto de entrada: decide qué se agarra. Si es un tap (sin mover), no
+  // se llama a _drag, así que el color no cambia → tap = seleccionar.
   void _onPanDown(Offset f) {
-    // Solo se agarran PINES (grupos activos): el más cercano dentro del radio
-    // de agarre. Si no hay ninguna pin cerca, el gesto no hace nada.
-    ({Offset pos, List<String> ids})? best;
-    var bestD = double.infinity;
-    for (final g in _engagedGroups()) {
-      final d = (g.pos - f).distance;
-      if (d < bestD) {
-        bestD = d;
-        best = g;
-      }
+    _mergeTarget = null;
+    final ap = _activePos();
+    final dActive = ap == null ? double.infinity : (ap - f).distance;
+    final dot = _nearestDot(f, _grabThr);
+    final dDot =
+        dot == null ? double.infinity : (_markerFrac[dot]! - f).distance;
+    if (dActive <= _grabThr && dActive <= dDot) {
+      // Agarrar la pin activa (mover la luz / el grupo).
+      _dragging = true;
+    } else if (dot != null) {
+      // Tocar un dot → pasa a ser la ÚNICA activa, lista para arrastrar.
+      HapticFeedback.selectionClick();
+      setState(() {
+        _active
+          ..clear()
+          ..add(dot);
+      });
+      _hop();
+      _dragging = true;
+    } else {
+      _dragging = false;
     }
-    if (best == null || bestD > _grabThr) {
-      _dragIds = const [];
-      return;
-    }
-    _dragIds = best.ids;
-    _drag(f);
   }
 
   void _drag(Offset localFrac) {
-    if (_dragIds.isEmpty) return;
+    if (!_dragging || _active.isEmpty) return;
     final f = _clampFrac(localFrac);
-    final target = _markerUnderPin(f, _dragIds);
+    final target = _nearestDot(f, _mergeThr);
+    // Feedback háptico al entrar en rango de fusión sobre un dot nuevo.
+    if (target != null && target != _mergeTarget) {
+      HapticFeedback.mediumImpact();
+    }
     setState(() {
-      for (final id in _dragIds) {
+      for (final id in _active) {
         _markerFrac[id] = f;
       }
       _mergeTarget = target;
     });
     _debounce?.cancel();
-    _debounce = Timer(
-        const Duration(milliseconds: 150), () => _applyToIds(_dragIds));
+    _debounce =
+        Timer(const Duration(milliseconds: 150), () => _applyToIds(_active));
   }
 
   void _onPanEnd() {
     _debounce?.cancel();
-    final target = _mergeTarget;
-    if (_dragIds.isNotEmpty && target != null) {
-      _mergeInto(_dragIds, target); // engancha + setState + aplica + salto
-    } else {
-      _applyToIds(_dragIds);
+    if (_dragging && _mergeTarget != null) {
+      // Fusionar: el dot destino se suma a la activa, todas comparten posición.
+      final target = _mergeTarget!;
+      setState(() {
+        _active.add(target);
+        final pos = _markerFrac[_active.first]!;
+        for (final id in _active) {
+          _markerFrac[id] = pos;
+        }
+        _mergeTarget = null;
+      });
+      HapticFeedback.mediumImpact();
+      _applyToIds(_active);
+      _hop();
+    } else if (_dragging) {
+      _applyToIds(_active);
       setState(() => _mergeTarget = null);
     }
-  }
-
-  /// Luz (pin o dot) más cercana a [f] que NO está en [exclude], dentro del
-  /// umbral de fusión. null si no hay ninguna.
-  String? _markerUnderPin(Offset f, List<String> exclude) {
-    String? best;
-    var bestD = _mergeThr;
-    for (final entry in _markerFrac.entries) {
-      if (exclude.contains(entry.key)) continue;
-      final d = (entry.value - f).distance;
-      if (d <= bestD) {
-        bestD = d;
-        best = entry.key;
-      }
-    }
-    return best;
-  }
-
-  /// Fusiona [dragIds] con el grupo/dot de [targetId] en una sola pin activa.
-  void _mergeInto(List<String> dragIds, String targetId) {
-    final targetMembers =
-        _engaged.contains(targetId) ? _members(targetId) : [targetId];
-    final all = {...dragIds, ...targetMembers};
-    final g = _groupOf[dragIds.first] ?? _nextGroup++;
-    final pos = _markerFrac[dragIds.first]!;
-    setState(() {
-      for (final id in all) {
-        _engaged.add(id);
-        _groupOf[id] = g;
-        _markerFrac[id] = pos;
-      }
-      _mergeTarget = null;
-    });
-    _applyToIds(all);
-    _hop();
+    _dragging = false;
   }
 
   // ----- lista de luces / brillo -----
-  /// Tap en una luz de la lista: la AÍSLA como pin sola (sacándola de su grupo
-  /// si estaba agrupada; el resto del grupo sigue junto). Si ya estaba sola,
-  /// vuelve a ser dot. El agrupado se hace SOLO arrastrando en el disco.
+  /// Tap en una luz de la lista: la selecciona como ÚNICA activa (deselecciona
+  /// el resto). Para agrupar se arrastra una pin sobre otro dot en el disco.
   void _onLightTap(Device d) {
     HapticFeedback.selectionClick();
-    final id = d.id;
-    var engagedNow = false;
-    setState(() {
-      if (_engaged.contains(id)) {
-        if (_members(id).length > 1) {
-          // Sacar esta luz a solo; los demás del grupo se quedan agrupados.
-          _groupOf[id] = _nextGroup++;
-          engagedNow = true;
-        } else {
-          // Ya estaba sola → vuelve a ser dot.
-          _engaged.remove(id);
-          _groupOf.remove(id);
-          _markerFrac[id] = _fracForLight(widget.service.byId(id) ?? d);
-        }
-      } else {
-        // Dot → pasa a pin sola.
-        _engage(id);
-        engagedNow = true;
-      }
-    });
-    if (engagedNow) _hop();
+    _selectSingle(d.id);
   }
 
   void _onBrightness(double bri) => setState(() => _bri = bri.clamp(0, 254));
 
   void _commitBrightness() {
-    for (final id in _engaged) {
+    for (final id in _active) {
       final d = widget.service.byId(id);
       if (d != null) widget.service.setBrightness(d, _bri.round());
     }
@@ -351,7 +317,7 @@ class _LightColorScreenState extends State<LightColorScreen>
       _mode = m;
       _recomputeMarkers();
     });
-    _applyToIds(_engaged); // aplicar el modo elegido a todas las activas
+    _applyToIds(_active); // aplicar el modo elegido a toda la activa
   }
 
   List<Device> _roomLights() {
@@ -370,12 +336,12 @@ class _LightColorScreenState extends State<LightColorScreen>
   }
 
   String _title() {
-    if (_engaged.length == 1) {
-      final d = widget.service.byId(_engaged.first);
+    if (_active.length == 1) {
+      final d = widget.service.byId(_active.first);
       return d != null ? widget.service.displayName(d) : 'Luz';
     }
-    if (_engaged.isEmpty) return widget.service.displayName(widget.device);
-    return '${_engaged.length} luces';
+    if (_active.isEmpty) return widget.service.displayName(widget.device);
+    return '${_active.length} luces';
   }
 
   @override
@@ -420,7 +386,7 @@ class _LightColorScreenState extends State<LightColorScreen>
 
   Widget _buildDisk(double size) {
     // Marcadores: dots (luces NO activas, teñidos con su color = "circulitos"
-    // que se pueden absorber) + pins por grupo activo.
+    // que se pueden seleccionar/absorber) + UNA pin para la selección activa.
     final markers = <Widget>[];
 
     Color colorAt(Offset f) =>
@@ -429,8 +395,9 @@ class _LightColorScreenState extends State<LightColorScreen>
     // Dots de las luces del ambiente que no están activas. El que está por
     // fusionarse (bajo la pin arrastrada) se resalta.
     for (final d in _roomLights()) {
-      if (_engaged.contains(d.id)) continue;
-      final frac = _markerFrac[d.id] ?? _fracForLight(widget.service.byId(d.id) ?? d);
+      if (_active.contains(d.id)) continue;
+      final frac =
+          _markerFrac[d.id] ?? _fracForLight(widget.service.byId(d.id) ?? d);
       final isTarget = _mergeTarget == d.id;
       final r = isTarget ? 13.0 : 9.0;
       markers.add(Positioned(
@@ -440,26 +407,20 @@ class _LightColorScreenState extends State<LightColorScreen>
       ));
     }
 
-    // Pins: una por grupo activo. Si esta pin se está arrastrando sobre un
-    // destino, muestra el contador resultante ("2") en vez del ícono.
-    final groups = _engagedGroups();
-    for (final g in groups) {
-      final isDragged = _dragIds.isNotEmpty && _sameGroup(g.ids, _dragIds);
-      final mergeCount = (isDragged && _mergeTarget != null)
-          ? (_engaged.contains(_mergeTarget!)
-              ? _members(_mergeTarget!).length
-              : 1)
-          : 0;
-      final count = g.ids.length + mergeCount;
+    // Pin única de la selección activa. Si se arrastra sobre un dot, muestra el
+    // contador resultante ("2") en vez del ícono.
+    final ap = _activePos();
+    if (ap != null && _active.isNotEmpty) {
+      final count = _active.length + (_mergeTarget != null ? 1 : 0);
       final single = count == 1;
-      final pinColor = colorAt(g.pos);
+      final pinColor = colorAt(ap);
       final ink = _Marker.inkFor(pinColor); // auto-contraste (CceTint.textOn)
       Widget? child;
       if (single) {
-        final d = widget.service.byId(g.ids.first) ?? widget.device;
+        final d = widget.service.byId(_active.first) ?? widget.device;
         child = IconResolver.widget(
           d,
-          configuredIcon: widget.service.iconFor(g.ids.first),
+          configuredIcon: widget.service.iconFor(_active.first),
           customIcons: widget.service.customIcons,
           displayName: widget.service.displayName(d),
           size: 24,
@@ -468,8 +429,8 @@ class _LightColorScreenState extends State<LightColorScreen>
       }
       markers.add(Positioned(
         // El aro inferior (la punta) queda exactamente en el punto de color.
-        left: g.pos.dx * size - _Marker.w / 2,
-        top: g.pos.dy * size - _Marker.tipY,
+        left: ap.dx * size - _Marker.w / 2,
+        top: ap.dy * size - _Marker.tipY,
         // Saltito vertical (estilo Google Maps) al entrar / cambiar de luz.
         child: AnimatedBuilder(
           animation: _hopOffset,
@@ -491,7 +452,7 @@ class _LightColorScreenState extends State<LightColorScreen>
       size: size,
       mode: _mode,
       glowColor: _mode == _Mode.color
-          ? (groups.isNotEmpty ? _colorForFrac(groups.first.pos) : CceColors.warm)
+          ? (ap != null ? _colorForFrac(ap) : CceColors.warm)
           : CceColors.warm,
       onPanDown: (local) => _onPanDown(Offset(local.dx / size, local.dy / size)),
       onPanUpdate: (local) => _drag(Offset(local.dx / size, local.dy / size)),
@@ -499,10 +460,6 @@ class _LightColorScreenState extends State<LightColorScreen>
       markers: markers,
     );
   }
-
-  /// ¿[a] y [b] son el mismo conjunto de luces?
-  bool _sameGroup(List<String> a, List<String> b) =>
-      a.length == b.length && a.toSet().containsAll(b);
 
   Widget _topBar() {
     return Padding(
@@ -537,10 +494,10 @@ class _LightColorScreenState extends State<LightColorScreen>
 
   Widget _controlsRow() {
     final anyColor =
-        _engaged.any((id) => widget.service.byId(id)?.supportsColor ?? false);
+        _active.any((id) => widget.service.byId(id)?.supportsColor ?? false);
     final anyCt =
-        _engaged.any((id) => widget.service.byId(id)?.supportsCT ?? false);
-    final anyBri = _engaged
+        _active.any((id) => widget.service.byId(id)?.supportsCT ?? false);
+    final anyBri = _active
         .any((id) => widget.service.byId(id)?.supportsBrightness ?? false);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -589,7 +546,7 @@ class _LightColorScreenState extends State<LightColorScreen>
             tint: tint,
             on: d.state.on,
             reachable: d.state.reachable,
-            selected: _engaged.contains(d.id),
+            selected: _active.contains(d.id),
             onTap: () => _onLightTap(d),
             onToggle: (_) => widget.service.toggleLight(d),
           );
