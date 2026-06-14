@@ -390,16 +390,20 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       );
     }
 
-    // Armada: rojo danger; desarmada: surfaceHigh + borde hairline.
-    final fg = _isArmed ? CceColors.danger : CceColors.textTertiary;
+    final neoArmed = widget.neo && _isArmed;
+    final neoDisarmed = widget.neo && !_isArmed;
+    // Armada: rojo danger; desarmada: surfaceHigh + borde hairline. En neo el
+    // disco es casi rojo sólido, así que el escudo/label van en coral claro para
+    // que contrasten (si no, se fundirían con el disco).
+    final fg = neoArmed
+        ? Color.lerp(CceColors.danger, Colors.white, 0.58)!
+        : (_isArmed ? CceColors.danger : CceColors.textTertiary);
     final fill = _isArmed
         ? CceColors.danger.withValues(alpha: 0.15)
         : CceColors.surfaceHigh;
     final borderColor = _isArmed ? CceColors.danger : CceColors.stroke;
     final label = _isArmed ? 'ARMADA' : 'DESARMADA';
     final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
-    final neoArmed = widget.neo && _isArmed;
-    final neoDisarmed = widget.neo && !_isArmed;
 
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final buttonSize = isTablet ? 340.0 : 200.0;
@@ -438,8 +442,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                       center: const Alignment(-0.32, -0.4),
                       radius: 1.05,
                       colors: [
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.62)!,
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.44)!,
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.92)!,
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.74)!,
                       ],
                     )
                   : null,
