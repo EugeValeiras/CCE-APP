@@ -55,6 +55,9 @@ abstract final class CceColors {
   // Foreground canónico sobre superficies neo (CONTRATO: no improvisar):
   static const neoText = textPrimary; // iconos/labels sobre neoBase/neoSunken
   static const neoTextSub = textSecondary; // subtítulos
+
+  /// Hairline highlight del canto superior de las cards raised (bevel suave).
+  static const cardBevel = Color(0x0FFFFFFF); // blanco ~6%
 }
 
 /// Pipeline de tint estilo Hue: ningún color derivado de luces se pinta
@@ -161,6 +164,26 @@ abstract final class CceShadows {
           blurStyle: BlurStyle.inner,
         ),
       ];
+
+  /// Elevación "almohada flotante": drop difuso hacia ABAJO + rim-light tenue
+  /// arriba. Reemplaza el look simétrico de neo() para CARDS (no para botones).
+  /// Barato (2 BoxShadow, sin blur de capa). [intensity] escala opacidad.
+  static List<BoxShadow> cardFloat({double intensity = 1}) => [
+        // drop: flotación hacia abajo (difusa).
+        BoxShadow(
+          color: CceColors.neoDark.withValues(alpha: (0.55 * intensity).clamp(0, 1)),
+          blurRadius: 22,
+          offset: const Offset(0, 10),
+          spreadRadius: -2,
+        ),
+        // rim-light: canto de luz superior tenue.
+        BoxShadow(
+          color: CceColors.neoLight.withValues(alpha: (0.35 * intensity).clamp(0, 1)),
+          blurRadius: 14,
+          offset: const Offset(0, -6),
+          spreadRadius: -6,
+        ),
+      ];
 }
 
 /// Radios de borde congelados del design system.
@@ -208,6 +231,25 @@ abstract final class CceText {
 
 /// Gradientes compartidos.
 abstract final class CceGradients {
+  /// Superficie de card raised: gradiente vertical SUTIL claro-arriba ->
+  /// oscuro-abajo derivado de [base] (efecto convexo de almohada). Paramétrico
+  /// por color base (sirve para neoBase, cardOff, neoSunken). NO usar sobre
+  /// fills de color saturado (ON) — solo en estado apagado/raised.
+  static LinearGradient cardSurface(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final top = hsl
+        .withLightness((hsl.lightness + 0.045).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    final bottom = hsl
+        .withLightness((hsl.lightness - 0.040).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [top, bottom],
+    );
+  }
+
   /// centerLeft→centerRight. Cada color pasa por CceTint.pastel.
   /// [] → [warm]; 1 color → duplicado; máx 5.
   static LinearGradient huePastel(List<Color> colors) {

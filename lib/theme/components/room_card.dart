@@ -266,6 +266,11 @@ class _RoomCardState extends State<RoomCard> {
 
     final card = CceCard(
       gradient: gradient,
+      // neo solo en APAGADO: dispara la superficie "almohada" (raisedDecoration:
+      // gradiente + cardFloat + bevel) en CceCard. En ENCENDIDO va neo:false
+      // para conservar exacto el fill pastel + el glowOn del contenedor externo
+      // (sin sumar el relieve simétrico de CceCard).
+      neo: widget.neo && !widget.anyOn,
       color: widget.anyOn
           ? null
           : (widget.neo
@@ -314,9 +319,10 @@ class _RoomCardState extends State<RoomCard> {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(CceRadii.hueCard),
-              boxShadow: widget.anyOn
-                  ? CceShadows.glowOn(mid)
-                  : (widget.neo ? CceShadows.neo() : const []),
+              // OFF + neo: la flotación (cardFloat) + gradiente almohada + bevel
+              // los aporta CceCard via raisedDecoration (DecoratedBox externo);
+              // aquí NO se duplica la sombra. ON conserva glowOn (fade animado).
+              boxShadow: widget.anyOn ? CceShadows.glowOn(mid) : const [],
             ),
             child: card,
           ),

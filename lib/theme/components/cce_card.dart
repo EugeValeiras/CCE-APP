@@ -11,7 +11,7 @@ class CceCard extends StatelessWidget {
     this.gradient,
     this.color,
     this.radius = CceRadii.card,
-    this.padding = const EdgeInsets.all(18),
+    this.padding = const EdgeInsets.all(16),
     this.onTap,
     this.onLongPress,
     this.border = false,
@@ -36,6 +36,25 @@ class CceCard extends StatelessWidget {
   /// sin overlay ni Stack). Default false ⇒ render plano idéntico al actual.
   final bool neoInset;
 
+  /// Decoración canónica de una card RAISED (almohada flotante): superficie
+  /// con gradiente sutil [CceGradients.cardSurface], elevación difusa
+  /// [CceShadows.cardFloat] y bevel hairline superior opcional. NO usar para
+  /// fills de color ON. El boxShadow va incluido: si el contenedor clipea,
+  /// poner esta decoración en un contenedor EXTERNO sin clip (igual que hoy).
+  static BoxDecoration raisedDecoration({
+    required Color base,
+    required double radius,
+    bool bevel = true,
+  }) {
+    final br = BorderRadius.circular(radius);
+    return BoxDecoration(
+      gradient: CceGradients.cardSurface(base),
+      borderRadius: br,
+      border: bevel ? Border.all(color: CceColors.cardBevel) : null,
+      boxShadow: CceShadows.cardFloat(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(radius);
@@ -51,8 +70,15 @@ class CceCard extends StatelessWidget {
                     ? CceColors.neoBase
                     : null);
 
+    // Caso raised (almohada): la superficie (gradiente + sombra + bevel) la
+    // pinta el DecoratedBox EXTERNO via raisedDecoration; la decoración interna
+    // debe quedar transparente para que el gradiente se vea (el InkWell clipea).
+    final bool useRaised = neo && gradient == null && !neoInset;
+
     final decoration = BoxDecoration(
-      color: gradient == null ? (effectiveColor ?? CceColors.surface) : null,
+      color: gradient == null
+          ? (useRaised ? null : (effectiveColor ?? CceColors.surface))
+          : null,
       gradient: gradient,
       borderRadius: borderRadius,
       border: border ? Border.all(color: CceColors.stroke) : null,
@@ -84,6 +110,22 @@ class CceCard extends StatelessWidget {
     // Extrusión externa: como el branch con tap clipea (Clip.antiAlias) y un
     // boxShadow se recortaría, la sombra va en un DecoratedBox EXTERNO sin clip.
     if (neo) {
+      // Raised "almohada": superficie nueva (gradiente sutil + cardFloat +
+      // bevel). El gradiente lo pinta este DecoratedBox externo (la decoración
+      // interna quedó transparente via useRaised), así cubre el área completa
+      // y el ripple queda recortado dentro del Container clipeado.
+      if (useRaised) {
+        return DecoratedBox(
+          decoration: CceCard.raisedDecoration(
+            base: effectiveColor ?? CceColors.neoBase,
+            radius: radius,
+          ),
+          child: base,
+        );
+      }
+      // Caso neo con gradiente/color propio (fills ON: huePastel, lightFull,
+      // color explícito): se conserva el relieve de botón simétrico para NO
+      // tocar los estados encendidos ni lavar el color saturado.
       return DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: borderRadius,

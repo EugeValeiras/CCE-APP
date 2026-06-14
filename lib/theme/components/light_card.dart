@@ -62,9 +62,20 @@ class LightCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: neo ? CceColors.neoBase : CceColors.cardOff,
+          // Apagada/raised: superficie convexa (gradiente claro-arriba) + bevel
+          // hairline del canto superior. Encendida: color base plano (el fill
+          // saturado lightFull se pinta encima en el Stack) — SIN gradiente de
+          // almohada ni bevel para no lavar el color.
+          color: on ? (neo ? CceColors.neoBase : CceColors.cardOff) : null,
+          gradient: on
+              ? null
+              : CceGradients.cardSurface(
+                  neo ? CceColors.neoBase : CceColors.cardOff),
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
-          boxShadow: neo ? CceShadows.neo() : null,
+          border: on
+              ? null
+              : Border.all(color: CceColors.cardBevel),
+          boxShadow: neo ? CceShadows.cardFloat() : null,
         ),
         child: Stack(
           children: [

@@ -118,13 +118,14 @@ class SceneCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: neo ? CceColors.neoBase : CceColors.cardOffHigh,
+          gradient: CceGradients.cardSurface(
+              neo ? CceColors.neoBase : CceColors.cardOffHigh),
           borderRadius: borderRadius,
           border: active
               ? Border.all(
                   color: Colors.white.withValues(alpha: 0.85), width: 1.4)
-              : null,
-          boxShadow: neo ? CceShadows.neo(blur: 10, offset: 4) : null,
+              : Border.all(color: CceColors.cardBevel),
+          boxShadow: neo ? CceShadows.cardFloat() : null,
         ),
         child: Material(
           type: MaterialType.transparency,

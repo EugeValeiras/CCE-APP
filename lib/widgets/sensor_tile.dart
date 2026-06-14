@@ -66,11 +66,15 @@ class SensorTile extends StatelessWidget {
         height: size.sensorTileHeight,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: neo ? CceColors.neoBase : CceColors.cardOff,
+          color: alert ? (neo ? CceColors.neoBase : CceColors.cardOff) : null,
+          gradient: alert
+              ? null
+              : CceGradients.cardSurface(
+                  neo ? CceColors.neoBase : CceColors.cardOff),
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
           border: alert
               ? Border.all(color: color.withValues(alpha: 0.6), width: 1.5)
-              : null,
+              : Border.all(color: CceColors.cardBevel),
           boxShadow: alert
               ? [
                   BoxShadow(
@@ -79,7 +83,7 @@ class SensorTile extends StatelessWidget {
                     spreadRadius: 1,
                   ),
                 ]
-              : (neo ? CceShadows.neo() : null),
+              : (neo ? CceShadows.cardFloat() : null),
         ),
         child: Stack(
           children: [

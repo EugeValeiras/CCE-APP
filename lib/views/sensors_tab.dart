@@ -44,7 +44,7 @@ class SensorsTab extends StatelessWidget {
                     mainAxisExtent: tileSize.sensorTileHeight,
                   ),
                   delegate: SliverChildBuilderDelegate(
-                    (context, i) => SensorTile(device: sensors[i], service: service, size: tileSize),
+                    (context, i) => SensorTile(device: sensors[i], service: service, size: tileSize, neo: true),
                     childCount: sensors.length,
                   ),
                 ),

@@ -159,7 +159,7 @@ class _RoomSection extends StatelessWidget {
             mainAxisExtent: tileSize.tileHeight,
           ),
           itemCount: section.lights.length,
-          itemBuilder: (context, i) => LightTile(device: section.lights[i], service: service, size: tileSize),
+          itemBuilder: (context, i) => LightTile(device: section.lights[i], service: service, size: tileSize, neo: true),
         ),
         const SizedBox(height: 12),
       ],

@@ -320,6 +320,7 @@ class _AutomationCardState extends State<AutomationCard>
         children: [
           CceCard(
             radius: CceRadii.tile,
+            neo: true,
             padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
             onTap: widget.confirmingDelete ? null : widget.onTap,
             onLongPress: widget.confirmingDelete ? null : widget.onLongPress,

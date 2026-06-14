@@ -6,6 +6,8 @@ import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_neo_button.dart';
+import '../theme/components/cce_switch.dart';
 import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/scenes_section.dart';
@@ -354,25 +356,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     );
   }
 
-  Widget _circleButton(IconData icon, VoidCallback onTap, {String? tooltip}) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: Material(
-        color: CceColors.surfaceHigh,
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Icon(icon, color: CceColors.textPrimary, size: 22),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -485,17 +468,24 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             title: Text(widget.title),
             actions: [
               // Menú "..." (incluye Reordenar secciones).
-              _circleButton(Icons.more_horiz, _openMenu),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: CceNeoIconButton(
+                  icon: Icons.more_horiz,
+                  onPressed: _openMenu,
+                  tooltip: 'Menú',
+                ),
+              ),
               // Master toggle de la habitación.
               if (lights.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(right: 10),
-                  child: Switch.adaptive(
-                    value: onCount > 0,
-                    onChanged: (v) => _toggleAll(lights, v),
-                    activeTrackColor: Colors.white.withValues(alpha: 0.45),
-                    thumbColor:
-                        const WidgetStatePropertyAll<Color>(Colors.white),
+                  child: Transform.scale(
+                    scale: 1.2,
+                    child: CceSwitch(
+                      value: onCount > 0,
+                      onChanged: (v) => _toggleAll(lights, v),
+                    ),
                   ),
                 ),
             ],
