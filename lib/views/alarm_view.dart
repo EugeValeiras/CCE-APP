@@ -398,6 +398,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     final borderColor = _isArmed ? CceColors.danger : CceColors.stroke;
     final label = _isArmed ? 'ARMADA' : 'DESARMADA';
     final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
+    final neoArmed = widget.neo && _isArmed;
+    final neoDisarmed = widget.neo && !_isArmed;
 
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
     final buttonSize = isTablet ? 340.0 : 200.0;
@@ -424,27 +426,64 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             height: buttonSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              // Desarmada + neo: disco neumórfico elevado (neoBase, sin borde).
-              color: widget.neo && !_isArmed ? CceColors.neoBase : fill,
-              border: widget.neo && !_isArmed
+              // Neo: disco neumórfico elevado SIN borde, tanto armada como
+              // desarmada. Armada = disco tintado de rojo (gradiente radial con
+              // luz arriba-izq) + relieve neo + aura roja de alerta. Desarmada =
+              // neoBase plano. Sin neo (legacy): fill + borde + glow rojo.
+              color: neoArmed
+                  ? null
+                  : (neoDisarmed ? CceColors.neoBase : fill),
+              gradient: neoArmed
+                  ? RadialGradient(
+                      center: const Alignment(-0.32, -0.4),
+                      radius: 1.05,
+                      colors: [
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.26)!,
+                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.07)!,
+                      ],
+                    )
+                  : null,
+              border: widget.neo
                   ? null
                   : Border.all(color: borderColor, width: isTablet ? 6 : 4),
-              boxShadow: _isArmed
+              boxShadow: neoArmed
                   ? [
+                      ...CceShadows.neo(blur: 28, offset: 12, intensity: 1.1),
                       BoxShadow(
-                        color: CceColors.danger.withValues(alpha: 0.3),
-                        blurRadius: 30,
-                        spreadRadius: 5,
+                        color: CceColors.danger.withValues(alpha: 0.30),
+                        blurRadius: 34,
+                        spreadRadius: 1,
                       ),
                     ]
-                  : (widget.neo
-                      ? CceShadows.neo(blur: 28, offset: 12, intensity: 1.1)
-                      : null),
+                  : _isArmed
+                      ? [
+                          BoxShadow(
+                            color: CceColors.danger.withValues(alpha: 0.3),
+                            blurRadius: 30,
+                            spreadRadius: 5,
+                          ),
+                        ]
+                      : (widget.neo
+                          ? CceShadows.neo(blur: 28, offset: 12, intensity: 1.1)
+                          : null),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: iconSize, color: fg),
+                Icon(
+                  icon,
+                  size: iconSize,
+                  color: fg,
+                  // Realce sutil para que el escudo "sobresalga" del disco.
+                  shadows: neoArmed
+                      ? const [
+                          Shadow(
+                              color: Color(0x73000000),
+                              offset: Offset(0, 2),
+                              blurRadius: 7),
+                        ]
+                      : null,
+                ),
                 SizedBox(height: isTablet ? 14 : 8),
                 Text(
                   label,
@@ -453,6 +492,14 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                     fontSize: labelSize,
                     fontWeight: FontWeight.w800,
                     letterSpacing: 2,
+                    shadows: neoArmed
+                        ? const [
+                            Shadow(
+                                color: Color(0x59000000),
+                                offset: Offset(0, 1),
+                                blurRadius: 4),
+                          ]
+                        : null,
                   ),
                 ),
               ],
