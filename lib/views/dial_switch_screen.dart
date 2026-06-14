@@ -72,6 +72,7 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
     return Scaffold(
       backgroundColor: CceColors.neoBase,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         title: Text(widget.service.displayName(d), style: CceText.title),
       ),

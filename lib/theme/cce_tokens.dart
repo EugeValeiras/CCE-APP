@@ -199,18 +199,26 @@ abstract final class CceRadii {
 
 /// Tipografia (system font; display = bold + tracking negativo).
 abstract final class CceText {
+  /// Relieve "goma" para títulos de header: sombra abajo-derecha + realce
+  /// tenue arriba-izquierda (el título sobresale, igual que los iconos).
+  static const List<Shadow> embossShadows = [
+    Shadow(color: Color(0xCC05060A), offset: Offset(1.4, 2.4), blurRadius: 3),
+    Shadow(color: Color(0x26FFFFFF), offset: Offset(-1.1, -1.5), blurRadius: 2),
+  ];
   static const display = TextStyle(
     fontSize: 32,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.5,
     height: 1.1,
     color: CceColors.textPrimary,
+    shadows: embossShadows,
   );
   static const title = TextStyle(
     fontSize: 22,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.3,
     color: CceColors.textPrimary,
+    shadows: embossShadows,
   );
   // Usar con .toUpperCase().
   static const section = TextStyle(

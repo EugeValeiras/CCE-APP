@@ -90,6 +90,7 @@ class _SettingsViewState extends State<SettingsView> {
     return Scaffold(
       backgroundColor: CceColors.bg,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('Configuracion'),
       ),
       body: Center(

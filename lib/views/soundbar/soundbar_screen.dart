@@ -48,6 +48,7 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
     return Scaffold(
       backgroundColor: CceColors.neoBase,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: CceColors.neoBase,
         toolbarHeight: 64,
         // Wordmark JBL: logo, no glyph de UI -> sin relieve neumorfico.

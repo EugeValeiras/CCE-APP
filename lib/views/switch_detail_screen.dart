@@ -22,6 +22,7 @@ class SwitchDetailScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: CceColors.bg,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         title: Text(service.displayName(device), style: CceText.title),
       ),

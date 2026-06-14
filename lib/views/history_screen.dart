@@ -329,6 +329,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       backgroundColor: _Glass.bgBase,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -344,6 +345,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,
+                shadows: CceText.embossShadows,
               ),
             ),
             if (_liveMode) ...[

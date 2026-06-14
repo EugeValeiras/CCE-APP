@@ -296,6 +296,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     return Scaffold(
       backgroundColor: widget.neo ? CceColors.neoBase : CceColors.bg,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: widget.neo ? CceColors.neoBase : null,
         title: Row(
           children: [

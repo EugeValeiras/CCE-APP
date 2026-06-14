@@ -62,12 +62,15 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: CceColors.bg,
       endDrawer: ThreadHistoryDrawer(service: _service),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: CceColors.surface,
         title: const Row(
           children: [
             Icon(Icons.smart_toy_outlined, color: CceColors.accent, size: 22),
             SizedBox(width: 8),
-            Text('Asistente', style: TextStyle(color: Colors.white)),
+            Text('Asistente',
+                style: TextStyle(
+                    color: Colors.white, shadows: CceText.embossShadows)),
           ],
         ),
         actions: [

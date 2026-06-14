@@ -369,6 +369,7 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
     return Scaffold(
       backgroundColor: CceColors.bg,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(widget.isNew ? 'Nueva automatización' : 'Editar'),
       ),
       body: Column(
