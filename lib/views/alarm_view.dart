@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/alarm_event.dart';
@@ -390,25 +391,19 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       );
     }
 
-    final neoArmed = widget.neo && _isArmed;
-    final neoDisarmed = widget.neo && !_isArmed;
-    // Armada: rojo danger; desarmada: surfaceHigh + borde hairline. En neo el
-    // disco es casi rojo sólido, así que el escudo/label van en coral claro para
-    // que contrasten (si no, se fundirían con el disco).
-    final fg = neoArmed
-        ? Color.lerp(CceColors.danger, Colors.white, 0.58)!
-        : (_isArmed ? CceColors.danger : CceColors.textTertiary);
+    final label = _isArmed ? 'ARMADA' : 'DESARMADA';
+    final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
+    // Legacy (sin neo): rojo danger / gris + borde hairline.
+    final fg = _isArmed ? CceColors.danger : CceColors.textTertiary;
     final fill = _isArmed
         ? CceColors.danger.withValues(alpha: 0.15)
         : CceColors.surfaceHigh;
     final borderColor = _isArmed ? CceColors.danger : CceColors.stroke;
-    final label = _isArmed ? 'ARMADA' : 'DESARMADA';
-    final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
 
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
-    final buttonSize = isTablet ? 340.0 : 200.0;
-    final iconSize = isTablet ? 110.0 : 64.0;
-    final labelSize = isTablet ? 28.0 : 18.0;
+    final buttonSize = isTablet ? 360.0 : 232.0;
+    final iconSize = isTablet ? 100.0 : 58.0;
+    final labelSize = isTablet ? 26.0 : 17.0;
     final hintSize = isTablet ? 20.0 : 14.0;
     final hostSize = isTablet ? 16.0 : 12.0;
 
@@ -424,91 +419,51 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         ],
         GestureDetector(
           onTap: _toggleArmed,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: buttonSize,
-            height: buttonSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              // Neo: disco neumórfico elevado SIN borde, tanto armada como
-              // desarmada. Armada = disco tintado de rojo (gradiente radial con
-              // luz arriba-izq) + relieve neo + aura roja de alerta. Desarmada =
-              // neoBase plano. Sin neo (legacy): fill + borde + glow rojo.
-              color: neoArmed
-                  ? null
-                  : (neoDisarmed ? CceColors.neoBase : fill),
-              gradient: neoArmed
-                  ? RadialGradient(
-                      center: const Alignment(-0.32, -0.4),
-                      radius: 1.05,
-                      colors: [
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.92)!,
-                        Color.lerp(CceColors.neoBase, CceColors.danger, 0.74)!,
-                      ],
-                    )
-                  : null,
-              border: widget.neo
-                  ? null
-                  : Border.all(color: borderColor, width: isTablet ? 6 : 4),
-              boxShadow: neoArmed
-                  ? [
-                      ...CceShadows.neo(blur: 28, offset: 12, intensity: 1.1),
-                      BoxShadow(
-                        color: CceColors.danger.withValues(alpha: 0.30),
-                        blurRadius: 34,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : _isArmed
-                      ? [
-                          BoxShadow(
-                            color: CceColors.danger.withValues(alpha: 0.3),
-                            blurRadius: 30,
-                            spreadRadius: 5,
-                          ),
-                        ]
-                      : (widget.neo
-                          ? CceShadows.neo(blur: 28, offset: 12, intensity: 1.1)
-                          : null),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: iconSize,
-                  color: fg,
-                  // Realce sutil para que el escudo "sobresalga" del disco.
-                  shadows: neoArmed
-                      ? const [
-                          Shadow(
-                              color: Color(0x73000000),
-                              offset: Offset(0, 2),
-                              blurRadius: 7),
-                        ]
-                      : null,
-                ),
-                SizedBox(height: isTablet ? 14 : 8),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color: fg,
-                    fontSize: labelSize,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
-                    shadows: neoArmed
-                        ? const [
-                            Shadow(
-                                color: Color(0x59000000),
-                                offset: Offset(0, 1),
-                                blurRadius: 4),
+          child: widget.neo
+              ? _AlarmDial(
+                  armed: _isArmed,
+                  size: buttonSize,
+                  iconSize: iconSize,
+                  labelSize: labelSize,
+                  label: label,
+                )
+              : AnimatedContainer(
+                  // Legacy (sin neo): disco simple con borde + glow rojo.
+                  duration: const Duration(milliseconds: 300),
+                  width: buttonSize,
+                  height: buttonSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: fill,
+                    border:
+                        Border.all(color: borderColor, width: isTablet ? 6 : 4),
+                    boxShadow: _isArmed
+                        ? [
+                            BoxShadow(
+                              color: CceColors.danger.withValues(alpha: 0.3),
+                              blurRadius: 30,
+                              spreadRadius: 5,
+                            ),
                           ]
                         : null,
                   ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(icon, size: iconSize, color: fg),
+                      SizedBox(height: isTablet ? 14 : 8),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: labelSize,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
         ),
         SizedBox(height: isTablet ? 48 : 32),
         Text(
@@ -523,4 +478,229 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       ],
     );
   }
+}
+
+/// Dial neumórfico de la alarma (estilo "perilla"): disco oscuro elevado con
+/// cara hundida. Armada → anillo rojo con glow + arco punteado giratorio +
+/// escudo y label rojos. Desarmada → escudo plateado + label gris, sin anillo.
+class _AlarmDial extends StatefulWidget {
+  const _AlarmDial({
+    required this.armed,
+    required this.size,
+    required this.iconSize,
+    required this.labelSize,
+    required this.label,
+  });
+
+  final bool armed;
+  final double size;
+  final double iconSize;
+  final double labelSize;
+  final String label;
+
+  @override
+  State<_AlarmDial> createState() => _AlarmDialState();
+}
+
+class _AlarmDialState extends State<_AlarmDial>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin;
+
+  @override
+  void initState() {
+    super.initState();
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 9),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.size;
+    final armed = widget.armed;
+    const red = CceColors.danger;
+
+    return SizedBox(
+      width: s,
+      height: s,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // 1. Disco base (rim) elevado: gradiente vertical + sombra inferior
+          //    fuerte (elevación) y luz superior tenue.
+          Container(
+            width: s,
+            height: s,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF31333B), Color(0xFF141519)],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.62),
+                  offset: Offset(0, s * 0.075),
+                  blurRadius: s * 0.16,
+                  spreadRadius: 2,
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.05),
+                  offset: Offset(0, -s * 0.035),
+                  blurRadius: s * 0.09,
+                  spreadRadius: -s * 0.02,
+                ),
+              ],
+            ),
+          ),
+          // 2. Anillo rojo animado (solo armada), sobre el rim.
+          if (armed)
+            AnimatedBuilder(
+              animation: _spin,
+              builder: (_, __) => CustomPaint(
+                size: Size(s, s),
+                painter: _AlarmRingPainter(color: red, rotation: _spin.value),
+              ),
+            ),
+          // 3. Cara interna hundida.
+          Container(
+            width: s * 0.82,
+            height: s * 0.82,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const RadialGradient(
+                center: Alignment(0, -0.35),
+                radius: 0.95,
+                colors: [Color(0xFF24262D), Color(0xFF0E0F12)],
+              ),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.04),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  offset: Offset(0, s * 0.03),
+                  blurRadius: s * 0.06,
+                  spreadRadius: -2,
+                ),
+              ],
+            ),
+          ),
+          // 4. Escudo + label.
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ShaderMask(
+                shaderCallback: (r) => LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: armed
+                      ? const [Color(0xFFFF6B6B), Color(0xFFC42E2A)]
+                      : const [Color(0xFFD4D8E0), Color(0xFF6C717C)],
+                ).createShader(r),
+                child: Icon(
+                  armed ? Icons.shield : Icons.shield_outlined,
+                  size: widget.iconSize,
+                  color: Colors.white,
+                  shadows: const [
+                    Shadow(
+                        color: Color(0x80000000),
+                        offset: Offset(0, 2),
+                        blurRadius: 8),
+                  ],
+                ),
+              ),
+              SizedBox(height: s * 0.045),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  color: armed ? const Color(0xFFFF6B6B) : const Color(0xFF9BA0AB),
+                  fontSize: widget.labelSize,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 3,
+                  shadows: const [
+                    Shadow(
+                        color: Color(0x99000000),
+                        offset: Offset(0, 1),
+                        blurRadius: 3),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Anillo rojo del dial armado: glow difuso + línea nítida (arco de ~270°),
+/// arco tenue en el resto y un arco punteado que gira despacio.
+class _AlarmRingPainter extends CustomPainter {
+  _AlarmRingPainter({required this.color, required this.rotation});
+
+  final Color color;
+  final double rotation; // 0..1
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.width / 2 * 0.80;
+    final rect = Rect.fromCircle(center: c, radius: r);
+
+    const start = math.pi * 0.82; // ~148°, hueco abajo-izquierda
+    const sweep = math.pi * 1.5; // 270°
+
+    // Glow difuso.
+    final glow = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.028
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.5)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 9);
+    canvas.drawArc(rect, start, sweep, false, glow);
+
+    // Línea nítida.
+    final line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.014
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    canvas.drawArc(rect, start, sweep, false, line);
+
+    // Resto del círculo, tenue.
+    final dim = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = size.width * 0.009
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.20);
+    canvas.drawArc(rect, start + sweep, math.pi * 2 - sweep, false, dim);
+
+    // Arco punteado giratorio (afuera).
+    final dotR = r + size.width * 0.045;
+    final dotPaint = Paint()
+      ..color = color.withValues(alpha: 0.85)
+      ..style = PaintingStyle.fill;
+    const dots = 16;
+    final base = -math.pi * 0.5 + rotation * 2 * math.pi;
+    const span = math.pi * 0.62;
+    for (var i = 0; i < dots; i++) {
+      final a = base + span * (i / (dots - 1));
+      final p = Offset(c.dx + dotR * math.cos(a), c.dy + dotR * math.sin(a));
+      canvas.drawCircle(p, size.width * 0.008, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_AlarmRingPainter old) =>
+      old.rotation != rotation || old.color != color;
 }
