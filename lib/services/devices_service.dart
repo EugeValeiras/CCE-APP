@@ -40,7 +40,9 @@ class DevicesService extends ChangeNotifier {
 
   StreamSubscription? _deviceSub;
   StreamSubscription? _connSub;
+  StreamSubscription? _armedSub;
   bool _wasConnected = false;
+  bool _alarmArmed = false;
 
   DevicesService({required this.config, required SocketService socket})
       : _api = ApiService(config),
@@ -54,7 +56,17 @@ class DevicesService extends ChangeNotifier {
       }
       _wasConnected = connected;
     });
+    // Estado de la alarma en vivo: el header del home colorea el ícono con esto.
+    _armedSub = _socket.onArmedChanged.listen((armed) {
+      if (_alarmArmed != armed) {
+        _alarmArmed = armed;
+        notifyListeners();
+      }
+    });
   }
+
+  /// True si la alarma está armada (seed en [refresh] + push por WebSocket).
+  bool get alarmArmed => _alarmArmed;
 
   SocketService get socket => _socket;
 
@@ -102,6 +114,11 @@ class DevicesService extends ChangeNotifier {
       final hueScenesFuture = _api.getHueScenes().catchError((Object e) {
         debugPrint('getHueScenes error (degrada a []): $e');
         return <HueScene>[];
+      });
+      // Estado de alarma en paralelo; si falla mantiene el valor previo.
+      final armedFuture = _api.getAlarmState().catchError((Object e) {
+        debugPrint('getAlarmState error (mantiene previo): $e');
+        return _alarmArmed;
       });
       final devices = await devicesFuture;
       _byId
@@ -162,6 +179,7 @@ class DevicesService extends ChangeNotifier {
           : const [];
       _actionOrder = _parseActionOrder(cfg['actionOrder']);
       _hueScenes = await hueScenesFuture;
+      _alarmArmed = await armedFuture;
     } catch (e) {
       _error = 'Error cargando dispositivos';
       debugPrint('DevicesService error: $e');
@@ -677,6 +695,7 @@ class DevicesService extends ChangeNotifier {
   void dispose() {
     _deviceSub?.cancel();
     _connSub?.cancel();
+    _armedSub?.cancel();
     super.dispose();
   }
 }

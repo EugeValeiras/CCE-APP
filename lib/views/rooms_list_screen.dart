@@ -149,9 +149,12 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               if (widget.onOpenAlarm != null)
                 IconButton(
                   tooltip: 'Alarma',
-                  icon: const EmbossedIcon(
-                    color: CceColors.textSecondary,
-                    child: CceIcon(CceIcons.alarmShield, size: 22),
+                  // Rojo cuando la alarma está armada (estado en vivo del service).
+                  icon: EmbossedIcon(
+                    color: service.alarmArmed
+                        ? CceColors.danger
+                        : CceColors.textSecondary,
+                    child: const CceIcon(CceIcons.alarmShield, size: 22),
                   ),
                   onPressed: () => widget.onOpenAlarm!(context),
                 ),
