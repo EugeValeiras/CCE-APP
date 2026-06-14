@@ -30,7 +30,8 @@ class LightColorScreen extends StatefulWidget {
 
 enum _Mode { color, white }
 
-class _LightColorScreenState extends State<LightColorScreen> {
+class _LightColorScreenState extends State<LightColorScreen>
+    with SingleTickerProviderStateMixin {
   // Luces seleccionadas (editables). Siempre ≥ 1.
   final Set<String> _selected = {};
   // Posición del marcador (fracción 0..1 del disco) por luz seleccionada.
@@ -42,6 +43,11 @@ class _LightColorScreenState extends State<LightColorScreen> {
 
   Timer? _debounce;
   static const double _ctMin = 153, _ctMax = 500;
+
+  // Saltito del pin (estilo Google Maps) al entrar o al cambiar de luz: sube y
+  // cae con un rebote sutil. El offset es en píxeles (negativo = arriba).
+  late final AnimationController _hopController;
+  late final Animation<double> _hopOffset;
 
   @override
   void initState() {
@@ -55,10 +61,37 @@ class _LightColorScreenState extends State<LightColorScreen> {
         ? _Mode.white
         : _Mode.color;
     _recomputeMarkers();
+    _hopController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 620),
+    );
+    _hopOffset = TweenSequence<double>([
+      // Despegue: 0 → arriba (easeOut, rápido).
+      TweenSequenceItem(
+        tween: Tween(begin: 0.0, end: -14.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 32,
+      ),
+      // Caída + rebote sutil al aterrizar sobre el punto.
+      TweenSequenceItem(
+        tween: Tween(begin: -14.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.bounceOut)),
+        weight: 68,
+      ),
+    ]).animate(_hopController);
+    // Salto de entrada (tras el primer frame, ya con layout listo).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _hop());
+  }
+
+  /// Dispara el saltito del/los pin(es) seleccionados.
+  void _hop() {
+    if (!mounted) return;
+    _hopController.forward(from: 0);
   }
 
   @override
   void dispose() {
+    _hopController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
@@ -210,6 +243,7 @@ class _LightColorScreenState extends State<LightColorScreen> {
   // ----- selección / brillo -----
   void _toggleSelect(Device d) {
     HapticFeedback.selectionClick();
+    final added = !_selected.contains(d.id);
     setState(() {
       if (_selected.contains(d.id)) {
         if (_selected.length > 1) {
@@ -229,6 +263,8 @@ class _LightColorScreenState extends State<LightColorScreen> {
         }
       }
     });
+    // Saltito al sumar una luz (cambiar de luz), no al quitarla.
+    if (added) _hop();
   }
 
   void _onBrightness(double bri) => setState(() => _bri = bri.clamp(0, 254));
@@ -369,11 +405,20 @@ class _LightColorScreenState extends State<LightColorScreen> {
         // El aro inferior (la punta) queda exactamente en el punto de color.
         left: cl.pos.dx * size - _Marker.w / 2,
         top: cl.pos.dy * size - _Marker.tipY,
-        child: _Marker(
-          child: child,
-          label: single ? null : '${cl.ids.length}',
-          color: pinColor,
-          ink: ink,
+        // Saltito vertical (estilo Google Maps) al entrar / cambiar de luz: el
+        // pin despega del punto y aterriza con un rebote sutil.
+        child: AnimatedBuilder(
+          animation: _hopOffset,
+          builder: (context, marker) => Transform.translate(
+            offset: Offset(0, _hopOffset.value),
+            child: marker,
+          ),
+          child: _Marker(
+            child: child,
+            label: single ? null : '${cl.ids.length}',
+            color: pinColor,
+            ink: ink,
+          ),
         ),
       ));
     }
