@@ -50,7 +50,7 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
       appBar: AppBar(
         backgroundColor: CceColors.neoBase,
         toolbarHeight: 64,
-        title: const Text('Sonido', style: CceText.display),
+        title: const CceIcon(CceIcons.jbl, size: 38, color: CceColors.textPrimary),
         actions: [
           IconButton(
             icon: const Icon(Icons.tune, color: CceColors.textSecondary),

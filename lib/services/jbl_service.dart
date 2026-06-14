@@ -4,6 +4,11 @@ import '../models/jbl_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 
+/// Tope del control de volumen expuesto en la UI (pedido del usuario): 0-33,
+/// step 1. La API soporta 0-100; acá acotamos el rango seteable/mostrado. Tanto
+/// el dial como los botones − / + (setVolume / nudgeVolume) clampan contra esto.
+const int kJblVolMax = 33;
+
 /// Allowlist de ids del remote JBL (espejo del enum compartido del backend —
 /// ver remote-keys.ts / contrato 0.1). El `deviceKey` real vive SOLO
 /// server-side: la app sólo manda estos ids.
@@ -14,10 +19,8 @@ abstract final class JblRemoteKeys {
   static const String bluetooth = 'bluetooth';
   static const String atmos = 'atmos';
   static const String bass = 'bass';
-  static const String rear = 'rear';
   static const String calibrate = 'calibrate';
   static const String surround = 'surround';
-  static const String smart = 'smart';
 }
 
 /// Estado del soundbar JBL con polling controlable (5s). El soundbar NO emite
@@ -140,7 +143,8 @@ class JblService extends ChangeNotifier {
   /// Slider: pisa optimista, NO revierte en catch (igual que setBrightness).
   Future<bool> setVolume(int volume) async {
     if (!canCommand) return false;
-    final clamped = volume.clamp(0, 100);
+    // UI/control acotado a 0-[kJblVolMax] (pedido del usuario); API soporta 0-100.
+    final clamped = volume.clamp(0, kJblVolMax);
     _status = _status!.copyWith(volume: clamped);
     _safeNotify();
     try {
@@ -152,14 +156,21 @@ class JblService extends ChangeNotifier {
     }
   }
 
-  /// Aplica el volumen real retornado por el backend (autoritativo).
+  /// Ajusta el volumen de a 1 (paso fijo, igual que el dial). Pasa `step: 1`
+  /// al backend y clampa el volumen retornado a 0-[kJblVolMax] para que − / +
+  /// coincidan con el dial (la API soporta 0-100; acá acotamos a 0-33).
   Future<bool> nudgeVolume(int delta) async {
     if (!canCommand) return false;
+    // Cap duro 0-[kJblVolMax]: si ya está en el extremo no manda el comando, así
+    // − / + nunca empujan el device fuera del rango 0-33 (la API soporta 0-100).
+    final current = _status!.volume ?? 0;
+    if (delta > 0 && current >= kJblVolMax) return true;
+    if (delta < 0 && current <= 0) return true;
     try {
       final returned = delta >= 0
-          ? await _api.jblVolumeUp()
-          : await _api.jblVolumeDown();
-      _status = _status!.copyWith(volume: returned);
+          ? await _api.jblVolumeUp(step: 1)
+          : await _api.jblVolumeDown(step: 1);
+      _status = _status!.copyWith(volume: returned.clamp(0, kJblVolMax));
       _safeNotify();
       return true;
     } catch (e) {
@@ -240,12 +251,21 @@ class JblService extends ChangeNotifier {
   /// Sin optimismo de estado (son press momentáneos/toggle sin lectura).
   Future<bool> sendRemoteKey(String id) async {
     if (_status == null) return false;
-    final ok = await _api.jblSendRemoteKey(id);
-    // playpause puede cambiar el transporte: refrescamos para reflejarlo.
-    if (ok && id == JblRemoteKeys.playpause) {
-      await refresh();
+    try {
+      final ok = await _api.jblSendRemoteKey(id);
+      // playpause puede cambiar el transporte: refrescamos para reflejarlo.
+      if (ok && id == JblRemoteKeys.playpause) {
+        await refresh();
+      }
+      return ok;
+    } catch (e) {
+      // jblSendRemoteKey lanza ante cualquier status != 200/201 (p.ej. 404 si
+      // la ruta no está desplegada, o 502 si la barra es inalcanzable). Sin
+      // este try/catch la excepción escapa de _handle y no se muestra el
+      // SnackBar; degradamos a false como el resto de los comandos.
+      debugPrint('JblService sendRemoteKey error: $e');
+      return false;
     }
-    return ok;
   }
 
   Future<bool> saveCurrentRadio() async {

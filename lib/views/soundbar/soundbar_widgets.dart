@@ -118,9 +118,10 @@ const double _kVolStart = 135 * math.pi / 180; // 135° (arranca abajo-izquierda
 const double _kVolSweep = 270 * math.pi / 180; // 270° de barrido (gap abajo)
 
 /// Card del volumen: dial circular neumórfico con arco de progreso (violeta→
-/// azul), número central grande, ícono de mute y botones − / +. Tocar el dial
-/// fija el volumen; − / + lo ajustan de a 5. Si la barra no expone volumen
-/// (UPnP caído) se atenúa y muestra "—".
+/// azul), número central grande y botones − / +. Debajo, un pill de mute
+/// (Silenciar/Silenciado). Tocar el dial fija el volumen; − / + lo ajustan de
+/// a 1 (rango 0–[kJblVolMax]). Si la barra no expone volumen (UPnP caído) se
+/// atenúa y muestra "—".
 class _VolumeDialCard extends StatelessWidget {
   const _VolumeDialCard({required this.service});
 
@@ -140,7 +141,7 @@ class _VolumeDialCard extends StatelessWidget {
       final gap = 2 * math.pi - _kVolSweep;
       frac = (delta - _kVolSweep) > gap / 2 ? 0.0 : 1.0;
     }
-    service.setVolume((frac * 100).round());
+    service.setVolume((frac * kJblVolMax).round());
   }
 
   @override
@@ -170,7 +171,7 @@ class _VolumeDialCard extends StatelessWidget {
                 tooltip: 'Bajar volumen',
                 size: 56,
                 onPressed: hasVolume
-                    ? () => _handle(service.nudgeVolume(-5), context)
+                    ? () => _handle(service.nudgeVolume(-1), context)
                     : null,
               ),
               Expanded(
@@ -196,14 +197,12 @@ class _VolumeDialCard extends StatelessWidget {
                                 size: Size(dim, dim),
                                 painter: _VolumeArcPainter(
                                   value: hasVolume
-                                      ? (volume / 100).clamp(0.0, 1.0)
+                                      ? (volume / kJblVolMax).clamp(0.0, 1.0)
                                       : 0.0,
                                   enabled: hasVolume,
                                 ),
                               ),
-                              Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
+                              // Centro del dial: solo el número grande.
                               Text(
                                 hasVolume ? '$volume' : '—',
                                 style: const TextStyle(
@@ -213,39 +212,70 @@ class _VolumeDialCard extends StatelessWidget {
                                   height: 1,
                                 ),
                               ),
-                              const SizedBox(height: 6),
-                              GestureDetector(
-                                onTap: hasVolume
-                                    ? () =>
-                                        _handle(service.toggleMute(), context)
-                                    : null,
-                                child: CceIcon(
-                                  muted ? CceIcons.volumeX : CceIcons.volume2,
-                                  size: 22,
-                                  color: muted
-                                      ? CceColors.danger
-                                      : CceColors.neoTextSub,
-                                ),
-                              ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                        );
-                      },
-                    ),
-                  ),
+                    );
+                  },
+                ),
+              ),
               CceNeoSvgIconButton(
                 svg: CceIcons.plus,
                 tooltip: 'Subir volumen',
                 size: 56,
                 onPressed: hasVolume
-                    ? () => _handle(service.nudgeVolume(5), context)
+                    ? () => _handle(service.nudgeVolume(1), context)
                     : null,
               ),
             ],
+          ),
+          // Mute claro debajo de la fila [− , dial , +]: pill tappeable.
+          const SizedBox(height: 12),
+          Center(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: hasVolume
+                  ? () => _handle(service.toggleMute(), context)
+                  : null,
+              child: Opacity(
+                opacity: hasVolume ? 1 : 0.4,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: CceColors.neoBase,
+                    borderRadius: BorderRadius.circular(CceRadii.control),
+                    border: Border.all(
+                      color: muted ? CceColors.danger : CceColors.stroke,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CceIcon(
+                        muted ? CceIcons.volumeX : CceIcons.volume2,
+                        size: 18,
+                        color: muted
+                            ? CceColors.danger
+                            : CceColors.neoTextSub,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        muted ? 'Silenciado' : 'Silenciar',
+                        style: CceText.caption.copyWith(
+                          color: muted
+                              ? CceColors.danger
+                              : CceColors.neoTextSub,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -354,15 +384,8 @@ class _SourcesRow extends StatelessWidget {
         active: _isActive(JblRemoteKeys.tv),
         onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
       ),
-      _SourceChip(
-        svg: CceIcons.atmos,
-        label: 'Atmos',
-        active: false,
-        onTap: () =>
-            _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
-      ),
     ];
-    // Panel neumórfico con 4 chips repartidos (Expanded).
+    // Panel neumórfico con los chips repartidos (Expanded).
     return CceCard(
       neo: true,
       child: Row(
@@ -444,7 +467,6 @@ class _QuickAccessGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final muted = service.muted;
     final items = <Widget>[
       _QuickButton(
         svg: CceIcons.heart,
@@ -459,17 +481,17 @@ class _QuickAccessGrid extends StatelessWidget {
         onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
       ),
       _QuickButton(
-        svg: muted ? CceIcons.volumeX : CceIcons.volume2,
-        label: 'Mute',
-        active: muted,
-        activeColor: CceColors.danger,
-        onTap: () => _handle(service.toggleMute(), context),
-      ),
-      _QuickButton(
         svg: CceIcons.play,
         label: 'Play',
         onTap: () =>
             _handle(service.sendRemoteKey(JblRemoteKeys.playpause), context),
+      ),
+      // Atmos es un modo de sonido (no una fuente): vive en accesos rápidos.
+      _QuickButton(
+        svg: CceIcons.atmos,
+        label: 'Atmos',
+        onTap: () =>
+            _handle(service.sendRemoteKey(JblRemoteKeys.atmos), context),
       ),
       _QuickButton(
         svg: CceIcons.bass,
@@ -488,14 +510,8 @@ class _QuickAccessGrid extends StatelessWidget {
         onTap: () =>
             _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
       ),
-      _QuickButton(
-        svg: CceIcons.smart,
-        label: 'Smart',
-        onTap: () =>
-            _handle(service.sendRemoteKey(JblRemoteKeys.smart), context),
-      ),
     ];
-    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 8.
+    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 7.
     return CceCard(
       neo: true,
       child: GridView.count(
