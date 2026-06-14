@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../cce_tokens.dart';
+import 'cce_switch.dart';
 
 /// Card visual de una luz (SOLO presentacion; los gestos los pone LightTile).
 /// Card compacta estilo Hue (mismo tamaño que las scene cards): encendida =
@@ -125,9 +126,11 @@ class LightCard extends StatelessWidget {
                   ),
                 ),
                 // Franja inferior: separada por un borde superior; el switch
-                // va centrado y grande.
+                // (CceSwitch, tamaño natural del JBL) va centrado. Altura 56
+                // para alojar el switch natural sin que el clipBehavior recorte
+                // el track (antes 48 con Transform.scale 0.95).
                 Container(
-                  height: 48,
+                  height: 56,
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
@@ -138,17 +141,7 @@ class LightCard extends StatelessWidget {
                     ),
                   ),
                   alignment: Alignment.center,
-                  child: Transform.scale(
-                    scale: 0.95,
-                    // Switch unificado al estilo del JBL (track por defecto).
-                    child: Switch.adaptive(
-                      value: on,
-                      onChanged: onToggle,
-                      activeTrackColor: Colors.white.withValues(alpha: 0.45),
-                      thumbColor:
-                          const WidgetStatePropertyAll<Color>(Colors.white),
-                    ),
-                  ),
+                  child: CceSwitch(value: on, onChanged: onToggle),
                 ),
               ],
             ),

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../cce_tokens.dart';
 import 'brightness_slider.dart';
 import 'cce_card.dart';
+import 'cce_switch.dart';
 import 'status_dot.dart';
 
 /// Card de habitacion (sidebar tablet y lista phone), estilo Hue:
@@ -145,6 +146,28 @@ class _RoomCardState extends State<RoomCard> {
     final fgSub =
         widget.anyOn ? CceTint.subTextOn(mid) : CceColors.textSecondary;
 
+    // T3 — Badge/ícono con el color REAL del item (tint). Una sola definición
+    // (con guarda hasRealTint) para phone y tablet: "Toda la casa" (sin tint)
+    // u otra entrada agregada sin color mantiene el badge neo/genérico aun
+    // encendida; solo se tinta cuando hay un color real que destacar.
+    final bool hasRealTint =
+        widget.tint != null || widget.tintColors.isNotEmpty;
+    final Color? badgeTint = (widget.anyOn && hasRealTint)
+        ? CceTint.normalize(widget.tintColors.isNotEmpty
+            ? _avgColor(widget.tintColors)
+            : widget.tint!)
+        : null;
+    final Color badgeFill = badgeTint != null
+        ? badgeTint // ON con color: círculo = color real de la room.
+        : (widget.neo ? CceColors.neoSunken : CceColors.surfaceHigh);
+    final Color badgeGlyph = badgeTint != null
+        ? CceTint.textOn(badgeTint) // contraste garantizado sobre el tint.
+        : (widget.neo ? CceColors.neoText : fg);
+    // El inset neo está calibrado para fill oscuro (neoSunken); sobre un fill
+    // claro tintado proyectaría un halo sucio → se suprime cuando hay tint.
+    final List<BoxShadow>? badgeShadow =
+        (widget.neo && badgeTint == null) ? CceShadows.neoInset() : null;
+
     // Subtítulo de estado (como la card del JBL): override > conteo > apagado.
     final lo = widget.lightsOn, lt = widget.lightsTotal;
     final subtitle = widget.subtitleOverride ??
@@ -160,17 +183,13 @@ class _RoomCardState extends State<RoomCard> {
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: widget.neo
-                ? CceColors.neoSunken
-                : (widget.anyOn
-                    ? Colors.black.withValues(alpha: 0.10)
-                    : CceColors.surfaceHigh),
-            boxShadow: widget.neo ? CceShadows.neoInset() : null,
+            color: badgeFill,
+            boxShadow: badgeShadow,
           ),
           alignment: Alignment.center,
           child: IconTheme.merge(
             data: IconThemeData(
-              color: widget.neo ? CceColors.neoText : fg,
+              color: badgeGlyph,
               size: 22,
             ),
             child: widget.icon,
@@ -227,22 +246,13 @@ class _RoomCardState extends State<RoomCard> {
           ),
         ),
         const SizedBox(width: 8),
-        // Switch unificado al estilo del JBL: adaptive, thumb blanco, track
-        // por defecto (sin track oscuro custom ni wrapper inset).
-        SizedBox(
-          width: 52,
-          height: 36,
-          child: FittedBox(
-            fit: BoxFit.contain,
-            child: Switch.adaptive(
-              value: widget.anyOn,
-              onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
-                  ? null
-                  : widget.onToggle,
-              activeTrackColor: Colors.white.withValues(alpha: 0.45),
-                      thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
-            ),
-          ),
+        // Switch unificado (CceSwitch): tamaño natural del JBL, sin FittedBox.
+        // El título Expanded cede ancho; entra al final del Row sin desbordar.
+        CceSwitch(
+          value: widget.anyOn,
+          onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
+              ? null
+              : widget.onToggle,
         ),
       ],
     );
