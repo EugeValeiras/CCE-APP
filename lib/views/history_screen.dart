@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import '../models/event_record.dart';
 import '../models/server_config.dart';
@@ -550,29 +551,11 @@ class _GroupRow extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              // Badge oscuro hundido (como el badge de una card apagada del
-              // home); el ícono conserva el color semántico del evento.
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: CceColors.neoSunken,
-                boxShadow: CceShadows.neoInset(blur: 5, offset: 2),
-              ),
-              child: SizedBox(
-                width: 19,
-                height: 19,
-                child: Center(
-                  child: IconTheme.merge(
-                    data: IconThemeData(color: c, size: 19),
-                    child: r.icon,
-                  ),
-                ),
-              ),
-            ),
-              const SizedBox(width: 12),
+            // Sin contenedor: el ícono sobresale como una "goma" neumórfica
+            // (realce arriba-izquierda + sombra abajo-derecha). Conserva el
+            // color semántico del evento.
+            _EmbossedIcon(color: c, child: r.icon),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -636,7 +619,7 @@ class _GroupRow extends StatelessWidget {
             const SizedBox(height: 8),
             for (final e in group.events)
               Padding(
-                padding: const EdgeInsets.only(left: 46, top: 4),
+                padding: const EdgeInsets.only(left: 38, top: 4),
                 child: Row(
                   children: [
                     Expanded(
@@ -659,6 +642,55 @@ class _GroupRow extends StatelessWidget {
           ],
         ],
       );
+  }
+}
+
+/// Ícono "goma" neumórfico: el glyph sobresale del fondo (sin contenedor) con
+/// un realce tenue arriba-izquierda y una sombra abajo-derecha. Universal:
+/// funciona con [Icon] de Material y con SVG ([CceIcon]) tintando dos copias
+/// desplazadas y desenfocadas detrás del ícono real.
+class _EmbossedIcon extends StatelessWidget {
+  const _EmbossedIcon({required this.child, required this.color, this.size = 23});
+
+  final Widget child;
+  final Color color;
+  final double size;
+
+  Widget _ghost(Color c, Offset off, double blur) => Transform.translate(
+        offset: off,
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+          child: ColorFiltered(
+            colorFilter: ColorFilter.mode(c, BlendMode.srcATop),
+            child: IconTheme.merge(
+              data: IconThemeData(color: c, size: size),
+              child: child,
+            ),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Sombra que proyecta el ícono hacia abajo-derecha (relieve).
+          _ghost(const Color(0xCC05060A), const Offset(1.3, 2.2), 2.0),
+          // Realce arriba-izquierda (luz neumórfica).
+          _ghost(const Color(0x1FFFFFFF), const Offset(-1.1, -1.4), 1.1),
+          // Ícono real, con su color semántico.
+          IconTheme.merge(
+            data: IconThemeData(color: color, size: size),
+            child: child,
+          ),
+        ],
+      ),
+    );
   }
 }
 
