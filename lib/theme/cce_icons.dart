@@ -142,10 +142,6 @@ abstract final class CceIcons {
   static const String bass =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2c2.5 0 2.5-2 5-2c1.3 0 1.9.5 2.5 1M2 12c.6.5 1.2 1 2.5 1c2.5 0 2.5-2 5-2c2.6 0 2.4 2 5 2c2.5 0 2.5-2 5-2c1.3 0 1.9.5 2.5 1M2 18c.6.5 1.2 1 2.5 1c2.5 0 2.5-2 5-2c2.6 0 2.4 2 5 2c2.5 0 2.5-2 5-2c1.3 0 1.9.5 2.5 1"/></svg>';
 
-  // lucide:box (REAR)
-  static const String rear =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7l8.7 5l8.7-5M12 22V12"/></g></svg>';
-
   // lucide:gauge (CALIBR)
   static const String calibrate =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m12 14l4-4M3.34 19a10 10 0 1 1 17.32 0"/></svg>';
@@ -154,13 +150,13 @@ abstract final class CceIcons {
   static const String surround =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M4.9 16.1C1 12.2 1 5.8 4.9 1.9m2.9 2.8a6.14 6.14 0 0 0-.8 7.5"/><circle cx="12" cy="9" r="2"/><path d="M16.2 4.8c2 2 2.26 5.11.8 7.47M19.1 1.9a9.96 9.96 0 0 1 0 14.1m-9.6 2h5M8 22l4-11l4 11"/></g></svg>';
 
-  // lucide:sparkles (Smart)
-  static const String smart =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594zM20 2v4m2-2h-4"/><circle cx="4" cy="20" r="2"/></g></svg>';
-
   // lucide:heart (favorito)
   static const String heart =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676a.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></svg>';
+
+  // simple-icons:jbl (wordmark del AppBar de Sonido)
+  static const String jbl =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="m0 5.265l2.022 4.589l2.022-4.59zm2.022 7.6c.698 0 1.266-.565 1.266-1.26c0-.699-.568-1.262-1.266-1.262a1.262 1.262 0 1 0 0 2.523M.928 16.228c0 .957.862 2.509 3.315 2.509s3.315-1.188 3.315-2.51V5.266H5.369l.001 11.342c0 .62-.503 1.14-1.126 1.14a1.127 1.127 0 0 1-1.128-1.124l-.001-2.311H.928zm8.289 2.311V5.265h4.374c.845 0 2.187.693 2.187 2.162v2.261c0 .662-.58 1.833-1.44 1.833c.86 0 1.44.742 1.44 1.305v3.979c0 .676-.546 1.733-2.187 1.733zm3.38-7.559c.796 0 .995-.134.995-2.214s-.2-2.246-.995-2.246h-1.195v4.457zm.995 3.811c0-2.081 0-2.69-.864-2.69h-1.326v5.348l1.326.003c.863 0 .863-.581.863-2.66m3.779 3.748H24v-4.226h-2.189l.002 2.31a1.126 1.126 0 0 1-2.255 0V5.265H17.37Z"/></svg>';
 }
 
 /// Renderiza un SVG de [CceIcons] tintado. Si no se pasa [color], usa el

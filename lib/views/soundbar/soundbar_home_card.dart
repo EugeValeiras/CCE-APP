@@ -44,7 +44,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
             : (on ? CceColors.warm : CceColors.textSecondary);
         final sub = !online
             ? 'Fuera de línea'
-            : (on ? 'Encendido · ${jbl.volume}% volumen' : 'En espera');
+            : (on ? 'Encendido · volumen ${jbl.volume}' : 'En espera');
         return CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
