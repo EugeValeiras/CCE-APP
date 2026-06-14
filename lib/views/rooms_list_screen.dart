@@ -13,6 +13,7 @@ import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
+import 'splash_view.dart';
 
 /// Lista de habitaciones estilo Hue (phone). Las habitaciones y sus stats
 /// salen SIEMPRE de DevicesService (rooms / statsFor) — acá no se deriva nada.
@@ -108,11 +109,9 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       animation: service,
       builder: (context, _) {
         if (service.loading && service.all.isEmpty) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(color: CceColors.textTertiary),
-            ),
-          );
+          // Mientras no haya datos seguimos mostrando "Preparando tu hogar"
+          // (mismo visual que el splash) en vez de un spinner genérico.
+          return const SplashLoadingView();
         }
 
         // Orden derivado como variable LOCAL del build (sin mutar estado en

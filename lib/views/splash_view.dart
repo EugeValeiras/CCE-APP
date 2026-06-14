@@ -1,7 +1,12 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../theme/cce_tokens.dart';
 
+/// Splash de arranque: muestra la animación "Preparando tu hogar" durante un
+/// tiempo fijo y luego llama [onComplete]. El visual es exactamente el de
+/// [SplashLoadingView] para que cualquier carga posterior (p. ej. la lista de
+/// habitaciones aún sin datos) siga mostrando la MISMA animación sin corte.
 class SplashView extends StatefulWidget {
   final VoidCallback onComplete;
 
@@ -11,7 +16,39 @@ class SplashView extends StatefulWidget {
   State<SplashView> createState() => _SplashViewState();
 }
 
-class _SplashViewState extends State<SplashView>
+class _SplashViewState extends State<SplashView> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(milliseconds: 2500), () {
+      if (mounted) widget.onComplete();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => const SplashLoadingView();
+}
+
+/// Pantalla de carga "Preparando tu hogar" reutilizable (sin temporizador ni
+/// callback): edificio animado + texto con respiro. Se usa en el splash de
+/// arranque y en cualquier estado de carga del home, para que nunca aparezca un
+/// spinner genérico distinto.
+class SplashLoadingView extends StatefulWidget {
+  const SplashLoadingView({super.key});
+
+  @override
+  State<SplashLoadingView> createState() => _SplashLoadingViewState();
+}
+
+class _SplashLoadingViewState extends State<SplashLoadingView>
     with TickerProviderStateMixin {
   late AnimationController _lightController;
   late AnimationController _textController;
@@ -53,10 +90,6 @@ class _SplashViewState extends State<SplashView>
         TweenSequenceItem(tween: Tween(begin: 1.0, end: 0.0), weight: 20),
         TweenSequenceItem(tween: Tween(begin: 0.0, end: 0.0), weight: 30 - delay),
       ]).animate(_lightController);
-    });
-
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted) widget.onComplete();
     });
   }
 
