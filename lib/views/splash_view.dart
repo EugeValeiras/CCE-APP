@@ -15,7 +15,12 @@ class _SplashViewState extends State<SplashView>
     with TickerProviderStateMixin {
   late AnimationController _lightController;
   late AnimationController _textController;
+  late AnimationController _textFadeController;
   late List<Animation<double>> _lightAnimations;
+
+  // Offset vertical compartido con la splash nativa: el storyboard centra el
+  // PNG en (centerY - 24). El painter usa el mismo valor para que no haya salto.
+  static const double _kBuildingCenterDy = -24;
 
   @override
   void initState() {
@@ -30,6 +35,13 @@ class _SplashViewState extends State<SplashView>
       vsync: this,
       duration: const Duration(milliseconds: 4500),
     )..repeat(reverse: true);
+
+    // El texto arranca invisible (la splash nativa no lo tiene) y entra con un
+    // fade, asi el primer frame de Flutter calca al launch screen sin "pop".
+    _textFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
 
     final random = Random(42);
     _lightAnimations = List.generate(5, (i) {
@@ -52,54 +64,83 @@ class _SplashViewState extends State<SplashView>
   void dispose() {
     _lightController.dispose();
     _textController.dispose();
+    _textFadeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isTablet = MediaQuery.sizeOf(context).shortestSide >= 600;
-    final buildingWidth = isTablet ? 520.0 : 320.0;
-    final buildingHeight = isTablet ? 163.0 : 100.0;
+    // En telefono la barra mide 300x90 pt: IDENTICO al PNG nativo (splash_logo.png
+    // @1x, contentMode=center en LaunchScreen.storyboard). Asi el primer frame de
+    // Flutter calca al launch screen y no se nota el salto. En tablet se agranda por
+    // diseno (el launch asset universal no escala -> queda un leve salto solo en iPad).
+    final buildingWidth = isTablet ? 520.0 : 300.0;
+    final buildingHeight = isTablet ? 163.0 : 90.0;
+    final gap = isTablet ? 48.0 : 32.0;
+    final fontSize = isTablet ? 26.0 : 18.0;
+
     return Scaffold(
       backgroundColor: CceColors.bg,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: buildingWidth,
-              height: buildingHeight,
-              child: AnimatedBuilder(
-                animation: _lightController,
-                builder: (context, child) {
-                  return CustomPaint(
-                    painter: _BuildingPainter(
-                      lightValues: _lightAnimations.map((a) => a.value).toList(),
-                    ),
-                    size: Size(buildingWidth, buildingHeight),
-                  );
-                },
+      // LayoutBuilder da coords de pantalla COMPLETA (no hay appbar), igual que el
+      // superview del storyboard, para clavar la barra en el mismo (centerY - 24).
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final cx = constraints.maxWidth / 2;
+          final cy = constraints.maxHeight / 2;
+          final buildingTop = cy + _kBuildingCenterDy - buildingHeight / 2;
+          final textTop = buildingTop + buildingHeight + gap;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned(
+                left: cx - buildingWidth / 2,
+                top: buildingTop,
+                width: buildingWidth,
+                height: buildingHeight,
+                child: AnimatedBuilder(
+                  animation: _lightController,
+                  builder: (context, child) {
+                    return CustomPaint(
+                      painter: _BuildingPainter(
+                        lightValues:
+                            _lightAnimations.map((a) => a.value).toList(),
+                      ),
+                      size: Size(buildingWidth, buildingHeight),
+                    );
+                  },
+                ),
               ),
-            ),
-            SizedBox(height: isTablet ? 48 : 32),
-            AnimatedBuilder(
-              animation: _textController,
-              builder: (context, child) {
-                return Opacity(
-                  opacity: 0.5 + _textController.value * 0.5,
-                  child: Text(
-                    'Preparando tu hogar...',
-                    style: CceText.caption.copyWith(
-                      fontSize: isTablet ? 26 : 18,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: textTop,
+                child: AnimatedBuilder(
+                  animation:
+                      Listenable.merge([_textController, _textFadeController]),
+                  builder: (context, child) {
+                    // Fade-in desde 0 (primer frame == nativa, sin texto) y luego
+                    // el "respiro" suave de siempre.
+                    final breathe = 0.5 + _textController.value * 0.5;
+                    return Opacity(
+                      opacity: _textFadeController.value * breathe,
+                      child: Center(
+                        child: Text(
+                          'Preparando tu hogar...',
+                          style: CceText.caption.copyWith(
+                            fontSize: fontSize,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
