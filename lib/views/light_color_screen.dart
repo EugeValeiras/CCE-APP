@@ -608,25 +608,37 @@ class _Marker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(w, h),
-      painter: _PinPainter(color: color, ink: ink),
-      // El contenido queda CENTRADO en la cabeza (centro = w/2, headCy): la
-      // caja útil mide 2*headCy de alto y el resto se reserva para la punta.
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: h - 2 * headCy),
-        child: Center(
-          child: label != null
-              ? Text(
-                  label!,
-                  style: TextStyle(
-                    color: ink,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
-                )
-              : child,
-        ),
+    final content = label != null
+        ? Text(
+            label!,
+            style: TextStyle(
+              color: ink,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          )
+        : child;
+    // SizedBox tight → el CustomPaint pinta en EXACTAMENTE w×h (si no, al tener
+    // child el CustomPaint se mide por el child y headCy del painter no coincide
+    // con el centro real → ícono descentrado). El contenido se posiciona con su
+    // centro clavado en el de la cabeza: (w/2, headCy).
+    return SizedBox(
+      width: w,
+      height: h,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: CustomPaint(painter: _PinPainter(color: color, ink: ink)),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 2 * headCy, // caja [0, 2*headCy] → centro vertical = headCy
+            child: Center(child: content),
+          ),
+        ],
       ),
     );
   }
