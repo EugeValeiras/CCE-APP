@@ -5,6 +5,7 @@ import '../../services/jbl_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
+import '../../theme/components/cce_switch.dart';
 import 'soundbar_screen.dart';
 
 /// Card del JBL Soundbar para la home (lo "expone como dispositivo"): muestra
@@ -104,12 +105,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
               ),
               const SizedBox(width: 8),
               if (online)
-                Switch.adaptive(
-                  value: on,
-                  onChanged: (_) => jbl.togglePower(),
-                  activeTrackColor: Colors.white.withValues(alpha: 0.45),
-                      thumbColor: const WidgetStatePropertyAll<Color>(Colors.white),
-                )
+                CceSwitch(value: on, onChanged: (_) => jbl.togglePower())
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
             ],
