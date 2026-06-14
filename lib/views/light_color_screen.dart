@@ -578,12 +578,12 @@ class _ColorDisk extends StatelessWidget {
   }
 }
 
-/// Pin color-aware estilo Apple Home / Hue: lozenge redondeado RELLENO con el
-/// color seleccionado (el color viaja con el marcador), con gloss superior y un
-/// DOBLE contorno (aro blanco + keyline oscuro) que lo separa de cualquier fondo
-/// del disco. El contenido (ícono o contador) usa tinta auto-contraste [ink] y
-/// la punta es un bullseye con núcleo blanco que marca el punto exacto sin
-/// ambigüedad incluso cuando el color del pin iguala el fondo.
+/// Pin color-aware estilo Google Maps: cabeza circular ANCHA arriba (con el
+/// ícono/contador) que se afina por dos lados tangentes hasta una PUNTA inferior
+/// que marca el lugar exacto. Va RELLENO con el color seleccionado (el color
+/// viaja con el marcador), con gloss superior y un DOBLE contorno (keyline
+/// oscuro + aro blanco) que lo separa de cualquier fondo del disco. El contenido
+/// usa tinta auto-contraste [ink].
 class _Marker extends StatelessWidget {
   final Widget? child; // ícono del device (cluster de 1), ya teñido con [ink]
   final String? label; // contador (cluster > 1)
@@ -596,11 +596,11 @@ class _Marker extends StatelessWidget {
     required this.ink,
   });
 
-  static const double w = 52; // ancho del lozenge
-  static const double lozengeH = 46; // alto del lozenge (zona del ícono)
-  static const double h = 78; // alto total (lozenge + cuello + punta + halo)
-  static const double tipY = 64; // centro de la punta = punto de color exacto
-  static const double tipR = 7; // radio de la punta
+  static const double w = 56; // ancho total (= diámetro de la cabeza + aire)
+  static const double headR = 23; // radio de la cabeza circular (ancha arriba)
+  static const double headCy = 27; // centro vertical de la cabeza (zona ícono)
+  static const double tipY = 70; // punta inferior = punto de color exacto
+  static const double h = 76; // alto total (cabeza + punta + aire para sombra)
 
   /// Tinta auto-contraste para el contenido sobre [c]. Reusa el token del DS
   /// para no divergir del resto de la app.
@@ -611,9 +611,10 @@ class _Marker extends StatelessWidget {
     return CustomPaint(
       size: const Size(w, h),
       painter: _PinPainter(color: color, ink: ink),
+      // El contenido queda CENTRADO en la cabeza (centro = w/2, headCy): la
+      // caja útil mide 2*headCy de alto y el resto se reserva para la punta.
       child: Padding(
-        // Reserva cuello + punta + halo abajo → el contenido queda en el lozenge.
-        padding: const EdgeInsets.only(bottom: h - lozengeH),
+        padding: const EdgeInsets.only(bottom: h - 2 * headCy),
         child: Center(
           child: label != null
               ? Text(
@@ -631,16 +632,16 @@ class _Marker extends StatelessWidget {
   }
 }
 
-/// Pin color-aware: una sola pieza (lozenge ∪ cuello ∪ base de punta) rellena
-/// con el color seleccionado, con gloss superior y DOBLE contorno (aro blanco +
-/// keyline oscuro) que la separa de cualquier fondo del disco. La punta es un
-/// bullseye con NÚCLEO BLANCO que marca el punto exacto sin ambigüedad.
+/// Pin color-aware estilo Google Maps: una sola pieza (cabeza circular ∪
+/// triángulo tangente hasta la punta) rellena con el color seleccionado, con
+/// gloss superior y DOBLE contorno (keyline oscuro + aro blanco) que lo separa
+/// de cualquier fondo del disco. La PUNTA inferior marca el lugar exacto.
 class _PinPainter extends CustomPainter {
   final Color color; // relleno (color seleccionado, literal)
   final Color ink; // tinta del contenido (para repintar al cambiar color)
   const _PinPainter({required this.color, required this.ink});
 
-  /// Color para glow/keyline que no se rompe en el centro desaturado: si la
+  /// Color para el glow que no se rompe en el centro desaturado: si la
   /// saturación es casi nula (hue inestable cerca del blanco) cae a un neutro
   /// fijo para evitar el shimmer arcoíris al arrastrar por el centro.
   Color get _signal {
@@ -657,34 +658,36 @@ class _PinPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
-    const lozengeH = _Marker.lozengeH;
-    const tipCy = _Marker.tipY;
-    const tipR = _Marker.tipR;
+    const headR = _Marker.headR;
+    const headCy = _Marker.headCy;
+    const tipY = _Marker.tipY;
     final cx = w / 2;
     final signal = _signal;
 
-    // --- Silueta unificada: lozenge ∪ cuello ∪ base de la punta ------------
-    final lozenge = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-        Rect.fromLTWH(0, 0, w, lozengeH),
-        const Radius.circular(16),
-      ));
-    final neck = Path()
-      ..moveTo(cx - 8, lozengeH - 4)
-      ..lineTo(cx - tipR * 0.7, tipCy)
-      ..lineTo(cx + tipR * 0.7, tipCy)
-      ..lineTo(cx + 8, lozengeH - 4)
-      ..close();
-    final tipBase = Path()
-      ..addOval(Rect.fromCircle(center: Offset(cx, tipCy), radius: tipR));
+    // --- Silueta tipo gota: cabeza circular ∪ triángulo tangente a la punta -
+    // Los lados del triángulo son TANGENTES a la cabeza → la unión es suave
+    // (sin muescas). beta = semiángulo desde el centro hacia los puntos de
+    // tangencia, vistos desde la punta a distancia d.
+    final headC = Offset(cx, headCy);
+    final d = tipY - headCy;
+    final beta = math.acos(headR / d);
+    final sinB = math.sin(beta), cosB = math.cos(beta);
+    final pa = Offset(cx - headR * sinB, headCy + headR * cosB); // tangente izq
+    final pb = Offset(cx + headR * sinB, headCy + headR * cosB); // tangente der
 
-    var body = Path.combine(PathOperation.union, lozenge, neck);
-    body = Path.combine(PathOperation.union, body, tipBase);
+    final head = Path()
+      ..addOval(Rect.fromCircle(center: headC, radius: headR));
+    final tail = Path()
+      ..moveTo(pa.dx, pa.dy)
+      ..lineTo(cx, tipY)
+      ..lineTo(pb.dx, pb.dy)
+      ..close();
+    final body = Path.combine(PathOperation.union, head, tail);
 
     // --- 1) Glow de color suave bajo la punta (premium, color-aware) -------
     canvas.drawCircle(
-      Offset(cx, tipCy),
-      tipR + 4,
+      Offset(cx, tipY - 2),
+      6,
       Paint()
         ..color = signal.withValues(alpha: 0.40)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
@@ -702,25 +705,27 @@ class _PinPainter extends CustomPainter {
         ..isAntiAlias = true,
     );
 
-    // --- 4) Gloss superior (look gema/premium) ----------------------------
+    // --- 4) Gloss superior en la cabeza (look gema/premium) ---------------
     final sheen = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: 0.24),
+          Colors.white.withValues(alpha: 0.28),
           Colors.white.withValues(alpha: 0.0),
         ],
         stops: const [0.0, 0.6],
-      ).createShader(Rect.fromLTWH(0, 0, w, lozengeH));
+      ).createShader(Rect.fromLTWH(
+          cx - headR, headCy - headR, 2 * headR, 2 * headR));
     canvas.save();
-    canvas.clipPath(lozenge);
-    canvas.drawRect(Rect.fromLTWH(0, 0, w, lozengeH), sheen);
+    canvas.clipPath(head);
+    canvas.drawRect(
+        Rect.fromLTWH(cx - headR, headCy - headR, 2 * headR, 2 * headR), sheen);
     canvas.restore();
 
     // --- 5) DOBLE CONTORNO adaptativo (clave de legibilidad universal) -----
-    // 5a) Keyline oscuro EXTERIOR a alpha real → carga la silueta sobre el
-    //     centro blanco del disco y sobre colores claros (amarillo/cian).
+    // 5a) Keyline oscuro EXTERIOR → carga la silueta sobre el centro blanco del
+    //     disco y sobre colores claros (amarillo/cian).
     canvas.drawPath(
       body,
       Paint()
@@ -742,38 +747,13 @@ class _PinPainter extends CustomPainter {
         ..isAntiAlias = true,
     );
 
-    // --- 6) Punta BULLSEYE: blanco → color literal → núcleo BLANCO ----------
-    // El núcleo blanco marca el punto EXACTO incluso si el color iguala el
-    // fondo (mismo hue): siempre hay blanco-sobre-color en el punto preciso.
+    // --- 6) Núcleo blanco en la punta → marca el punto EXACTO incluso si el
+    //     color del pin iguala el fondo (siempre hay blanco-sobre-color ahí).
     canvas.drawCircle(
-      Offset(cx, tipCy),
-      tipR,
+      Offset(cx, tipY - 5),
+      2.6,
       Paint()
-        ..color = Colors.white
-        ..isAntiAlias = true,
-    );
-    canvas.drawCircle(
-      Offset(cx, tipCy),
-      tipR - 1.6,
-      Paint()
-        ..color = color // color LITERAL del punto
-        ..isAntiAlias = true,
-    );
-    canvas.drawCircle(
-      Offset(cx, tipCy),
-      2.4,
-      Paint()
-        ..color = Colors.white
-        ..isAntiAlias = true,
-    );
-    // Hairline oscuro del borde de la punta → definición sobre fondo claro.
-    canvas.drawCircle(
-      Offset(cx, tipCy),
-      tipR,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.22)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
+        ..color = Colors.white.withValues(alpha: 0.95)
         ..isAntiAlias = true,
     );
   }
