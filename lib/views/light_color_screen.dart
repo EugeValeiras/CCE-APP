@@ -44,8 +44,9 @@ class _LightColorScreenState extends State<LightColorScreen>
   String? _mergeTarget; // dot bajo la pin activa al arrastrar (preview de fusión)
 
   Timer? _debounce;
+  double _diskSize = 1; // px del disco (para el offset cabeza↔punta del pin)
   static const double _ctMin = 153, _ctMax = 500;
-  static const double _mergeThr = 0.085; // proximidad (frac) para fusionar
+  static const double _mergeThr = 0.12; // proximidad (frac) para fusionar
   static const double _grabThr = 0.16; // proximidad (frac) para agarrar una pin
 
   // Saltito del pin (estilo Google Maps) al entrar o al cambiar de luz: sube y
@@ -169,6 +170,12 @@ class _LightColorScreenState extends State<LightColorScreen>
   /// Posición (compartida) de la pin activa.
   Offset? _activePos() => _active.isEmpty ? null : _markerFrac[_active.first];
 
+  /// Posición (frac) del centro de la CABEZA del pin cuya punta está en [tip].
+  /// La cabeza está ~(tipY-headCy) px ARRIBA de la punta; es lo que el usuario
+  /// ve y alinea contra los dots, así que la usamos para agarrar y fusionar.
+  Offset _pinHead(Offset tip) => Offset(
+      tip.dx, tip.dy - (_Marker.tipY - _Marker.headCy) / _diskSize);
+
   /// Selecciona UNA sola luz como activa (deselecciona el resto → dots).
   void _selectSingle(String id) {
     setState(() {
@@ -230,7 +237,8 @@ class _LightColorScreenState extends State<LightColorScreen>
   void _onPanDown(Offset f) {
     _mergeTarget = null;
     final ap = _activePos();
-    final dActive = ap == null ? double.infinity : (ap - f).distance;
+    // El usuario toca la CABEZA del pin (arriba de la punta), no la punta.
+    final dActive = ap == null ? double.infinity : (_pinHead(ap) - f).distance;
     final dot = _nearestDot(f, _grabThr);
     final dDot =
         dot == null ? double.infinity : (_markerFrac[dot]! - f).distance;
@@ -255,7 +263,10 @@ class _LightColorScreenState extends State<LightColorScreen>
   void _drag(Offset localFrac) {
     if (!_dragging || _active.isEmpty) return;
     final f = _clampFrac(localFrac);
-    final target = _nearestDot(f, _mergeThr);
+    // Fusión por solapamiento de la CABEZA del pin (lo que el usuario ve) o de
+    // la punta, sobre el dot destino.
+    final target =
+        _nearestDot(_pinHead(f), _mergeThr) ?? _nearestDot(f, _mergeThr);
     // Feedback háptico al entrar en rango de fusión sobre un dot nuevo.
     if (target != null && target != _mergeTarget) {
       HapticFeedback.mediumImpact();
@@ -385,6 +396,7 @@ class _LightColorScreenState extends State<LightColorScreen>
   }
 
   Widget _buildDisk(double size) {
+    _diskSize = size; // para el offset cabeza↔punta en agarre/fusión
     // Marcadores: dots (luces NO activas, teñidos con su color = "circulitos"
     // que se pueden seleccionar/absorber) + UNA pin para la selección activa.
     final markers = <Widget>[];
