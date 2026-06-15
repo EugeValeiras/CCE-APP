@@ -3,6 +3,7 @@ import '../models/room_ref.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
+import '../services/tv_service.dart';
 import '../services/socket_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
@@ -20,6 +21,7 @@ import 'floor_plan_tab.dart';
 import 'history_screen.dart';
 import 'settings_view.dart';
 import 'soundbar/soundbar_screen.dart';
+import 'tv/tv_screen.dart';
 import 'tablet/room_panel.dart';
 import 'tablet/rooms_sidebar.dart';
 
@@ -40,6 +42,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
   late SocketService _socket;
   late DevicesService _devices;
   late final JblService _jbl;
+  late final TvService _tv;
   final UiSettingsService _ui = UiSettingsService();
   int _tab = 0;
 
@@ -51,12 +54,14 @@ class _TabletHomeViewState extends State<TabletHomeView> {
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
     _jbl = JblService(config: widget.config);
+    _tv = TvService(config: widget.config);
     _ui.load();
   }
 
   @override
   void dispose() {
     _jbl.dispose();
+    _tv.dispose();
     _devices.dispose();
     _socket.dispose();
     _ui.dispose();
@@ -92,6 +97,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           ChatScreen(config: widget.config),
           AlarmView(initialConfig: widget.config, neo: true),
           SoundbarScreen(service: _jbl),
+          TvScreen(service: _tv),
         ];
 
         return Scaffold(
@@ -105,12 +111,17 @@ class _TabletHomeViewState extends State<TabletHomeView> {
                 _HueBottomNav(
                   selected: _tab,
                   onSelect: (i) {
-                    // El shell posee el ciclo de polling del soundbar:
-                    // solo pollea mientras Sonido (idx 5) es la tab activa.
+                    // El shell posee el ciclo de polling de los dispositivos
+                    // dedicados: el soundbar pollea solo en la tab Sonido (5) y
+                    // el TV solo en su tab TV (6).
                     final wasSound = _tab == 5;
                     final isSound = i == 5;
                     if (isSound && !wasSound) _jbl.startPolling();
                     if (!isSound && wasSound) _jbl.stopPolling();
+                    final wasTv = _tab == 6;
+                    final isTv = i == 6;
+                    if (isTv && !wasTv) _tv.startPolling();
+                    if (!isTv && wasTv) _tv.stopPolling();
                     setState(() => _tab = i);
                   },
                   onSettings: _openSettings,
@@ -144,6 +155,7 @@ class _HueBottomNav extends StatelessWidget {
     (CceIcons.agent, 'Agente'),
     (CceIcons.alarmShield, 'Alarma'),
     (CceIcons.speaker, 'Sonido'),
+    (CceIcons.tv, 'TV'),
     (CceIcons.settings, 'Ajustes'),
   ];
 

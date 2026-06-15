@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/server_config.dart';
 import '../models/device.dart';
 import '../models/jbl_status.dart';
+import '../models/tv_status.dart';
 import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
@@ -418,6 +419,294 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
     final data = _jblOk(resp);
     return (data['ip'] ?? '').toString();
+  }
+
+  // ── Samsung TV ─────────────────────────────────────────────────────────────
+  // Mismo patrón que el soundbar: el TV NO emite por socket → estado por polling
+  // de getTvStatus. GET /tv/status NUNCA falla por TV inalcanzable (devuelve 200
+  // con online:false); el resto de los comandos SÍ fallan (502) ante TV
+  // inalcanzable y devuelven un {error} semántico que parseamos como en
+  // recallHueScene / los comandos JBL.
+
+  Future<TvStatus> getTvStatus() async {
+    // Timeout 8s: igual que getJblStatus, el server puede hacer discovery /
+    // probing del transporte antes de responder offline; 5s daría timeouts
+    // espurios.
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/tv/status'))
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return TvStatus.fromJson(
+        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+  }
+
+  Future<String> setTvPower(bool on) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/power'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'on': on}),
+        )
+        .timeout(const Duration(seconds: 6));
+    final data = _tvOk(resp);
+    return (data['power'] ?? '').toString();
+  }
+
+  Future<void> toggleTvPower() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/power/toggle'))
+        .timeout(const Duration(seconds: 6));
+    _tvOk(resp);
+  }
+
+  Future<int> setTvVolume(int volume) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/volume'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'volume': volume}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return (data['volume'] as num?)?.toInt() ?? volume;
+  }
+
+  Future<int?> tvVolumeUp() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/volume/up'))
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return (data['volume'] as num?)?.toInt();
+  }
+
+  Future<int?> tvVolumeDown() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/volume/down'))
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return (data['volume'] as num?)?.toInt();
+  }
+
+  Future<bool> setTvMute(bool muted) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/mute'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'muted': muted}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['muted'] == true;
+  }
+
+  Future<bool> toggleTvMute() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/mute/toggle'))
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['muted'] == true;
+  }
+
+  Future<String?> setTvChannel(String channel) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/channel'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'channel': channel}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['channel']?.toString();
+  }
+
+  Future<String?> tvChannelUp() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/channel/up'))
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['channel']?.toString();
+  }
+
+  Future<String?> tvChannelDown() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/channel/down'))
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['channel']?.toString();
+  }
+
+  Future<String?> setTvInput(String source) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/input'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'source': source}),
+        )
+        .timeout(const Duration(seconds: 6));
+    final data = _tvOk(resp);
+    return data['input']?.toString();
+  }
+
+  Future<List<TvInput>> getTvInputs() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/tv/inputs'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => TvInput.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Envía una tecla del remote (allowlist server-side: up/down/left/right/ok/
+  /// back/home/menu/exit/power/volumeUp/volumeDown/mute/channelUp/channelDown/
+  /// hdmi/play/pause/stop/digit0..digit9). El backend responde con
+  /// {ok,id,via?,error?} y decide el transporte (cloud vs Tizen local).
+  /// Devuelve `ok == true` si el TV aceptó.
+  Future<bool> sendTvKey(String id) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/tv/remote'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'key': id}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['ok'] == true;
+  }
+
+  Future<List<TvRemoteKey>> getTvRemoteKeys() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/tv/remote/keys'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => TvRemoteKey.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Comando de reproducción (action: play|pause|stop|fastForward|rewind).
+  Future<String?> tvPlayback(String action) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/playback'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'action': action}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['playback']?.toString();
+  }
+
+  Future<void> tvTrackNext() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/track/next'))
+        .timeout(const Duration(seconds: 5));
+    _tvOk(resp);
+  }
+
+  Future<void> tvTrackPrev() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/track/prev'))
+        .timeout(const Duration(seconds: 5));
+    _tvOk(resp);
+  }
+
+  Future<String?> setTvPictureMode(String mode) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/picture-mode'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'mode': mode}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['pictureMode']?.toString();
+  }
+
+  Future<String?> setTvSoundMode(String mode) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/tv/sound-mode'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'mode': mode}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _tvOk(resp);
+    return data['soundMode']?.toString();
+  }
+
+  /// Modos disponibles del TV (GET /tv/modes) → {picture:[...], sound:[...]}.
+  /// Devuelve el Map crudo; el caller decide cómo consumirlo.
+  Future<Map<String, dynamic>> getTvModes() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/tv/modes'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return data is Map<String, dynamic>
+        ? data
+        : Map<String, dynamic>.from(data as Map);
+  }
+
+  /// Lanza una app por su appId (POST /tv/app/launch {appId}).
+  Future<bool> launchTvApp(String appId) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/tv/app/launch'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'appId': appId}),
+        )
+        .timeout(const Duration(seconds: 6));
+    final data = _tvOk(resp);
+    // El backend responde {success, appId} (no 'ok'); aceptamos cualquiera de
+    // los dos como señal de éxito y solo fallamos ante un false explícito.
+    return data['success'] != false && data['ok'] != false;
+  }
+
+  Future<List<TvApp>> getTvApps() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/tv/apps'))
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((e) => TvApp.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// Activa el modo ambiente del TV (POST /tv/ambient/on).
+  Future<void> tvAmbientOn() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/tv/ambient/on'))
+        .timeout(const Duration(seconds: 6));
+    _tvOk(resp);
+  }
+
+  /// Valida la respuesta de un comando TV (acepta 200 y 201). Ante fallo parsea
+  /// el {error} semántico del body (502/400/404), igual que _jblOk /
+  /// recallHueScene. Devuelve el body decodificado como Map.
+  Map<String, dynamic> _tvOk(http.Response resp) {
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      String msg = 'Error ${resp.statusCode}';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) msg = data['error'].toString();
+      } catch (_) {}
+      throw Exception(msg);
+    }
+    final data = jsonDecode(resp.body);
+    return data is Map<String, dynamic>
+        ? data
+        : Map<String, dynamic>.from(data as Map);
   }
 
   /// Valida la respuesta de un comando JBL (acepta 200 y 201). Ante fallo
