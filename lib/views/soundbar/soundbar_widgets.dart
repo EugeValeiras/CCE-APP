@@ -666,11 +666,11 @@ class _QuickAccessGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[
+      // Favorites: abre el sheet de radios. Botón común (sin estado activo ni
+      // tinte rojo) — es una acción, no un toggle de estado.
       _QuickButton(
         svg: CceIcons.heart,
-        label: 'Favori',
-        active: true,
-        activeColor: CceColors.danger,
+        label: 'Favorites',
         onTap: () => _openRadioSheet(context, service),
       ),
       // TV vive en FUENTES (no se duplica acá).
