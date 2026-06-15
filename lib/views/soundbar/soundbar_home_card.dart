@@ -67,32 +67,29 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
           neo: neo,
           child: Row(
             children: [
-              // Avatar del speaker: WELL hundido en neo (neoSunken + neoInset),
-              // fill tintado warm/surface en plano.
-              Container(
+              // Speaker GRANDE extruido, SIN círculo (coherente con el ícono de
+              // las RoomCard). El fondo de esta card es siempre oscuro (neoBase
+              // en neo / surface en plano): no hay fill pastel saturado, así que
+              // el relieve usa el par FIJO de CceEmboss (calibrado para oscuro),
+              // NO el emboss-de-color de la RoomCard ON. Reservamos el mismo
+              // ancho (48) con Center para no mover título/switch.
+              SizedBox(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: neo
-                      ? CceColors.neoSunken
-                      : (on
-                          ? CceColors.warm.withValues(alpha: 0.18)
-                          : CceColors.surfaceHigh),
-                  boxShadow:
-                      neo ? CceShadows.neoInset(blur: 8, offset: 3) : null,
-                ),
-                alignment: Alignment.center,
-                child: CceIcon(
-                  CceIcons.speaker,
-                  size: 24,
-                  // En neo el icono toma accent cuando ON (estado "vivo"), gris
-                  // neo en espera/offline; en plano usa el accent histórico.
-                  color: neo
-                      ? (online && on
-                          ? CceColors.accent
-                          : CceColors.neoTextSub)
-                      : accent,
+                child: Center(
+                  child: EmbossedGlyph(
+                    size: 32,
+                    // Color del glyph preservado: accent ON / neoTextSub en
+                    // espera-offline (neo); accent histórico en plano.
+                    color: neo
+                        ? (online && on
+                            ? CceColors.accent
+                            : CceColors.neoTextSub)
+                        : accent,
+                    highlight: CceEmboss.highlight.color,
+                    shadow: CceEmboss.shadow.color,
+                    child: const CceIcon(CceIcons.speaker, size: 32),
+                  ),
                 ),
               ),
               const SizedBox(width: 14),

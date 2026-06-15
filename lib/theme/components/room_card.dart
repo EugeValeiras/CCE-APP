@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../cce_icons.dart';
 import '../cce_tokens.dart';
 import 'brightness_slider.dart';
 import 'cce_card.dart';
@@ -146,27 +147,36 @@ class _RoomCardState extends State<RoomCard> {
     final fgSub =
         widget.anyOn ? CceTint.subTextOn(mid) : CceColors.textSecondary;
 
-    // T3 — Badge/ícono con el color REAL del item (tint). Una sola definición
-    // (con guarda hasRealTint) para phone y tablet: "Toda la casa" (sin tint)
-    // u otra entrada agregada sin color mantiene el badge neo/genérico aun
-    // encendida; solo se tinta cuando hay un color real que destacar.
-    final bool hasRealTint =
-        widget.tint != null || widget.tintColors.isNotEmpty;
-    final Color? badgeTint = (widget.anyOn && hasRealTint)
-        ? CceTint.normalize(widget.tintColors.isNotEmpty
-            ? _avgColor(widget.tintColors)
-            : widget.tint!)
-        : null;
-    final Color badgeFill = badgeTint != null
-        ? badgeTint // ON con color: círculo = color real de la room.
-        : (widget.neo ? CceColors.neoSunken : CceColors.surfaceHigh);
-    final Color badgeGlyph = badgeTint != null
-        ? CceTint.textOn(badgeTint) // contraste garantizado sobre el tint.
-        : (widget.neo ? CceColors.neoText : fg);
-    // El inset neo está calibrado para fill oscuro (neoSunken); sobre un fill
-    // claro tintado proyectaría un halo sucio → se suprime cuando hay tint.
-    final List<BoxShadow>? badgeShadow =
-        (widget.neo && badgeTint == null) ? CceShadows.neoInset() : null;
+    // ÍCONO GRANDE EXTRUIDO (sin círculo): el glyph sale de la superficie de la
+    // card como un relieve. El icono sigue siendo widget.icon (no cambia QUÉ se
+    // muestra); sólo cambia su PRESENTACIÓN.
+    //
+    // Color del glyph: se calcula contra la superficie REAL bajo el icono — en
+    // ON eso es el GRADIENTE PASTEL de la card (`mid`/`fg`, ya computados arriba
+    // por luminancia), NO el `badgeTint` saturado del viejo círculo; en OFF, fg
+    // cae a textPrimary sobre neoBase. (Conservamos la lógica de tint/contraste
+    // y los branches null: "Toda la casa" sin tint usa `mid` warm igual.)
+    const double iconSize = 32;
+    final Color glyphColor =
+        widget.anyOn ? fg : (widget.neo ? CceColors.neoText : fg);
+
+    // Highlight/shadow del relieve derivados de la SUPERFICIE bajo el icono:
+    //  - OFF (neoBase, oscuro): par fijo de CceEmboss (calibrado para oscuro,
+    //    misma fuente de verdad que el IconTheme global → el icono de la card se
+    //    ve igual que el resto de los iconos goma de la app).
+    //  - ON (pastel `mid`, claro): luz = tono más claro del color + sombra =
+    //    tono más oscuro del color (EmbossedGlyph.surfaceEmboss), para que el
+    //    relieve sea "moldeado" del material de color y NO ensucie con
+    //    blanco/negro puros sobre ámbar/rosa.
+    final Color embHi, embSh;
+    if (widget.anyOn) {
+      final (h, s) = EmbossedGlyph.surfaceEmboss(mid);
+      embHi = h;
+      embSh = s;
+    } else {
+      embHi = CceEmboss.highlight.color;
+      embSh = CceEmboss.shadow.color;
+    }
 
     // Subtítulo de estado (como la card del JBL): override > conteo > apagado.
     final lo = widget.lightsOn, lt = widget.lightsTotal;
@@ -177,29 +187,22 @@ class _RoomCardState extends State<RoomCard> {
 
     final headerRow = Row(
       children: [
-        // Ícono en badge circular (como la card del JBL).
-        Container(
+        // Ícono GRANDE extruido, SIN círculo. Reservamos el mismo ancho que el
+        // viejo badge (44) con Center, para no mover el título (Expanded) ni el
+        // switch: el layout de la card compacta (76px) queda intacto. El glyph
+        // de 32 se pinta dentro de esa caja; Clip.none del EmbossedGlyph permite
+        // que el relieve sobresalga sin recortarse.
+        SizedBox(
           width: 44,
           height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: badgeFill,
-            boxShadow: badgeShadow,
-          ),
-          alignment: Alignment.center,
-          child: IconTheme.merge(
-            // Mismo criterio que badgeShadow: glyph sobre fill tintado (ON con
-            // color) -> sin relieve neumorfico (la sombra ensuciaria el halo).
-            // `shadows: []` aplana AMBAS tecnicas: el Icon de Material (usa
-            // shadows ?? iconTheme) y el CceIcon (lee este IconTheme.shadows
-            // vacio como senal de flatten). El badge generico usa
-            // CceIcon(CceIcons.room); los configurados, Icon(MdiIcons...).
-            data: IconThemeData(
-              color: badgeGlyph,
-              size: 22,
-              shadows: badgeTint != null ? const <Shadow>[] : null,
+          child: Center(
+            child: EmbossedGlyph(
+              size: iconSize,
+              color: glyphColor,
+              highlight: embHi,
+              shadow: embSh,
+              child: widget.icon,
             ),
-            child: widget.icon,
           ),
         ),
         const SizedBox(width: 14),
