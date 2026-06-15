@@ -15,6 +15,7 @@ class JblStatus {
   final String power; // 'on' | 'off' | 'unknown'
   final String? source;
   final String? transport;
+  final bool? nightMode; // "night listening" (Personal Listening Mode) | null
 
   const JblStatus({
     this.online = false,
@@ -25,6 +26,7 @@ class JblStatus {
     this.power = 'unknown',
     this.source,
     this.transport,
+    this.nightMode,
   });
 
   bool get isOn => power == 'on';
@@ -41,6 +43,7 @@ class JblStatus {
       power: (json['power'] ?? 'unknown').toString(),
       source: json['source'] as String?,
       transport: json['transport'] as String?,
+      nightMode: json['nightMode'] is bool ? json['nightMode'] as bool : null,
     );
   }
 
@@ -53,6 +56,7 @@ class JblStatus {
     String? power,
     String? source,
     String? transport,
+    bool? nightMode,
   }) {
     return JblStatus(
       online: online ?? this.online,
@@ -63,6 +67,7 @@ class JblStatus {
       power: power ?? this.power,
       source: source ?? this.source,
       transport: transport ?? this.transport,
+      nightMode: nightMode ?? this.nightMode,
     );
   }
 }

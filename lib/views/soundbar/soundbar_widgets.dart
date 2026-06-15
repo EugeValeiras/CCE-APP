@@ -704,9 +704,18 @@ class _QuickAccessGrid extends StatelessWidget {
         onTap: () =>
             _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
       ),
+      // Night listening (Personal Listening Mode): toggle de estado real (NO un
+      // press momentáneo). Se enciende (info/azul) cuando está activo.
+      _QuickButton(
+        svg: CceIcons.moon,
+        label: 'Night',
+        active: service.nightMode,
+        activeColor: CceColors.info,
+        onTap: () => _handle(service.toggleNightMode(), context),
+      ),
     ];
     // Sin contenedor: los botones neumórficos flotan directo sobre el fondo.
-    // 6 ítems (TV vive en FUENTES), 4 por fila → 2 filas.
+    // 7 ítems (TV vive en FUENTES), 4 por fila → 2 filas.
     return GridView.count(
       crossAxisCount: 4,
       shrinkWrap: true,

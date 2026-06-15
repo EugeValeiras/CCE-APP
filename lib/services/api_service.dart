@@ -337,6 +337,27 @@ class ApiService {
     return data['muted'] as bool;
   }
 
+  /// "Night listening" (Personal Listening Mode). Devuelve el estado resultante.
+  Future<bool> setJblNightMode(bool on) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/jbl/night'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'on': on}),
+        )
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return data['nightMode'] as bool;
+  }
+
+  Future<bool> toggleJblNightMode() async {
+    final resp = await http
+        .post(Uri.parse('${config.baseUrl}/jbl/night/toggle'))
+        .timeout(const Duration(seconds: 5));
+    final data = _jblOk(resp);
+    return data['nightMode'] as bool;
+  }
+
   /// Envía una tecla del remote (allowlist server-side). El backend responde
   /// 200 con { ok } incluso si la barra está offline/rechaza (NUNCA 5xx por
   /// barra inalcanzable). Devuelve `ok == true` si la barra aceptó.

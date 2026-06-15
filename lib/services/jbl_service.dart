@@ -60,6 +60,7 @@ class JblService extends ChangeNotifier {
   bool get hasVolume => _status?.hasVolume ?? false;
   int get volume => _status?.volume ?? 0;
   bool get muted => _status?.muted ?? false;
+  bool get nightMode => _status?.nightMode ?? false;
   String? get source => _status?.source;
   String get displayName => _status?.name ?? 'JBL BAR 1000MK2';
 
@@ -85,6 +86,25 @@ class JblService extends ChangeNotifier {
       power: s.power,
       source: s.source,
       transport: s.transport,
+      nightMode: s.nightMode,
+    );
+  }
+
+  /// Revert del campo `nightMode` que SÍ puede restaurar `null` (igual que
+  /// [_restoreMuted]: copyWith no puede setear null). No-op si _status es null.
+  void _restoreNightMode(bool? prev) {
+    final s = _status;
+    if (s == null) return;
+    _status = JblStatus(
+      online: s.online,
+      ip: s.ip,
+      name: s.name,
+      volume: s.volume,
+      muted: s.muted,
+      power: s.power,
+      source: s.source,
+      transport: s.transport,
+      nightMode: prev,
     );
   }
 
@@ -210,6 +230,24 @@ class JblService extends ChangeNotifier {
       _restoreMuted(prev);
       _safeNotify();
       debugPrint('JblService toggleMute error: $e');
+      return false;
+    }
+  }
+
+  /// "Night listening" (Personal Listening Mode). Pisa optimista y revierte en
+  /// catch (igual que [toggleMute]); el toggle real lo resuelve el backend.
+  Future<bool> toggleNightMode() async {
+    if (!canCommand) return false;
+    final prev = _status!.nightMode;
+    _status = _status!.copyWith(nightMode: !(prev ?? false));
+    _safeNotify();
+    try {
+      await _api.toggleJblNightMode();
+      return true;
+    } catch (e) {
+      _restoreNightMode(prev);
+      _safeNotify();
+      debugPrint('JblService toggleNightMode error: $e');
       return false;
     }
   }
