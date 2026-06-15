@@ -92,7 +92,7 @@ class _TvScreenState extends State<TvScreen> {
     // la pantalla es chica. Así no hay scroll y se ve completo en cualquier
     // teléfono (no podemos medir con Flutter local, esto lo garantiza).
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
       child: Column(
         children: [
           if (!online) ...[
@@ -100,11 +100,17 @@ class _TvScreenState extends State<TvScreen> {
             const SizedBox(height: 8),
           ],
           Expanded(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              // Cuerpo del control: si !online se atenúa (IgnorePointer +
-              // opacidad), salvo Power/Home/apps que despiertan el TV.
-              child: _RemoteBody(service: service, online: online),
+            child: LayoutBuilder(
+              builder: (context, constraints) => FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.topCenter,
+                // ANCHO COMPLETO: el control ocupa todo el ancho disponible; el
+                // FittedBox solo lo achica si no entra en alto (nunca agranda).
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  child: _RemoteBody(service: service, online: online),
+                ),
+              ),
             ),
           ),
         ],
@@ -127,12 +133,10 @@ class _RemoteBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        // Cuerpo angosto tipo control físico (no se estira en tablet).
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+    // ANCHO COMPLETO: la carcasa ocupa todo el ancho dado por el SizedBox del
+    // _buildBody (el FittedBox cuida el alto). Ya no se limita a 340 px.
+    return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
           decoration: BoxDecoration(
             // Carcasa negra mate: gradiente sutil + relieve flotante de card.
             gradient: CceGradients.cardSurface(CceColors.neoBase),
@@ -177,7 +181,8 @@ class _RemoteBody extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              // ── Anillo de utilidades: Guía/Play · Home · Back · Mute · 123 ─
+              // ── Fila de utilidades (5 en una línea): Guía · Home · Back ·
+              //    123 · Mute ──────────────────────────────────────────────────
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -200,12 +205,6 @@ class _RemoteBody extends StatelessWidget {
                     enabled: online,
                     onTap: () => _key(service, TvRemoteKeys.back),
                   ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
                   // 123 → teclado numérico.
                   _RoundKey(
                     label: '123',
@@ -308,8 +307,6 @@ class _RemoteBody extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
     );
   }
 
@@ -514,32 +511,61 @@ class _Rocker extends StatelessWidget {
     final Color centerColor =
         centerActive ? CceColors.info : CceColors.neoTextSub;
 
+    // Separador fino entre zonas (da el look "rocker segmentado").
+    Widget divider() => Container(
+          height: 1,
+          margin: const EdgeInsets.symmetric(horizontal: 22),
+          color: CceColors.cardBevel,
+        );
+
+    // Botón central en RELIEVE (mute en VOL / lista en CH): destaca sobre la
+    // píldora hundida; se tiñe de info cuando está activo (muteado).
+    final Widget center = Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: CceGradients.cardSurface(
+          centerActive ? CceColors.info.withValues(alpha: 0.18) : CceColors.neoBase,
+        ),
+        boxShadow: CceShadows.neo(blur: 8, offset: 3),
+      ),
+      child: Center(
+        child: centerSvg != null
+            ? CceIcon(centerSvg!, size: 20, color: centerColor)
+            : Icon(centerIcon ?? Icons.circle_outlined,
+                size: 20, color: centerColor),
+      ),
+    );
+
     return Column(
       children: [
         Container(
+          // Píldora hundida con gradiente sutil + bisel: más profundidad.
           decoration: BoxDecoration(
-            color: CceColors.neoBase,
+            gradient: CceGradients.cardSurface(CceColors.neoBase),
             borderRadius: BorderRadius.circular(CceRadii.pill),
-            boxShadow: CceShadows.neoInset(blur: 10, offset: 4),
+            boxShadow: CceShadows.neoInset(blur: 12, offset: 5),
+            border: Border.all(color: CceColors.cardBevel, width: 1),
           ),
           child: Column(
             children: [
               _RockerZone(
+                height: 52,
                 onTap: enabled ? onTop : null,
-                child: Icon(topIcon, size: 30, color: glyph),
+                child: Icon(topIcon, size: 28, color: glyph),
               ),
-              // Centro: mute (VOL) o lista (CH).
+              divider(),
               _RockerZone(
-                height: 44,
+                height: 54,
                 onTap: onCenter,
-                child: centerSvg != null
-                    ? CceIcon(centerSvg!, size: 22, color: centerColor)
-                    : Icon(centerIcon ?? Icons.circle_outlined,
-                        size: 22, color: centerColor),
+                child: center,
               ),
+              divider(),
               _RockerZone(
+                height: 52,
                 onTap: enabled ? onBottom : null,
-                child: Icon(bottomIcon, size: 30, color: glyph),
+                child: Icon(bottomIcon, size: 28, color: glyph),
               ),
             ],
           ),
