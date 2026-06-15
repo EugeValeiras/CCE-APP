@@ -184,7 +184,6 @@ class _ModelMenu extends StatelessWidget {
           CheckedPopupMenuItem(
             value: m,
             checked: service.model == m,
-            checkmarkColor: CceColors.accent,
             child: Text(
               m[0].toUpperCase() + m.substring(1),
               style: const TextStyle(color: CceColors.textPrimary),
