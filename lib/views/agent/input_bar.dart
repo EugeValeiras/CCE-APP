@@ -1,15 +1,18 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 import '../../services/chat_service.dart';
 import '../../theme/cce_tokens.dart';
+import '../../theme/components/cce_neo_button.dart';
 
-/// WhatsApp-style input row: attach/camera, removable image chips, a rounded
-/// text field, an on-device dictation mic (speech_to_text), and a send/stop
-/// button that becomes a stop button while the agent streams.
+/// Input row neumórfico: adjuntar/cámara, chips de imagen removibles, un campo
+/// de texto hundido (well neoInset), un mic de dictado on-device
+/// (speech_to_text) y un botón send/stop que se vuelve stop mientras el agente
+/// streamea. Solo cambia la presentación: SSE, voz, imágenes intactos.
 class InputBar extends StatefulWidget {
   final ChatService service;
   const InputBar({super.key, required this.service});
@@ -56,9 +59,9 @@ class InputBarState extends State<InputBar> {
     FocusScope.of(context).unfocus();
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: CceColors.surfaceHigh,
+      backgroundColor: CceColors.neoBase,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
       ),
       builder: (ctx) => SafeArea(
         child: Column(
@@ -68,7 +71,7 @@ class InputBarState extends State<InputBar> {
               leading: const Icon(Icons.photo_library_outlined,
                   color: CceColors.accent),
               title: const Text('Galería',
-                  style: TextStyle(color: Colors.white)),
+                  style: TextStyle(color: CceColors.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _pick(ImageSource.gallery);
@@ -78,7 +81,7 @@ class InputBarState extends State<InputBar> {
               leading: const Icon(Icons.photo_camera_outlined,
                   color: CceColors.accent),
               title: const Text('Cámara',
-                  style: TextStyle(color: Colors.white)),
+                  style: TextStyle(color: CceColors.textPrimary)),
               onTap: () {
                 Navigator.pop(ctx);
                 _pick(ImageSource.camera);
@@ -178,10 +181,12 @@ class InputBarState extends State<InputBar> {
     final hasContent =
         _controller.text.trim().isNotEmpty || _images.isNotEmpty;
 
+    // Footer neo: fondo neoBase + hairline superior cardBevel (transición
+    // continua a la lista, en vez del stroke duro anterior).
     return Container(
       decoration: const BoxDecoration(
-        color: CceColors.surface,
-        border: Border(top: BorderSide(color: CceColors.stroke)),
+        color: CceColors.neoBase,
+        border: Border(top: BorderSide(color: CceColors.cardBevel)),
       ),
       child: SafeArea(
         top: false,
@@ -206,19 +211,28 @@ class InputBarState extends State<InputBar> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Expanded(
+                    // Pill del campo = WELL HUNDIDO: color OPACO neoSunken
+                    // (requisito de BlurStyle.inner) + neoInset. El padding
+                    // interno generoso despega cursor/hint/iconos del
+                    // inner-shadow oscuro de los bordes.
                     child: Container(
                       decoration: BoxDecoration(
-                        color: CceColors.surfaceHigh,
+                        color: CceColors.neoSunken,
                         borderRadius: BorderRadius.circular(24),
+                        boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
                       ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          IconButton(
-                            tooltip: 'Adjuntar',
-                            icon: const Icon(Icons.add_photo_alternate_outlined,
-                                color: Colors.white60),
-                            onPressed: streaming ? null : _showAttachSheet,
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: CceNeoIconButton(
+                              icon: Icons.add_photo_alternate_outlined,
+                              tooltip: 'Adjuntar',
+                              size: 40,
+                              onPressed: streaming ? null : _showAttachSheet,
+                            ),
                           ),
                           Expanded(
                             child: TextField(
@@ -227,25 +241,29 @@ class InputBarState extends State<InputBar> {
                               maxLines: 5,
                               textInputAction: TextInputAction.newline,
                               keyboardType: TextInputType.multiline,
-                              style: const TextStyle(color: Colors.white),
+                              style: const TextStyle(
+                                  color: CceColors.textPrimary),
+                              cursorColor: CceColors.accent,
                               decoration: const InputDecoration(
                                 hintText: 'Mensaje',
-                                hintStyle: TextStyle(color: Colors.white38),
+                                hintStyle:
+                                    TextStyle(color: CceColors.textTertiary),
                                 border: InputBorder.none,
+                                // Padding generoso: despega texto/cursor del
+                                // inner-shadow del well (sup-izq, neoDark).
                                 contentPadding:
-                                    EdgeInsets.symmetric(vertical: 10),
+                                    EdgeInsets.fromLTRB(10, 12, 10, 12),
                               ),
                             ),
                           ),
-                          IconButton(
-                            tooltip: _listening ? 'Detener' : 'Dictar',
-                            icon: Icon(
-                              _listening ? Icons.mic : Icons.mic_none,
-                              color: _listening
-                                  ? CceColors.danger
-                                  : Colors.white60,
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: _NeoMicButton(
+                              listening: _listening,
+                              tooltip: _listening ? 'Detener' : 'Dictar',
+                              size: 40,
+                              onPressed: streaming ? null : _toggleListen,
                             ),
-                            onPressed: streaming ? null : _toggleListen,
                           ),
                         ],
                       ),
@@ -276,6 +294,84 @@ class InputBarState extends State<InputBar> {
   }
 }
 
+/// Mic neumórfico press-to-inset, gemelo de [CceNeoIconButton] pero con color
+/// de icono parametrizable: en estado `listening` el glifo va en danger (rojo),
+/// algo que CceNeoIconButton no expone para IconData. Helper PRIVADO de este
+/// archivo (no archivo compartido).
+class _NeoMicButton extends StatefulWidget {
+  const _NeoMicButton({
+    required this.listening,
+    required this.onPressed,
+    this.tooltip,
+    this.size = 40,
+  });
+
+  final bool listening;
+  final VoidCallback? onPressed;
+  final String? tooltip;
+  final double size;
+
+  @override
+  State<_NeoMicButton> createState() => _NeoMicButtonState();
+}
+
+class _NeoMicButtonState extends State<_NeoMicButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onPressed != null;
+    final List<BoxShadow> shadow = !enabled
+        ? const []
+        : (_pressed
+            ? CceShadows.neoInset(blur: 6, offset: 2)
+            : CceShadows.neo(blur: 8, offset: 3));
+
+    final Color iconColor = !enabled
+        ? CceColors.neoTextSub
+        : widget.listening
+            ? CceColors.danger
+            : CceColors.neoText;
+
+    final button = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: enabled ? (_) => _setPressed(true) : null,
+      onTapUp: enabled ? (_) => _setPressed(false) : null,
+      onTapCancel: enabled ? () => _setPressed(false) : null,
+      onTap: enabled
+          ? () {
+              HapticFeedback.selectionClick();
+              widget.onPressed!();
+            }
+          : null,
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: CceColors.neoBase, // opaco: requisito de BlurStyle.inner
+          boxShadow: shadow,
+        ),
+        child: Icon(
+          widget.listening ? Icons.mic : Icons.mic_none,
+          size: widget.size * 0.5,
+          color: iconColor,
+        ),
+      ),
+    );
+
+    if (widget.tooltip != null) {
+      return Tooltip(message: widget.tooltip!, child: button);
+    }
+    return button;
+  }
+}
+
 class _ImageChip extends StatelessWidget {
   final XFile file;
   final VoidCallback onRemove;
@@ -286,8 +382,13 @@ class _ImageChip extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+        // Thumb sobre fondo neoSunken (well hundido) con clip propio.
+        Container(
+          decoration: BoxDecoration(
+            color: CceColors.neoSunken,
+            borderRadius: BorderRadius.circular(CceRadii.control),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: Image.file(
             File(file.path),
             width: 64,
@@ -302,12 +403,13 @@ class _ImageChip extends StatelessWidget {
             onTap: onRemove,
             child: Container(
               decoration: const BoxDecoration(
-                color: Colors.black87,
+                color: CceColors.neoDark,
                 shape: BoxShape.circle,
               ),
               padding: const EdgeInsets.all(2),
               // Badge blanco minusculo sobre circulo oscuro -> sin emboss.
-              child: const Icon(Icons.close, size: 14, color: Colors.white, shadows: []),
+              child: const Icon(Icons.close,
+                  size: 14, color: CceColors.textPrimary, shadows: []),
             ),
           ),
         ),
@@ -316,7 +418,11 @@ class _ImageChip extends StatelessWidget {
   }
 }
 
-class _SendButton extends StatelessWidget {
+/// Botón send/stop neumórfico custom (NO CceNeoIconButton: éste no modela los
+/// 3 estados de color streaming=danger / enabled=accent / disabled). Fill plano
+/// + CceShadows.neo (raised) que se hunde a neoInset al presionar. El glifo
+/// blanco va sin emboss (shadows:[]) sobre el fill saturado.
+class _SendButton extends StatefulWidget {
   final bool streaming;
   final bool enabled;
   final VoidCallback onSend;
@@ -329,31 +435,64 @@ class _SendButton extends StatelessWidget {
   });
 
   @override
+  State<_SendButton> createState() => _SendButtonState();
+}
+
+class _SendButtonState extends State<_SendButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final color = streaming
+    final bool active = widget.streaming || widget.enabled;
+    final Color color = widget.streaming
         ? CceColors.danger
-        : enabled
+        : widget.enabled
             ? CceColors.accent
-            : CceColors.surfaceHigh;
-    return Material(
-      color: color,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: streaming
-            ? onStop
-            : enabled
-                ? onSend
-                : null,
-        child: Padding(
-          padding: const EdgeInsets.all(11),
-          child: Icon(
-            streaming ? Icons.stop : Icons.arrow_upward,
-            color: enabled || streaming ? Colors.white : Colors.white38,
-            size: 22,
-            // Glyph blanco sobre fill accent: el relieve sobra -> sin emboss.
-            shadows: const [],
-          ),
+            : CceColors.neoSunken;
+
+    // Reposo activo = neo() raised; presionado = neoInset; inactivo = plano.
+    final List<BoxShadow> shadow = !active
+        ? const []
+        : (_pressed
+            ? CceShadows.neoInset(blur: 6, offset: 2)
+            : CceShadows.neo(blur: 8, offset: 3));
+
+    final VoidCallback? onTap = widget.streaming
+        ? widget.onStop
+        : widget.enabled
+            ? widget.onSend
+            : null;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: onTap != null ? (_) => _setPressed(true) : null,
+      onTapUp: onTap != null ? (_) => _setPressed(false) : null,
+      onTapCancel: onTap != null ? () => _setPressed(false) : null,
+      onTap: onTap == null
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              onTap();
+            },
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color, // fill plano saturado (NO cardSurface sobre fills ON)
+          boxShadow: shadow,
+        ),
+        child: Icon(
+          widget.streaming ? Icons.stop : Icons.arrow_upward,
+          color: active ? CceColors.textPrimary : CceColors.textTertiary,
+          size: 22,
+          // Glyph blanco sobre fill accent/danger: el relieve sobra -> sin emboss.
+          shadows: const [],
         ),
       ),
     );

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../models/chat_thread.dart';
 import '../../services/chat_service.dart';
+import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../theme/components/cce_neo_button.dart';
 
 /// End-drawer listing previous conversations with open / new / rename / delete.
 /// Rebuilds with the [service] (a ChangeNotifier) — no Provider.
@@ -13,7 +15,7 @@ class ThreadHistoryDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: CceColors.surface,
+      backgroundColor: CceColors.neoBase,
       child: SafeArea(
         child: AnimatedBuilder(
           animation: service,
@@ -25,18 +27,15 @@ class ThreadHistoryDrawer extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                   child: Row(
                     children: [
-                      const Text(
+                      Text(
                         'Conversaciones',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                        style: CceText.title.copyWith(fontSize: 16),
                       ),
                       const Spacer(),
-                      IconButton(
+                      CceNeoIconButton(
+                        icon: Icons.add,
                         tooltip: 'Nueva conversación',
-                        icon: const Icon(Icons.add, color: CceColors.accent),
+                        size: 40,
                         onPressed: () {
                           service.newConversation();
                           Navigator.of(context).pop();
@@ -45,22 +44,25 @@ class ThreadHistoryDrawer extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Divider(height: 1, color: Colors.white12),
+                const Divider(height: 1, color: CceColors.stroke),
                 Expanded(
                   child: service.loadingThreads && service.threadList.isEmpty
                       ? const Center(
-                          child: CircularProgressIndicator(color: Colors.white54),
+                          child:
+                              CircularProgressIndicator(color: CceColors.accent),
                         )
                       : service.threadList.isEmpty
                           ? const _EmptyHistory()
                           : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                               itemCount: service.threadList.length,
                               itemBuilder: (context, i) {
                                 final thread = service.threadList[i];
                                 return _ThreadTile(
                                   service: service,
                                   thread: thread,
-                                  selected: thread.id == service.currentThreadId,
+                                  selected:
+                                      thread.id == service.currentThreadId,
                                 );
                               },
                             ),
@@ -86,52 +88,102 @@ class _ThreadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      selected: selected,
-      selectedTileColor: CceColors.surfaceHigh,
-      title: Text(
-        thread.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w500,
-          fontSize: 14,
+    // SELECCIONADO = well hundido (neoSunken + neoInset, color opaco
+    // obligatorio para BlurStyle.inner); NO seleccionado = plano sutil sobre
+    // neoBase para no saturar la lista. La sombra interna vive en la misma
+    // decoración (no overlay), así no recorta nada.
+    final decoration = selected
+        ? BoxDecoration(
+            color: CceColors.neoSunken,
+            borderRadius: BorderRadius.circular(CceRadii.tile),
+            boxShadow: CceShadows.neoInset(),
+          )
+        : BoxDecoration(
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(CceRadii.tile),
+          );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: decoration,
+      clipBehavior: Clip.antiAlias,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(CceRadii.tile),
+          onTap: () {
+            service.openThread(thread.id);
+            Navigator.of(context).pop();
+          },
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        thread.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: CceColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (thread.lastMessagePreview.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          thread.lastMessagePreview,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: CceColors.textTertiary,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  icon: const Icon(
+                    Icons.more_vert,
+                    size: 18,
+                    color: CceColors.textTertiary,
+                  ),
+                  color: CceColors.neoSunken,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(CceRadii.control),
+                  ),
+                  onSelected: (value) async {
+                    if (value == 'rename') {
+                      await _rename(context);
+                    } else if (value == 'delete') {
+                      await _confirmDelete(context);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'rename',
+                      child: Text('Renombrar',
+                          style: TextStyle(color: CceColors.textPrimary)),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text('Eliminar',
+                          style: TextStyle(color: CceColors.danger)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
-      subtitle: thread.lastMessagePreview.isEmpty
-          ? null
-          : Text(
-              thread.lastMessagePreview,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-      trailing: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert, size: 18, color: Colors.white38),
-        color: CceColors.surfaceHigh,
-        onSelected: (value) async {
-          if (value == 'rename') {
-            await _rename(context);
-          } else if (value == 'delete') {
-            await _confirmDelete(context);
-          }
-        },
-        itemBuilder: (_) => const [
-          PopupMenuItem(
-            value: 'rename',
-            child: Text('Renombrar', style: TextStyle(color: Colors.white)),
-          ),
-          PopupMenuItem(
-            value: 'delete',
-            child: Text('Eliminar', style: TextStyle(color: CceColors.danger)),
-          ),
-        ],
-      ),
-      onTap: () {
-        service.openThread(thread.id);
-        Navigator.of(context).pop();
-      },
     );
   }
 
@@ -140,14 +192,34 @@ class _ThreadTile extends StatelessWidget {
     final title = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: CceColors.surfaceHigh,
+        backgroundColor: CceColors.neoBase,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CceRadii.card),
+        ),
         title: const Text('Renombrar conversación',
-            style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(hintText: 'Título'),
+            style: TextStyle(color: CceColors.textPrimary)),
+        // Well hundido coherente con los inputs del resto de la app: color
+        // opaco neoSunken obligatorio para que la inner-shadow pinte, y
+        // padding interno suficiente para despegar el cursor del inset.
+        content: Container(
+          decoration: BoxDecoration(
+            color: CceColors.neoSunken,
+            borderRadius: BorderRadius.circular(CceRadii.control),
+            boxShadow: CceShadows.neoInset(),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: TextField(
+            controller: input,
+            autofocus: true,
+            cursorColor: CceColors.accent,
+            style: const TextStyle(color: CceColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'Título',
+              hintStyle: TextStyle(color: CceColors.textTertiary),
+              border: InputBorder.none,
+              isDense: true,
+            ),
+          ),
         ),
         actions: [
           TextButton(
@@ -170,12 +242,15 @@ class _ThreadTile extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: CceColors.surfaceHigh,
+        backgroundColor: CceColors.neoBase,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(CceRadii.card),
+        ),
         title: const Text('Eliminar conversación',
-            style: TextStyle(color: Colors.white)),
+            style: TextStyle(color: CceColors.textPrimary)),
         content: Text(
           '¿Eliminar "${thread.title}"? No se puede deshacer.',
-          style: const TextStyle(color: Colors.white70),
+          style: const TextStyle(color: CceColors.textSecondary),
         ),
         actions: [
           TextButton(
@@ -201,13 +276,29 @@ class _EmptyHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    // Glyph grande extruido de la goma (size >= CceEmboss.minSize) como tótem
+    // de identidad del estado vacío; par highlight/shadow derivado de neoBase.
+    final (hi, sh) = EmbossedGlyph.surfaceEmboss(CceColors.neoBase);
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(24),
-        child: Text(
-          'Todavía no tenés conversaciones.\nEmpezá una nueva.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white38),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            EmbossedGlyph(
+              size: 48,
+              color: CceColors.accent,
+              highlight: hi,
+              shadow: sh,
+              child: const Icon(Icons.forum_outlined),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Todavía no tenés conversaciones.\nEmpezá una nueva.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: CceColors.textTertiary, height: 1.5),
+            ),
+          ],
         ),
       ),
     );
