@@ -216,11 +216,28 @@ class _RoomCardState extends State<RoomCard> {
                 widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                // Nombre con relieve neumórfico (como el título de la card JBL).
+                // OFF (fondo oscuro): tinta titleInk + el relieve fuerte de
+                // CceText.embossShadows (idéntico a la JBL). ON (pastel claro):
+                // tinta de contraste fg + relieve MOLDEADO del color de la card
+                // (mismo par highlight/shadow que el ícono: embHi/embSh).
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
                   letterSpacing: -0.2,
-                  color: fg,
+                  color: widget.anyOn ? fg : CceText.titleInk,
+                  shadows: widget.anyOn
+                      ? [
+                          Shadow(
+                              color: embSh,
+                              offset: const Offset(1.1, 1.6),
+                              blurRadius: 2.4),
+                          Shadow(
+                              color: embHi,
+                              offset: const Offset(-1.0, -1.3),
+                              blurRadius: 1.4),
+                        ]
+                      : CceText.embossShadows,
                 ),
               ),
               const SizedBox(height: 2),
