@@ -5,6 +5,7 @@ import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
+import '../services/tv_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_logo.dart';
@@ -15,10 +16,13 @@ import '../widgets/temperature_summary_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
 import 'splash_view.dart';
+import 'tv/tv_home_card.dart';
 
 /// Lista de habitaciones estilo Hue (phone). Las habitaciones y sus stats
 /// salen SIEMPRE de DevicesService (rooms / statsFor) — acá no se deriva nada.
 /// [jbl] != null agrega la card del JBL Soundbar (accionable desde la home).
+/// [tv] != null agrega la card del Samsung TV, que va PRIMERO en la lista de
+/// dispositivos dedicados (antes del soundbar).
 ///
 /// Reorder: las RoomCards se reordenan por long-press (haptic + animación de
 /// elevación) y el orden se persiste en SharedPreferences ('home.roomOrder',
@@ -27,6 +31,7 @@ import 'splash_view.dart';
 class RoomsListScreen extends StatefulWidget {
   final DevicesService service;
   final JblService? jbl;
+  final TvService? tv;
   final void Function(BuildContext)? onOpenHistory;
   final void Function(BuildContext)? onOpenAgent;
   final void Function(BuildContext)? onOpenAlarm;
@@ -34,6 +39,7 @@ class RoomsListScreen extends StatefulWidget {
     super.key,
     required this.service,
     this.jbl,
+    this.tv,
     this.onOpenHistory,
     this.onOpenAgent,
     this.onOpenAlarm,
@@ -189,15 +195,22 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     // ReorderableDelayedDragStartListener); sin handle a la
                     // derecha.
                     buildDefaultDragHandles: false,
-                    // Lead cards (clima + JBL) fijas en el header NO arrastrable.
-                    // Cada una en su RepaintBoundary para preservar el
-                    // aislamiento de repintado de las sombras neumórficas.
+                    // Lead cards (clima + TV + JBL) fijas en el header NO
+                    // arrastrable. Cada una en su RepaintBoundary para preservar
+                    // el aislamiento de repintado de las sombras neumórficas. El
+                    // TV va PRIMERO de los dispositivos dedicados (antes del JBL).
                     header: Column(
                       children: [
                         RepaintBoundary(
                           child: TemperatureSummaryCard(
                               service: service, neo: true),
                         ),
+                        if (widget.tv != null) ...[
+                          const SizedBox(height: 12),
+                          RepaintBoundary(
+                            child: TvHomeCard(service: widget.tv!, neo: true),
+                          ),
+                        ],
                         if (widget.jbl != null) ...[
                           const SizedBox(height: 12),
                           RepaintBoundary(

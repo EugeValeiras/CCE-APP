@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
+import '../services/tv_service.dart';
 import '../services/socket_service.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
@@ -32,6 +33,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
   late SocketService _socket;
   late DevicesService _devices;
   late final JblService _jbl;
+  late final TvService _tv;
 
   @override
   void initState() {
@@ -41,14 +43,18 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
     _jbl = JblService(config: widget.config);
-    // El home muestra la card del soundbar y está siempre vivo → arrancamos el
-    // polling una sola vez para que la card se mantenga fresca toda la sesión.
+    _tv = TvService(config: widget.config);
+    // El home muestra las cards del soundbar y el TV y está siempre vivo →
+    // arrancamos el polling una sola vez para que las cards se mantengan frescas
+    // toda la sesión.
     _jbl.startPolling();
+    _tv.startPolling();
   }
 
   @override
   void dispose() {
     _jbl.dispose();
+    _tv.dispose();
     _devices.dispose();
     _socket.dispose();
     super.dispose();
@@ -59,6 +65,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     return RoomsListScreen(
       service: _devices,
       jbl: _jbl,
+      tv: _tv,
       onOpenHistory: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
         builder: (_) => HistoryScreen(
           config: widget.config,
