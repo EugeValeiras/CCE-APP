@@ -70,7 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
             SizedBox(width: 8),
             Text('Asistente',
                 style: TextStyle(
-                    color: Colors.white, shadows: CceText.embossShadows)),
+                    color: CceText.titleInk, shadows: CceText.embossShadows)),
           ],
         ),
         actions: [

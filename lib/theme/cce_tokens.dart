@@ -199,25 +199,35 @@ abstract final class CceRadii {
 
 /// Tipografia (system font; display = bold + tracking negativo).
 abstract final class CceText {
-  /// Relieve "goma" para títulos de header: sombra abajo-derecha + realce
-  /// tenue arriba-izquierda (el título sobresale, igual que los iconos).
+  /// Tinte de los títulos: gris-claro de "material" (no blanco puro). Es lo que
+  /// permite que el relieve neumórfico se note: la letra es del color de la
+  /// goma del fondo, con canto de luz arriba-izq y sombra abajo-der.
+  static const Color titleInk = Color(0xFFD3D7DF);
+
+  /// Relieve "goma" FUERTE para títulos de header: la letra parece extruida de
+  /// la goma del fondo (canto de luz arriba-izquierda + sombra profunda
+  /// abajo-derecha + sombra difusa que la despega). Pensado para [titleInk].
   static const List<Shadow> embossShadows = [
-    Shadow(color: Color(0xCC05060A), offset: Offset(1.4, 2.4), blurRadius: 3),
-    Shadow(color: Color(0x26FFFFFF), offset: Offset(-1.1, -1.5), blurRadius: 2),
+    // Canto de luz superior-izquierda (rim claro, casi blanco).
+    Shadow(color: Color(0x80FFFFFF), offset: Offset(-1.2, -1.6), blurRadius: 1.5),
+    // Sombra de contacto inferior-derecha (profundidad nítida).
+    Shadow(color: Color(0xD907080C), offset: Offset(1.8, 2.6), blurRadius: 3),
+    // Sombra difusa que despega el título del fondo.
+    Shadow(color: Color(0x66000000), offset: Offset(2.6, 4.0), blurRadius: 8),
   ];
   static const display = TextStyle(
     fontSize: 32,
     fontWeight: FontWeight.w800,
     letterSpacing: -0.5,
     height: 1.1,
-    color: CceColors.textPrimary,
+    color: titleInk,
     shadows: embossShadows,
   );
   static const title = TextStyle(
     fontSize: 22,
     fontWeight: FontWeight.w700,
     letterSpacing: -0.3,
-    color: CceColors.textPrimary,
+    color: titleInk,
     shadows: embossShadows,
   );
   // Usar con .toUpperCase().

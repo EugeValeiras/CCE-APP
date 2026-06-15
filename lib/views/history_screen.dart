@@ -341,7 +341,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             const Text(
               'Historial',
               style: TextStyle(
-                color: Colors.white,
+                color: CceText.titleInk,
                 fontSize: 22,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,

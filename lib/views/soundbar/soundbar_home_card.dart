@@ -6,6 +6,7 @@ import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
 import '../../theme/components/cce_switch.dart';
+import '../../theme/components/status_dot.dart';
 import 'soundbar_screen.dart';
 
 /// Card del JBL Soundbar para la home (lo "expone como dispositivo"): muestra
@@ -40,12 +41,20 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
         final jbl = widget.service;
         final online = jbl.online;
         final on = jbl.isOn;
+        final neo = widget.neo;
+        // Color de acento del estado. En neo, el "vivo" es accent (ON) y el
+        // resto cae a los grises neo; en plano se conserva el warm histórico.
         final accent = !online
             ? CceColors.textTertiary
-            : (on ? CceColors.warm : CceColors.textSecondary);
+            : (on
+                ? (neo ? CceColors.accent : CceColors.warm)
+                : CceColors.textSecondary);
         final sub = !online
             ? 'Fuera de línea'
             : (on ? 'Encendido · volumen ${jbl.volume}' : 'En espera');
+        // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
+        final dotColor =
+            !online ? CceColors.textTertiary : (on ? CceColors.accent : CceColors.textTertiary);
         return CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
@@ -54,27 +63,33 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
             ));
           },
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: widget.neo ? CceColors.neoBase : null,
-          neo: widget.neo,
+          color: neo ? CceColors.neoBase : null,
+          neo: neo,
           child: Row(
             children: [
-              Container(
+              // Speaker GRANDE extruido, SIN círculo (coherente con el ícono de
+              // las RoomCard). El fondo de esta card es siempre oscuro (neoBase
+              // en neo / surface en plano): no hay fill pastel saturado, así que
+              // el relieve usa el par FIJO de CceEmboss (calibrado para oscuro),
+              // NO el emboss-de-color de la RoomCard ON. Reservamos el mismo
+              // ancho (48) con Center para no mover título/switch.
+              SizedBox(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: widget.neo
-                      ? CceColors.neoSunken
-                      : (on
-                          ? CceColors.warm.withValues(alpha: 0.18)
-                          : CceColors.surfaceHigh),
-                  boxShadow: widget.neo ? CceShadows.neoInset() : null,
-                ),
-                alignment: Alignment.center,
-                child: CceIcon(
-                  CceIcons.speaker,
-                  size: 24,
-                  color: widget.neo ? CceColors.neoText : accent,
+                child: Center(
+                  child: EmbossedGlyph(
+                    size: 32,
+                    // Color del glyph preservado: accent ON / neoTextSub en
+                    // espera-offline (neo); accent histórico en plano.
+                    color: neo
+                        ? (online && on
+                            ? CceColors.accent
+                            : CceColors.neoTextSub)
+                        : accent,
+                    highlight: CceEmboss.highlight.color,
+                    shadow: CceEmboss.shadow.color,
+                    child: const CceIcon(CceIcons.speaker, size: 32),
+                  ),
                 ),
               ),
               const SizedBox(width: 14),
@@ -82,24 +97,50 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Título: en neo usa CceText.title (titleInk + emboss) para
+                    // grabarse en la goma; en plano conserva el estilo histórico.
                     Text(
                       jbl.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.2,
-                        color: CceColors.textPrimary,
+                      style: neo
+                          ? CceText.title.copyWith(fontSize: 17)
+                          : const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.2,
+                              color: CceColors.textPrimary,
+                            ),
+                    ),
+                    SizedBox(height: neo ? 4 : 2),
+                    // Estado: en neo, StatusDot (accent pulsante ON) + label;
+                    // en plano, el subtítulo tintado de siempre.
+                    if (neo)
+                      Row(
+                        children: [
+                          StatusDot(
+                            dotColor,
+                            pulse: online && on,
+                            semanticLabel: sub,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              sub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: CceText.caption,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        sub,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: CceText.caption.copyWith(color: accent),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      sub,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.caption.copyWith(color: accent),
-                    ),
                   ],
                 ),
               ),

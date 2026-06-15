@@ -187,6 +187,129 @@ abstract final class CceEmboss {
   static const double minSize = 18.0;
 }
 
+/// Relieve "extruido" de un glyph (icono) SIN circulo de fondo, con colores de
+/// luz/sombra ARBITRARIOS (no fijos como [CceEmboss]) para que el relieve se
+/// lea como MOLDEADO de la superficie sobre la que va: sobre neoBase (oscuro)
+/// usa el par fijo de [CceEmboss]; sobre un fill de color pastel (room card ON)
+/// se le inyectan highlight = tono mas claro del color + shadow = tono mas
+/// oscuro del color, derivados via [surfaceEmboss], de modo que el canto de luz
+/// y la sombra deriven del COLOR de la card (no blanco/negro puros) y NO
+/// ensucien el glyph.
+///
+/// Funciona con CUALQUIER widget hijo (anda con [CceIcon] SVG y con el `Icon`
+/// de Material), porque usa la misma tecnica "ghost" (2 copias recoloreadas +
+/// desenfocadas detras del glyph real, via ColorFiltered srcATop + ImageFiltered
+/// blur). Centraliza el TAMANO con SizedBox+FittedBox(BoxFit.contain), asi
+/// ambos tipos de icono terminan al mismo tamano visual sin importar su `size`
+/// intrinseco (CceIcon ignora IconTheme.size; el Icon de Material lo hereda).
+///
+/// Aplana al hijo (IconTheme color + shadows: const []) para que NO sume su
+/// propio relieve por debajo del ghost (doble emboss = halo sucio). El color
+/// del glyph se reimpone via [color]. Envuelto en RepaintBoundary y Clip.none,
+/// limitado a 2 capas de blur (mismo coste que [CceIcon._ghost]).
+class EmbossedGlyph extends StatelessWidget {
+  const EmbossedGlyph({
+    super.key,
+    required this.child,
+    required this.size,
+    required this.color,
+    required this.highlight,
+    required this.shadow,
+    this.highlightOffset = const Offset(-1.1, -1.4),
+    this.shadowOffset = const Offset(1.3, 2.2),
+    this.blur = 1.6,
+  });
+
+  /// El icono a extruir (CceIcon SVG o Icon de Material). Se aplana y recolorea.
+  final Widget child;
+
+  /// Tamano visual final del glyph (cuadrado size x size). "Bien grande".
+  final double size;
+
+  /// Color del glyph real (contraste contra la superficie bajo el icono).
+  final Color color;
+
+  /// Canto de luz (arriba-izquierda). En ON deriva del color de la card.
+  final Color highlight;
+
+  /// Sombra (abajo-derecha). En ON deriva del color de la card.
+  final Color shadow;
+
+  final Offset highlightOffset;
+  final Offset shadowOffset;
+  final double blur;
+
+  /// Fija el hijo a [color] y lo APLANA (shadows: const []) para que no sume
+  /// su propio relieve ni use IconTheme.size del ancestro: queda como base
+  /// plana lista para el ghost. FittedBox lo lleva a [size] sin importar su
+  /// tamano intrinseco (24 de CceIcon, 22 heredado del Icon, etc.).
+  Widget _flat() {
+    return IconTheme.merge(
+      data: IconThemeData(color: color, size: size, shadows: const <Shadow>[]),
+      child: SizedBox.square(
+        dimension: size,
+        child: FittedBox(fit: BoxFit.contain, child: child),
+      ),
+    );
+  }
+
+  /// Copia recoloreada+desenfocada+desplazada detras del glyph real ("ghost").
+  Widget _ghost(Color tint, Offset off) {
+    return Transform.translate(
+      offset: off,
+      child: ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: ColorFiltered(
+          colorFilter: ColorFilter.mode(tint, BlendMode.srcATop),
+          child: _flat(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Glyph chico: el blur ensuciaria -> solo base plana, sin emboss.
+    if (size < CceEmboss.minSize) return _flat();
+    return RepaintBoundary(
+      child: SizedBox.square(
+        dimension: size,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            _ghost(shadow, shadowOffset),
+            _ghost(highlight, highlightOffset),
+            _flat(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Deriva el par (highlight, shadow) de una superficie de color: luz = el
+  /// color mas claro (HSL L+0.18), sombra = el color mas oscuro (HSL L-0.22).
+  /// Asi el relieve es "moldeado" del material de la card en vez de blanco/negro
+  /// puros (que sobre un pastel claro lavarian/ensuciarian el glyph). El alpha
+  /// modula cuanto del relieve se ve (calibrable por estado).
+  static (Color, Color) surfaceEmboss(
+    Color surface, {
+    double lightAlpha = 0.85,
+    double shadowAlpha = 0.55,
+  }) {
+    final hsl = HSLColor.fromColor(surface);
+    final light = hsl
+        .withLightness((hsl.lightness + 0.18).clamp(0.0, 1.0))
+        .toColor()
+        .withValues(alpha: lightAlpha);
+    final dark = hsl
+        .withLightness((hsl.lightness - 0.22).clamp(0.0, 1.0))
+        .toColor()
+        .withValues(alpha: shadowAlpha);
+    return (light, dark);
+  }
+}
+
 /// Renderiza un SVG de [CceIcons] tintado, con relieve neumorfico por defecto
 /// (el glyph sobresale: realce arriba-izquierda + sombra abajo-derecha,
 /// tecnica "ghost" = 2 copias tintadas+desenfocadas detras del glyph real).
