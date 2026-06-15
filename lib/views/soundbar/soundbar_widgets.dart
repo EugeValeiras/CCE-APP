@@ -209,7 +209,7 @@ class _SoundbarHeaderCard extends StatelessWidget {
             size: 54,
             radius: CceRadii.control,
             child: CceIcon(
-              CceIcons.speaker,
+              CceIcons.jbl,
               size: 28,
               color: service.isOn ? CceColors.accent : CceColors.neoTextSub,
             ),
@@ -994,7 +994,7 @@ class _ServerErrorCard extends StatelessWidget {
           _NeoWell(
             size: 56,
             radius: CceRadii.control,
-            child: CceIcon(CceIcons.speaker, size: 32, color: CceColors.danger),
+            child: CceIcon(CceIcons.jbl, size: 32, color: CceColors.danger),
           ),
           const SizedBox(height: 12),
           const Text('No se pudo conectar al servidor', style: CceText.title),
@@ -1032,7 +1032,7 @@ class _OfflineCard extends StatelessWidget {
             size: 56,
             radius: CceRadii.control,
             child: CceIcon(
-              CceIcons.speaker,
+              CceIcons.jbl,
               size: 32,
               color: CceColors.textTertiary,
             ),

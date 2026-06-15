@@ -88,7 +88,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                         : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
-                    child: const CceIcon(CceIcons.speaker, size: 32),
+                    child: const CceIcon(CceIcons.jbl, size: 32),
                   ),
                 ),
               ),
