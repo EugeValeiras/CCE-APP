@@ -576,17 +576,14 @@ class _SourcesRow extends StatelessWidget {
         onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
       ),
     ];
-    // Panel neumórfico con los chips repartidos (Expanded).
-    return CceCard(
-      neo: true,
-      child: Row(
-        children: [
-          for (var i = 0; i < items.length; i++) ...[
-            Expanded(child: items[i]),
-            if (i != items.length - 1) const SizedBox(width: 10),
-          ],
+    // Sin contenedor: los chips neumórficos flotan directo sobre el fondo.
+    return Row(
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          Expanded(child: items[i]),
+          if (i != items.length - 1) const SizedBox(width: 12),
         ],
-      ),
+      ],
     );
   }
 }
@@ -692,18 +689,15 @@ class _QuickAccessGrid extends StatelessWidget {
             _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
       ),
     ];
-    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 7.
-    return CceCard(
-      neo: true,
-      child: GridView.count(
-        crossAxisCount: 4,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-        childAspectRatio: 0.92,
-        children: items,
-      ),
+    // Sin contenedor: los botones neumórficos flotan directo sobre el fondo.
+    return GridView.count(
+      crossAxisCount: 4,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 12,
+      crossAxisSpacing: 12,
+      childAspectRatio: 0.92,
+      children: items,
     );
   }
 }
