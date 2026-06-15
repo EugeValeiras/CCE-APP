@@ -7,6 +7,7 @@ import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
 import '../utils/icon_resolver.dart';
 import '../widgets/pulse_on_update.dart';
@@ -123,7 +124,14 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           backgroundColor: CceColors.neoBase,
           appBar: AppBar(
             toolbarHeight: 64,
-            title: const Text('CCE', style: CceText.display),
+            // Logo de CCE (edificio del splash) extruido neumórfico, en vez del
+            // texto plano "CCE". FittedBox lo achica si la pantalla es angosta
+            // (no recorta nunca contra los actions).
+            title: const FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: CceLogo(height: 26),
+            ),
             actions: [
               // Íconos "goma" neumórficos (mismo relieve que el Historial): el
               // glyph sobresale del fondo, sin botón circular.
