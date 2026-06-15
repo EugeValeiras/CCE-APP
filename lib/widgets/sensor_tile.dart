@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
@@ -58,6 +59,27 @@ class SensorTile extends StatelessWidget {
       color = CceColors.info;
     }
 
+    // ÍCONO GRANDE EXTRUIDO (sin círculo), mismo patrón que RoomCard. `color`
+    // es el color SEMÁNTICO de estado (warm/contact/motion/info/temp), que en
+    // alert es exactamente el fill visible de la card.
+    //  - NO-ALERT (superficie oscura cardSurface): par FIJO de CceEmboss; el
+    //    glyph conserva su color semántico de estado, ahora extruido en goma.
+    //  - ALERT (fill = `color`): relieve MOLDEADO derivado de `color` y glyph en
+    //    CceTint.textOn(color) (ink de contraste sobre el fill saturado).
+    // El tamaño escala con TileSize para no comerse el slack vertical del tile
+    // chico (138) cuando el nombre wrapea a 2 líneas.
+    final double glyphSize = size.iconSize + 8; // 30 / 34 / 38
+    final Color glyphColor = alert ? CceTint.textOn(color) : color;
+    final Color embHi, embSh;
+    if (alert) {
+      final (h, s) = EmbossedGlyph.surfaceEmboss(color);
+      embHi = h;
+      embSh = s;
+    } else {
+      embHi = CceEmboss.highlight.color;
+      embSh = CceEmboss.shadow.color;
+    }
+
     final tile = PulseOnUpdate(
       triggerAt: device.lastEventAt,
       color: color,
@@ -97,20 +119,33 @@ class SensorTile extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // Ícono GRANDE extruido, SIN círculo (igual que
+                        // RoomCard). EmbossedGlyph aplana/recolorea el glyph a
+                        // [glyphColor] y lo extruye con 2 capas ghost; FittedBox
+                        // re-escala el IconResolver (size:24) a glyphSize, así el
+                        // size intrínseco es indiferente. Caja cuadrada; el delta
+                        // lo absorbe el Flexible del nombre en los 3 altos.
                         SizedBox(
-                          height: 24,
+                          width: 40,
+                          height: 40,
                           child: Center(
-                            child: IconResolver.widget(
-                              device,
-                              configuredIcon: service.iconFor(device.id),
-                              customIcons: service.customIcons,
-                              displayName: service.displayName(device),
-                              size: 24,
-                              color: color,
+                            child: EmbossedGlyph(
+                              size: glyphSize,
+                              color: glyphColor,
+                              highlight: embHi,
+                              shadow: embSh,
+                              child: IconResolver.widget(
+                                device,
+                                configuredIcon: service.iconFor(device.id),
+                                customIcons: service.customIcons,
+                                displayName: service.displayName(device),
+                                size: 24,
+                                color: glyphColor,
+                              ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: 4),
                         Flexible(
                           child: Text(
                             service.displayName(device),

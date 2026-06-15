@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../cce_icons.dart';
 import '../cce_tokens.dart';
 import 'cce_switch.dart';
 
@@ -57,6 +58,26 @@ class LightCard extends StatelessWidget {
     final fg = on ? CceTint.textOn(fgBase) : CceColors.textPrimary;
     final fgSub = on ? CceTint.subTextOn(fgBase) : CceColors.textSecondary;
 
+    // ÍCONO GRANDE EXTRUIDO (sin círculo), mismo patrón que RoomCard. El glyph
+    // se "extruye" de la superficie real bajo él:
+    //  - OFF (superficie oscura cardOff/neoBase): par FIJO de CceEmboss
+    //    (lenguaje goma de la app, idéntico al IconTheme global y a RoomCard OFF).
+    //  - ON (fill saturado lightFull): relieve MOLDEADO derivado de `fgBase`
+    //    (muestra promedio del gradiente, NO el color crudo), para que el canto
+    //    de luz/sombra deriven del material de color y no laven/ensucien el glyph.
+    // glyphColor = fg (ink de contraste por luminancia, ya calculado arriba).
+    const double iconSize = 34;
+    final Color glyphColor = fg;
+    final Color embHi, embSh;
+    if (on) {
+      final (h, s) = EmbossedGlyph.surfaceEmboss(fgBase);
+      embHi = h;
+      embSh = s;
+    } else {
+      embHi = CceEmboss.highlight.color;
+      embSh = CceEmboss.shadow.color;
+    }
+
     return SizedBox(
       height: height,
       child: Container(
@@ -99,22 +120,31 @@ class LightCard extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        // Ícono GRANDE extruido, SIN círculo (igual que
+                        // RoomCard). EmbossedGlyph aplana y recolorea el glyph a
+                        // [glyphColor] (cubre tanto el Icon de Material como el
+                        // SVG de icons0 ya tintado por iconBuilder) y lo extruye
+                        // con 2 capas ghost. FittedBox-ea a iconSize, así el
+                        // size intrínseco que iconBuilder pasa al IconResolver es
+                        // indiferente.
+                        // Caja que HUGGEA el glyph (iconSize x iconSize) para
+                        // preservar el footprint vertical del tile (altos fijos
+                        // 138/156/174): el relieve sobresale via Clip.none del
+                        // EmbossedGlyph, así que no necesita padding extra. Con
+                        // el viejo box de 40 el nombre OFF (2 líneas + "Apagada")
+                        // se comía el slack y colapsaba a ~0 líneas en el tile
+                        // chico; con iconSize recupera la 2da línea.
                         SizedBox(
-                          height: 26,
-                          // Encendida la card es un fill de color saturado: el
-                          // relieve neumorfico (sombra oscura) ensuciaria el
-                          // glyph -> se aplana (mismo criterio que RoomCard /
-                          // boton accent). `shadows: []` apaga el emboss tanto
-                          // del Icon de Material como del CceIcon (que lee este
-                          // IconTheme.shadows vacio). Apagada conserva relieve.
+                          width: iconSize,
+                          height: iconSize,
                           child: Center(
-                            child: on
-                                ? IconTheme.merge(
-                                    data: const IconThemeData(
-                                        shadows: <Shadow>[]),
-                                    child: iconBuilder(fg),
-                                  )
-                                : iconBuilder(fg),
+                            child: EmbossedGlyph(
+                              size: iconSize,
+                              color: glyphColor,
+                              highlight: embHi,
+                              shadow: embSh,
+                              child: iconBuilder(glyphColor),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 6),
