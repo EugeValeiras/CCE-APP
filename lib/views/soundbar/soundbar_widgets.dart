@@ -200,7 +200,7 @@ class _SoundbarHeaderCard extends StatelessWidget {
     final src = service.source;
 
     return CceCard(
-      neo: true,
+      neoInset: true,
       child: Row(
         children: [
           // Avatar del speaker: WELL hundido (neoSunken + neoInset opaco). El
@@ -299,7 +299,7 @@ class _VolumeDialCard extends StatelessWidget {
     final volume = service.volume;
 
     return CceCard(
-      neo: true,
+      neoInset: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -565,7 +565,14 @@ class _SourcesRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Orden pedido: TV, Radio, Bluetooth, HDMI.
     final items = <Widget>[
+      _SourceChip(
+        svg: CceIcons.tv,
+        label: 'TV',
+        active: _isActive(JblRemoteKeys.tv),
+        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
+      ),
       // Radio: la fuente "RADIO-NETWORK". No es una tecla del remote; se
       // dispara reproduciendo la radio favorita (playRadio sin nombre), que
       // además despierta la barra y la pone en la fuente de red.
@@ -587,12 +594,6 @@ class _SourcesRow extends StatelessWidget {
         label: 'HDMI',
         active: _isActive(JblRemoteKeys.hdmi),
         onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.hdmi), context),
-      ),
-      _SourceChip(
-        svg: CceIcons.tv,
-        label: 'TV',
-        active: _isActive(JblRemoteKeys.tv),
-        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
       ),
     ];
     // Sin contenedor: los chips neumórficos flotan directo sobre el fondo.
