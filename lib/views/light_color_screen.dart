@@ -47,6 +47,7 @@ class _LightColorScreenState extends State<LightColorScreen>
   bool _dragging = false; // se está arrastrando una pin
   List<String> _dragMembers = const []; // miembros del grupo que se arrastra
   String? _mergeTarget; // luz destino bajo la pin arrastrada (preview de fusión)
+  String? _soloOnMove; // luz marcada (tap en lista) para sacar al MOVERLA
 
   Timer? _debounce;
   double _diskSize = 1; // px del disco (para el offset cabeza↔punta del pin)
@@ -151,12 +152,31 @@ class _LightColorScreenState extends State<LightColorScreen>
     return _fracForCt((d.state.ct ?? 350).clamp(_ctMin, _ctMax).toDouble());
   }
 
-  /// Posiciona TODAS las luces del ambiente en el disco y las arranca cada una
-  /// en su propio grupo.
+  /// Posiciona TODAS las luces del ambiente y reconstruye los grupos POR COLOR:
+  /// las luces que están al mismo color (misma posición) arrancan agrupadas. Así
+  /// el agrupado "persiste" al salir y volver (el color es el que define el
+  /// grupo) sin guardar estado aparte.
+  static const double _sameColorEps = 0.025; // tolerancia "mismo color" en frac
   void _initMarkers() {
-    for (final d in _roomLights()) {
+    final lights = _roomLights();
+    for (final d in lights) {
       _markerFrac[d.id] = _fracForLight(widget.service.byId(d.id) ?? d);
-      _groupOf[d.id] ??= _nextGroup++;
+    }
+    final reps = <int, Offset>{}; // grupo → posición representante
+    for (final d in lights) {
+      if (_groupOf.containsKey(d.id)) continue;
+      final pos = _markerFrac[d.id]!;
+      int? join;
+      reps.forEach((g, rp) {
+        if (join == null && (rp - pos).distance <= _sameColorEps) join = g;
+      });
+      if (join != null) {
+        _groupOf[d.id] = join!;
+      } else {
+        final g = _nextGroup++;
+        _groupOf[d.id] = g;
+        reps[g] = pos;
+      }
     }
   }
 
@@ -292,23 +312,43 @@ class _LightColorScreenState extends State<LightColorScreen>
       }
     }
     if (pinGroup != null && dPin <= _grabPx && dPin <= dDot) {
-      // Agarrar una pin (mover ese grupo); pasa a foco.
+      // Agarrar una pin (mover ese grupo); pasa a foco. Si hay una luz marcada
+      // para salir (tap en la lista) y no es de este grupo, se descarta.
       setState(() => _focus = pinGroup!);
       _dragMembers = pinMembers!;
+      if (_soloOnMove != null && !pinMembers.contains(_soloOnMove)) {
+        _soloOnMove = null;
+      }
       _dragging = true;
     } else if (dot != null && dDot <= _grabPx) {
       // Tocar un dot → pasa a foco como pin sola, lista para arrastrar.
+      _soloOnMove = null;
       HapticFeedback.selectionClick();
       _selectSolo(dot);
       _dragMembers = [dot];
       _dragging = true;
     } else {
+      _soloOnMove = null;
       _dragging = false;
     }
   }
 
   void _drag(Offset localFrac) {
     if (!_dragging || _dragMembers.isEmpty) return;
+    // Al primer MOVIMIENTO real: si hay una luz marcada (tap en la lista) dentro
+    // del grupo que se arrastra, la sacamos para moverla SOLA (el resto del
+    // grupo queda donde estaba). Desagrupar = mover, no seleccionar.
+    if (_soloOnMove != null &&
+        _dragMembers.contains(_soloOnMove) &&
+        _dragMembers.length > 1) {
+      final solo = _soloOnMove!;
+      setState(() {
+        _groupOf[solo] = _nextGroup++;
+        _focus = _groupOf[solo]!;
+        _dragMembers = [solo];
+      });
+    }
+    _soloOnMove = null;
     final f = _clampFrac(localFrac);
     // Fusión por solapamiento de la CABEZA del pin (lo que el usuario ve) o de
     // la punta, sobre otra luz (pin o dot).
@@ -358,11 +398,16 @@ class _LightColorScreenState extends State<LightColorScreen>
   }
 
   // ----- lista de luces / brillo -----
-  /// Tap en una luz de la lista: la saca a pin sola y la pone en foco (si estaba
-  /// agrupada, el resto sigue junto). Para agrupar se arrastra en el disco.
+  /// Tap en una luz de la lista: la pone en foco SIN desagrupar (la luz sigue
+  /// con su color/grupo). Si estaba agrupada, queda "marcada" para salir del
+  /// grupo recién cuando la MUEVAS (no al seleccionarla).
   void _onLightTap(Device d) {
     HapticFeedback.selectionClick();
-    _selectSolo(d.id);
+    setState(() {
+      _focus = _groupOf[d.id] ?? -1;
+      _soloOnMove = _membersOf(_focus).length > 1 ? d.id : null;
+    });
+    _hop();
   }
 
   void _onBrightness(double bri) => setState(() => _bri = bri.clamp(0, 254));
