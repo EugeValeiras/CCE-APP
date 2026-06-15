@@ -52,7 +52,7 @@ class _LightColorScreenState extends State<LightColorScreen>
   double _diskSize = 1; // px del disco (para el offset cabeza↔punta del pin)
   static const double _ctMin = 153, _ctMax = 500;
   static const double _mergeThr = 0.12; // proximidad (frac) para fusionar
-  static const double _grabThr = 0.16; // proximidad (frac) para agarrar una pin
+  static const double _grabPx = 34.0; // radio de agarre en px (cubre toda la pin)
 
   // Saltito del pin (estilo Google Maps) al entrar o al cambiar de luz: sube y
   // cae con un rebote sutil. El offset es en píxeles (negativo = arriba).
@@ -256,7 +256,12 @@ class _LightColorScreenState extends State<LightColorScreen>
   // se llama a _drag, así que el color no cambia → tap = seleccionar.
   void _onPanDown(Offset f) {
     _mergeTarget = null;
-    // Pin más cercana (por su cabeza) y dot más cercano (por su posición).
+    // Hit-test en PÍXELES. Una pin se agarra desde CUALQUIER parte visible: la
+    // distancia es el mínimo a su cabeza (arriba) y a su punta (el punto de
+    // color, abajo) — así no importa dónde de la gota toques. Los dots, por su
+    // posición. Mismo umbral en px para que pin y dot compitan parejo y sin
+    // depender del tamaño del disco (antes el umbral en frac se achicaba en px
+    // en pantallas chicas y la punta quedaba fuera del agarre).
     int? pinGroup;
     List<String>? pinMembers;
     var dPin = double.infinity;
@@ -270,26 +275,28 @@ class _LightColorScreenState extends State<LightColorScreen>
       final pos = _markerFrac[members.first];
       if (pos == null) continue;
       if (_isPin(g, members)) {
-        final dist = (_pinHead(pos) - f).distance;
+        final dHead = (_pinHead(pos) - f).distance;
+        final dTip = (pos - f).distance;
+        final dist = math.min(dHead, dTip) * _diskSize;
         if (dist < dPin) {
           dPin = dist;
           pinGroup = g;
           pinMembers = members;
         }
       } else {
-        final dist = (pos - f).distance;
+        final dist = (pos - f).distance * _diskSize;
         if (dist < dDot) {
           dDot = dist;
           dot = members.first;
         }
       }
     }
-    if (pinGroup != null && dPin <= _grabThr && dPin <= dDot) {
+    if (pinGroup != null && dPin <= _grabPx && dPin <= dDot) {
       // Agarrar una pin (mover ese grupo); pasa a foco.
       setState(() => _focus = pinGroup!);
       _dragMembers = pinMembers!;
       _dragging = true;
-    } else if (dot != null && dDot <= _grabThr) {
+    } else if (dot != null && dDot <= _grabPx) {
       // Tocar un dot → pasa a foco como pin sola, lista para arrastrar.
       HapticFeedback.selectionClick();
       _selectSolo(dot);
