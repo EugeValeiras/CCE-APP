@@ -717,7 +717,7 @@ class _LightColorScreenState extends State<LightColorScreen>
 
   Widget _deviceStrip() {
     final lights = _roomLights();
-    if (lights.length <= 1) return const SizedBox.shrink();
+    if (lights.isEmpty) return const SizedBox.shrink();
     return SizedBox(
       height: 156,
       child: ListView.separated(
@@ -970,9 +970,9 @@ class _Marker extends StatelessWidget {
 }
 
 /// Pin color-aware estilo Google Maps: una sola pieza (cabeza circular ∪
-/// triángulo tangente hasta la punta) rellena con el color seleccionado, con
-/// gloss superior y DOBLE contorno (keyline oscuro + aro blanco) que lo separa
-/// de cualquier fondo del disco. La PUNTA inferior marca el lugar exacto.
+/// triángulo tangente hasta la punta) rellena SÓLIDA con el color seleccionado,
+/// con sheen sutil, una hairline blanca fina y sombra baja. La PUNTA inferior
+/// (con núcleo blanco) marca el lugar exacto.
 class _PinPainter extends CustomPainter {
   final Color color; // relleno (color seleccionado, literal)
   final Color ink; // tinta del contenido (para repintar al cambiar color)
@@ -1009,18 +1009,11 @@ class _PinPainter extends CustomPainter {
     // --- 1) Sombra suave y baja (despega sin "stickerear") ----------------
     canvas.drawShadow(body, Colors.black.withValues(alpha: 0.22), 3, true);
 
-    // --- 2) Relleno FROSTED en dos capas → el gradiente se ve A TRAVÉS ------
+    // --- 2) Relleno SÓLIDO con el color seleccionado (opaco, no transparente)
     canvas.drawPath(
       body,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.10)
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-    canvas.drawPath(
-      body,
-      Paint()
-        ..color = color.withValues(alpha: 0.34)
+        ..color = color
         ..style = PaintingStyle.fill
         ..isAntiAlias = true,
     );
@@ -1043,19 +1036,19 @@ class _PinPainter extends CustomPainter {
         Rect.fromLTWH(cx - headR, headCy - headR, 2 * headR, 2 * headR), sheen);
     canvas.restore();
 
-    // --- 4) Contorno: UNA hairline fina (reemplaza el doble contorno) ------
+    // --- 4) Contorno: UNA hairline fina (elegante, no el doble contorno) ---
     canvas.drawPath(
       body,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.55)
+        ..color = Colors.white.withValues(alpha: 0.65)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.2
         ..strokeJoin = StrokeJoin.round
         ..isAntiAlias = true,
     );
 
-    // --- 5) Núcleo en la punta → marca el punto EXACTO aunque el relleno
-    //     translúcido iguale el fondo (siempre hay blanco-sobre-color ahí).
+    // --- 5) Núcleo en la punta → marca el punto EXACTO aunque el color del
+    //     pin iguale el fondo (siempre hay blanco-sobre-color ahí).
     canvas.drawCircle(
       Offset(cx, tipY - 5),
       3.0,
