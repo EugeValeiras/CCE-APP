@@ -95,7 +95,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
                         : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
-                    child: const CceIcon(CceIcons.tv, size: 32),
+                    child: const CceIcon(CceIcons.samsung, size: 34),
                   ),
                 ),
               ),

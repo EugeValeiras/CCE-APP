@@ -87,17 +87,28 @@ class _TvScreenState extends State<TvScreen> {
     // desde standby: sendKey/launchApp no gatean por online). Cuando !online,
     // el cuerpo se atenúa y aparece el cartel "Sin conexión" arriba.
     final online = service.online;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-      children: [
-        if (!online) ...[
-          const _OfflineBanner(),
-          const SizedBox(height: 16),
+    // El control entra en UNA pantalla: el cuerpo se escala al alto disponible
+    // con FittedBox(scaleDown) — a tamaño natural si entra, achicándose solo si
+    // la pantalla es chica. Así no hay scroll y se ve completo en cualquier
+    // teléfono (no podemos medir con Flutter local, esto lo garantiza).
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+      child: Column(
+        children: [
+          if (!online) ...[
+            const _OfflineBanner(),
+            const SizedBox(height: 8),
+          ],
+          Expanded(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              // Cuerpo del control: si !online se atenúa (IgnorePointer +
+              // opacidad), salvo Power/Home/apps que despiertan el TV.
+              child: _RemoteBody(service: service, online: online),
+            ),
+          ),
         ],
-        // Cuerpo del control: si !online se atenúa (IgnorePointer + opacidad),
-        // salvo Power/Home/apps que igual despiertan el TV (se manejan dentro).
-        _RemoteBody(service: service, online: online),
-      ],
+      ),
     );
   }
 }
@@ -121,7 +132,7 @@ class _RemoteBody extends StatelessWidget {
         // Cuerpo angosto tipo control físico (no se estira en tablet).
         constraints: const BoxConstraints(maxWidth: 340),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 26),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
           decoration: BoxDecoration(
             // Carcasa negra mate: gradiente sutil + relieve flotante de card.
             gradient: CceGradients.cardSurface(CceColors.neoBase),
@@ -153,7 +164,7 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 16),
 
               // ── D-PAD GRANDE + OK central (elemento dominante) ────────────
               _DPad(
@@ -214,7 +225,7 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 26),
+              const SizedBox(height: 16),
 
               // ── Rockers píldora: VOLUMEN (con mute al centro) · CANAL ──────
               Row(
@@ -267,11 +278,11 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 16),
 
               // ── Accesos directos de apps (con color de marca) ─────────────
               _AppShortcuts(service: service),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
 
               // ── Wordmark SAMSUNG ──────────────────────────────────────────
               Text(
@@ -337,8 +348,8 @@ class _DPad extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double diameter = 250;
-    const double okSize = 104;
+    const double diameter = 212;
+    const double okSize = 90;
     final Color glyph =
         enabled ? CceColors.neoText : CceColors.neoTextSub;
 
