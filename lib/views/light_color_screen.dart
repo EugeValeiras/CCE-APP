@@ -535,19 +535,24 @@ class _LightColorScreenState extends State<LightColorScreen>
       final pos = _markerFrac[members.first] ?? const Offset(0.5, 0.5);
       if (g == _focus) focusPos = pos;
       final isDragged = _dragging && g == _focus;
+      // Seleccionada de la lista (marcada para sacar al mover): se muestra YA
+      // como la luz elegida (su ícono), aunque internamente siga agrupada.
+      final armedHere =
+          g == _focus && _soloOnMove != null && members.contains(_soloOnMove);
+      final repId = armedHere ? _soloOnMove! : members.first;
       final mergeAdd = (isDragged && _mergeTarget != null)
           ? _membersOf(_groupOf[_mergeTarget!] ?? -1).length
           : 0;
-      final count = members.length + mergeAdd;
+      final count = (armedHere ? 1 : members.length) + mergeAdd;
       final single = count == 1;
       final pinColor = colorAt(pos);
       final ink = _Marker.inkFor(pinColor); // auto-contraste (CceTint.textOn)
       Widget? child;
       if (single) {
-        final d = widget.service.byId(members.first) ?? widget.device;
+        final d = widget.service.byId(repId) ?? widget.device;
         child = IconResolver.widget(
           d,
-          configuredIcon: widget.service.iconFor(members.first),
+          configuredIcon: widget.service.iconFor(repId),
           customIcons: widget.service.customIcons,
           displayName: widget.service.displayName(d),
           size: 24,
@@ -577,6 +582,16 @@ class _LightColorScreenState extends State<LightColorScreen>
             : pin,
       ));
     });
+
+    // Mientras se arrastra, dejar el "circulito" teñido en el punto exacto: es
+    // el ancla de selección y de drag-and-drop (la punta del pin lo señala).
+    if (_dragging && focusPos != null) {
+      markers.add(Positioned(
+        left: focusPos!.dx * size - 13,
+        top: focusPos!.dy * size - 13,
+        child: _Dot(color: colorAt(focusPos!), highlighted: true),
+      ));
+    }
 
     return _ColorDisk(
       size: size,
