@@ -9,6 +9,7 @@ abstract final class CceColors {
   static const surfaceHigh = Color(0xFF252833); // hover/inputs/chips
   static const stroke = Color(0x14FFFFFF); // bordes hairline
   static const accent = Color(0xFF8A7CFF); // violeta Hue (seed, indicadores nav)
+  static const jblOrange = Color(0xFFFF6A00); // naranja de la marca JBL
   static const warm = Color(0xFFFFB46B); // luz calida (default luces)
   static const warmDeep = Color(0xFFE8743D);
 

@@ -211,7 +211,7 @@ class _SoundbarHeaderCard extends StatelessWidget {
             child: CceIcon(
               CceIcons.jbl,
               size: 28,
-              color: service.isOn ? CceColors.accent : CceColors.neoTextSub,
+              color: service.isOn ? CceColors.jblOrange : CceColors.neoTextSub,
             ),
           ),
           const SizedBox(width: 14),
@@ -249,7 +249,7 @@ class _SoundbarHeaderCard extends StatelessWidget {
           CceNeoSvgIconButton(
             svg: CceIcons.power,
             tooltip: service.isOn ? 'Apagar' : 'Encender',
-            iconColor: service.isOn ? CceColors.accent : CceColors.neoTextSub,
+            iconColor: service.isOn ? CceColors.jblOrange : CceColors.neoTextSub,
             size: 48,
             onPressed: () => _handle(service.togglePower(), context),
           ),
@@ -500,7 +500,7 @@ class _VolumeArcPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke + 4
       ..strokeCap = StrokeCap.round
-      ..color = CceColors.accent.withValues(alpha: 0.25)
+      ..color = CceColors.jblOrange.withValues(alpha: 0.25)
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
     canvas.drawArc(rect, _kVolStart, sweep, false, glow);
 
@@ -512,7 +512,7 @@ class _VolumeArcPainter extends CustomPainter {
       ..shader = const SweepGradient(
         startAngle: _kVolStart,
         endAngle: _kVolStart + _kVolSweep,
-        colors: [CceColors.accent, CceColors.info],
+        colors: [CceColors.jblOrange, CceColors.warm],
       ).createShader(rect);
     canvas.drawArc(rect, _kVolStart, sweep, false, progress);
 
@@ -526,7 +526,7 @@ class _VolumeArcPainter extends CustomPainter {
     canvas.drawCircle(
       tip,
       stroke * 0.9,
-      Paint()..color = CceColors.accent.withValues(alpha: 0.30),
+      Paint()..color = CceColors.jblOrange.withValues(alpha: 0.30),
     );
     canvas.drawCircle(tip, stroke / 2 + 2, Paint()..color = Colors.white);
     canvas.drawCircle(tip, stroke / 2 - 2, Paint()..color = CceColors.info);
@@ -627,11 +627,11 @@ class _SourceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = active ? CceColors.accent : CceColors.neoText;
+    final fg = active ? CceColors.jblOrange : CceColors.neoText;
     return _NeoPressable(
       onTap: onTap,
       active: active,
-      activeColor: CceColors.accent,
+      activeColor: CceColors.jblOrange,
       radius: CceRadii.control,
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
@@ -645,7 +645,7 @@ class _SourceChip extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
             style: CceText.caption.copyWith(
-              color: active ? CceColors.accent : CceColors.neoTextSub,
+              color: active ? CceColors.jblOrange : CceColors.neoTextSub,
             ),
           ),
         ],
@@ -740,7 +740,7 @@ class _QuickButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = activeColor ?? CceColors.accent;
+    final accent = activeColor ?? CceColors.jblOrange;
     final fg = active ? accent : CceColors.neoText;
     return _NeoPressable(
       onTap: onTap,

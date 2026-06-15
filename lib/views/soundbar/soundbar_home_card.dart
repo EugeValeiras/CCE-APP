@@ -47,14 +47,14 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
         final accent = !online
             ? CceColors.textTertiary
             : (on
-                ? (neo ? CceColors.accent : CceColors.warm)
+                ? (neo ? CceColors.jblOrange : CceColors.warm)
                 : CceColors.textSecondary);
         final sub = !online
             ? 'Fuera de línea'
             : (on ? 'Encendido · volumen ${jbl.volume}' : 'En espera');
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
         final dotColor =
-            !online ? CceColors.textTertiary : (on ? CceColors.accent : CceColors.textTertiary);
+            !online ? CceColors.textTertiary : (on ? CceColors.jblOrange : CceColors.textTertiary);
         return CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
@@ -83,7 +83,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                     // espera-offline (neo); accent histórico en plano.
                     color: neo
                         ? (online && on
-                            ? CceColors.accent
+                            ? CceColors.jblOrange
                             : CceColors.neoTextSub)
                         : accent,
                     highlight: CceEmboss.highlight.color,
