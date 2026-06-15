@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../cce_tokens.dart';
-
 /// Logo de CCE (la silueta del edificio del splash) en clave NEUMÓRFICA: el
 /// edificio cálido se ve extruido del fondo (realce de luz arriba-izquierda +
 /// sombra abajo-derecha, con los tokens neo) y conserva un par de ventanas
@@ -94,12 +92,21 @@ class _CceLogoPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Relieve neumórfico: sombra (abajo-derecha) + realce (arriba-izquierda) +
-    // cara cálida de la marca encima. Offsets en px lógicos, sutiles.
-    _drawBuilding(canvas, size, const Offset(1.4, 2.0),
-        Paint()..color = CceColors.neoDark.withValues(alpha: 0.9));
-    _drawBuilding(canvas, size, const Offset(-1.1, -1.5),
-        Paint()..color = CceColors.neoLight.withValues(alpha: 0.85));
+    // Relieve neumórfico FUERTE para que se note aunque la cara sea casi
+    // blanca: (1) sombra de elevación difusa abajo-derecha (negra, blureada,
+    // hace flotar el edificio sobre el fondo), (2) canto de luz nítido
+    // arriba-izquierda (blanco, MÁS claro que la cara → arista iluminada), (3)
+    // la cara. Offsets generosos para que el relieve lea a tamaño chico.
+    _drawBuilding(
+      canvas,
+      size,
+      const Offset(2.0, 3.0),
+      Paint()
+        ..color = const Color(0xB3000000)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.6),
+    );
+    _drawBuilding(canvas, size, const Offset(-1.6, -2.0),
+        Paint()..color = const Color(0xFFFFFFFF));
     _drawBuilding(canvas, size, Offset.zero, Paint()..color = color);
 
     // Ventanas encendidas (estáticas) como sello de marca.
