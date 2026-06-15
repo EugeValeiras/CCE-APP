@@ -21,6 +21,14 @@ Future<void> _handle(Future<bool> action, BuildContext context) async {
 
 // ── Header ──────────────────────────────────────────────────────────────────
 
+/// Etiqueta amigable para la fuente actual. La barra reporta ids crudos
+/// (p.ej. "RADIO-NETWORK"); acá los acortamos para mostrarlos en la UI.
+String _sourceLabel(String src) {
+  final s = src.toLowerCase();
+  if (s.contains('radio') || s.contains('network')) return 'RADIO';
+  return src;
+}
+
 /// Card de cabecera: ícono del parlante, nombre, estado de encendido y la
 /// fuente actual (si la hay).
 class _SoundbarHeaderCard extends StatelessWidget {
@@ -90,7 +98,7 @@ class _SoundbarHeaderCard extends StatelessWidget {
                     Text(powerLabel, style: CceText.caption),
                     if (src != null) ...[
                       const SizedBox(width: 8),
-                      Flexible(child: StatusPill(label: src)),
+                      Flexible(child: StatusPill(label: _sourceLabel(src))),
                     ],
                   ],
                 ),
@@ -351,6 +359,8 @@ class _SourcesRow extends StatelessWidget {
     final src = service.source?.toLowerCase();
     if (src == null) return false;
     switch (id) {
+      case 'radio':
+        return src.contains('radio') || src.contains('network');
       case JblRemoteKeys.bluetooth:
         return src.contains('bt') || src.contains('blue');
       case JblRemoteKeys.hdmi:
@@ -365,6 +375,15 @@ class _SourcesRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[
+      // Radio: la fuente "RADIO-NETWORK". No es una tecla del remote; se
+      // dispara reproduciendo la radio favorita (playRadio sin nombre), que
+      // además despierta la barra y la pone en la fuente de red.
+      _SourceChip(
+        svg: CceIcons.radio,
+        label: 'Radio',
+        active: _isActive('radio'),
+        onTap: () => _handle(service.playRadio(), context),
+      ),
       _SourceChip(
         svg: CceIcons.bluetooth,
         label: 'Bluetooth',
@@ -475,11 +494,7 @@ class _QuickAccessGrid extends StatelessWidget {
         activeColor: CceColors.danger,
         onTap: () => _openRadioSheet(context, service),
       ),
-      _QuickButton(
-        svg: CceIcons.tv,
-        label: 'TV',
-        onTap: () => _handle(service.sendRemoteKey(JblRemoteKeys.tv), context),
-      ),
+      // TV vive en FUENTES (no se duplica acá).
       _QuickButton(
         svg: CceIcons.play,
         label: 'Play',
@@ -511,7 +526,7 @@ class _QuickAccessGrid extends StatelessWidget {
             _handle(service.sendRemoteKey(JblRemoteKeys.surround), context),
       ),
     ];
-    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 7.
+    // Cajas grandes (como las FUENTES), 4 por fila → 2 filas para los 6.
     return CceCard(
       neo: true,
       child: GridView.count(
