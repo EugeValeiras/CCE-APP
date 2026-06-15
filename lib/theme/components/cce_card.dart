@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../cce_tokens.dart';
+import 'cce_neo_press.dart';
 
 /// Card base del design system: superficie redondeada con gradiente o color
 /// plano, borde hairline opcional y soporte de tap/long-press con ripple.
@@ -88,53 +89,47 @@ class CceCard extends StatelessWidget {
 
     final content = Padding(padding: padding, child: child);
 
-    final Widget base;
-    if (onTap == null && onLongPress == null) {
-      base = Container(decoration: decoration, child: content);
-    } else {
-      base = Container(
-        decoration: decoration,
-        clipBehavior: Clip.antiAlias,
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            borderRadius: borderRadius,
-            child: content,
-          ),
-        ),
-      );
-    }
+    // Superficie visual (SIN ripple de Material): el feedback táctil lo da
+    // CceNeoPress (hundido por escala), más acorde al neumorfismo.
+    Widget surface = Container(decoration: decoration, child: content);
 
-    // Extrusión externa: como el branch con tap clipea (Clip.antiAlias) y un
-    // boxShadow se recortaría, la sombra va en un DecoratedBox EXTERNO sin clip.
+    // Extrusión externa: el boxShadow va en un DecoratedBox EXTERNO sin clip
+    // (si clipeara se recortaría la sombra).
     if (neo) {
-      // Raised "almohada": superficie nueva (gradiente sutil + cardFloat +
-      // bevel). El gradiente lo pinta este DecoratedBox externo (la decoración
-      // interna quedó transparente via useRaised), así cubre el área completa
-      // y el ripple queda recortado dentro del Container clipeado.
       if (useRaised) {
-        return DecoratedBox(
+        // Raised "almohada" (gradiente sutil + cardFloat + bevel): el gradiente
+        // lo pinta este DecoratedBox externo (la decoración interna quedó
+        // transparente via useRaised) y cubre el área completa.
+        surface = DecoratedBox(
           decoration: CceCard.raisedDecoration(
             base: effectiveColor ?? CceColors.neoBase,
             radius: radius,
           ),
-          child: base,
+          child: surface,
+        );
+      } else {
+        // Caso neo con gradiente/color propio (fills ON: huePastel, lightFull,
+        // color explícito): se conserva el relieve de botón simétrico para NO
+        // tocar los estados encendidos ni lavar el color saturado.
+        surface = DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: borderRadius,
+            boxShadow: CceShadows.neo(),
+          ),
+          child: surface,
         );
       }
-      // Caso neo con gradiente/color propio (fills ON: huePastel, lightFull,
-      // color explícito): se conserva el relieve de botón simétrico para NO
-      // tocar los estados encendidos ni lavar el color saturado.
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: borderRadius,
-          boxShadow: CceShadows.neo(),
-        ),
-        child: base,
-      );
     }
 
-    return base;
+    if (onTap == null && onLongPress == null) return surface;
+
+    // Hundido neumórfico al tocar. `haptic: false`: varios call-sites (RoomCard,
+    // soundbar) ya disparan su propio HapticFeedback en onTap → evitamos doble.
+    return CceNeoPress(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      haptic: false,
+      child: surface,
+    );
   }
 }

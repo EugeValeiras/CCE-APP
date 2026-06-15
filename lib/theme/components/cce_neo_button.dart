@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../cce_icons.dart';
 import '../cce_tokens.dart';
+import 'cce_neo_press.dart';
+
+/// Interpola dos pares de sombra (raised ↔ inset) por `t` (0..1) para el
+/// "hundido" animado de los botones neumórficos.
+List<BoxShadow> _lerpShadow(List<BoxShadow> a, List<BoxShadow> b, double t) {
+  return [for (var i = 0; i < a.length; i++) BoxShadow.lerp(a[i], b[i], t)!];
+}
 
 /// IconButton neumórfico raised (size cycle, refresh). Diámetro fijo 44.
 ///
-/// Estado presionado → hundido (`neoInset`); reposo → extruido (`neo`);
-/// deshabilitado (`onPressed == null`) → plano sin relieve, icono atenuado.
-/// El `color: neoBase` opaco se mantiene SIEMPRE (necesario para
-/// `BlurStyle.inner` del estado presionado).
-class CceNeoIconButton extends StatefulWidget {
+/// Estado presionado → hundido (`neoInset`); reposo → extruido (`neo`), con
+/// transición ANIMADA + escala (vía [CceNeoPress]); deshabilitado
+/// (`onPressed == null`) → plano sin relieve, icono atenuado. El `color: neoBase`
+/// opaco se mantiene SIEMPRE (necesario para `BlurStyle.inner` del estado
+/// presionado).
+class CceNeoIconButton extends StatelessWidget {
   const CceNeoIconButton({
     super.key,
     required this.icon,
@@ -25,55 +32,32 @@ class CceNeoIconButton extends StatefulWidget {
   final double size;
 
   @override
-  State<CceNeoIconButton> createState() => _CceNeoIconButtonState();
-}
-
-class _CceNeoIconButtonState extends State<CceNeoIconButton> {
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final enabled = widget.onPressed != null;
-    final List<BoxShadow> shadow = !enabled
-        ? const []
-        : (_pressed
-            ? CceShadows.neoInset(blur: 6, offset: 2)
-            : CceShadows.neo(blur: 8, offset: 3));
+    final enabled = onPressed != null;
+    final raised = CceShadows.neo(blur: 8, offset: 3);
+    final inset = CceShadows.neoInset(blur: 6, offset: 2);
 
-    final button = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => _setPressed(true) : null,
-      onTapUp: enabled ? (_) => _setPressed(false) : null,
-      onTapCancel: enabled ? () => _setPressed(false) : null,
-      onTap: enabled
-          ? () {
-              HapticFeedback.selectionClick();
-              widget.onPressed!();
-            }
-          : null,
-      child: Container(
-        width: widget.size,
-        height: widget.size,
+    final button = CceNeoPress(
+      onTap: onPressed,
+      builder: (ctx, t) => Container(
+        width: size,
+        height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: CceColors.neoBase,
-          boxShadow: shadow,
+          boxShadow: enabled ? _lerpShadow(raised, inset, t) : const [],
         ),
         child: Icon(
-          widget.icon,
-          size: widget.size * 0.5,
+          icon,
+          size: size * 0.5,
           color: enabled ? CceColors.neoText : CceColors.neoTextSub,
         ),
       ),
     );
 
-    if (widget.tooltip != null) {
-      return Tooltip(message: widget.tooltip!, child: button);
+    if (tooltip != null) {
+      return Tooltip(message: tooltip!, child: button);
     }
     return button;
   }
@@ -81,13 +65,9 @@ class _CceNeoIconButtonState extends State<CceNeoIconButton> {
 
 /// IconButton neumórfico raised gemelo de [CceNeoIconButton], pero renderiza
 /// un glifo SVG de [CceIcons] (regla icons0.dev) en vez de un [IconData]
-/// Material. Mismas sombras / haptic / estados (raised→press→inset). Diámetro
-/// fijo 44.
-///
-/// Existe aparte para NO tocar los defaults de [CceNeoIconButton] (que usa el
-/// home del teléfono). El `color: neoBase` opaco se mantiene SIEMPRE
-/// (necesario para `BlurStyle.inner` del estado presionado).
-class CceNeoSvgIconButton extends StatefulWidget {
+/// Material. Mismas sombras / háptico / estados (raised→press→inset animado).
+/// Diámetro fijo 44.
+class CceNeoSvgIconButton extends StatelessWidget {
   const CceNeoSvgIconButton({
     super.key,
     required this.svg,
@@ -106,68 +86,46 @@ class CceNeoSvgIconButton extends StatefulWidget {
   final Color? iconColor;
 
   @override
-  State<CceNeoSvgIconButton> createState() => _CceNeoSvgIconButtonState();
-}
-
-class _CceNeoSvgIconButtonState extends State<CceNeoSvgIconButton> {
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final enabled = widget.onPressed != null;
-    final List<BoxShadow> shadow = !enabled
-        ? const []
-        : (_pressed
-            ? CceShadows.neoInset(blur: 6, offset: 2)
-            : CceShadows.neo(blur: 8, offset: 3));
+    final enabled = onPressed != null;
+    final raised = CceShadows.neo(blur: 8, offset: 3);
+    final inset = CceShadows.neoInset(blur: 6, offset: 2);
 
-    final button = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => _setPressed(true) : null,
-      onTapUp: enabled ? (_) => _setPressed(false) : null,
-      onTapCancel: enabled ? () => _setPressed(false) : null,
-      onTap: enabled
-          ? () {
-              HapticFeedback.selectionClick();
-              widget.onPressed!();
-            }
-          : null,
-      child: Container(
-        width: widget.size,
-        height: widget.size,
+    final button = CceNeoPress(
+      onTap: onPressed,
+      builder: (ctx, t) => Container(
+        width: size,
+        height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: CceColors.neoBase,
-          boxShadow: shadow,
+          boxShadow: enabled ? _lerpShadow(raised, inset, t) : const [],
         ),
         child: CceIcon(
-          widget.svg,
-          size: widget.size * 0.5,
+          svg,
+          size: size * 0.5,
           color: enabled
-              ? (widget.iconColor ?? CceColors.neoText)
+              ? (iconColor ?? CceColors.neoText)
               : CceColors.neoTextSub,
         ),
       ),
     );
 
-    if (widget.tooltip != null) {
-      return Tooltip(message: widget.tooltip!, child: button);
+    if (tooltip != null) {
+      return Tooltip(message: tooltip!, child: button);
     }
     return button;
   }
 }
 
-/// Botón de texto neumórfico raised (Encender / Apagar todo).
+/// Botón de texto neumórfico raised (Encender / Apagar todo) con hundido
+/// animado.
 ///
 /// `onPressed == null` ⇒ deshabilitado (plano, sin relieve, label atenuado).
-/// El haptic NO va acá: el call-site dispara su propio `HapticFeedback`; este
-/// widget sólo invoca [onPressed].
-class CceNeoActionButton extends StatefulWidget {
+/// El háptico NO va acá: el call-site dispara su propio `HapticFeedback`; por
+/// eso [CceNeoPress] se usa con `haptic: false`.
+class CceNeoActionButton extends StatelessWidget {
   const CceNeoActionButton({
     super.key,
     required this.label,
@@ -180,42 +138,25 @@ class CceNeoActionButton extends StatefulWidget {
   final double height;
 
   @override
-  State<CceNeoActionButton> createState() => _CceNeoActionButtonState();
-}
-
-class _CceNeoActionButtonState extends State<CceNeoActionButton> {
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final enabled = widget.onPressed != null;
-    final List<BoxShadow> shadow = !enabled
-        ? const []
-        : (_pressed
-            ? CceShadows.neoInset(blur: 6, offset: 2)
-            : CceShadows.neo(blur: 8, offset: 3));
+    final enabled = onPressed != null;
+    final raised = CceShadows.neo(blur: 8, offset: 3);
+    final inset = CceShadows.neoInset(blur: 6, offset: 2);
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => _setPressed(true) : null,
-      onTapUp: enabled ? (_) => _setPressed(false) : null,
-      onTapCancel: enabled ? () => _setPressed(false) : null,
-      onTap: enabled ? widget.onPressed : null,
-      child: Container(
-        height: widget.height,
+    return CceNeoPress(
+      onTap: onPressed,
+      haptic: false,
+      builder: (ctx, t) => Container(
+        height: height,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: CceColors.neoBase,
           borderRadius: BorderRadius.circular(CceRadii.pill),
-          boxShadow: shadow,
+          boxShadow: enabled ? _lerpShadow(raised, inset, t) : const [],
         ),
         child: Text(
-          widget.label,
+          label,
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w700,
