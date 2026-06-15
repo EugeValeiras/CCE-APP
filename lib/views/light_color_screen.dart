@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../models/device.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
@@ -457,10 +458,19 @@ class _LightColorScreenState extends State<LightColorScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: CceColors.bg,
-      body: SafeArea(
-        child: AnimatedBuilder(
-          animation: widget.service,
-          builder: (context, _) {
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0.0, -0.18),
+            radius: 1.05,
+            colors: [CceColors.neoBase, Color(0xFF141620), CceColors.neoDark],
+            stops: [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: widget.service,
+            builder: (context, _) {
             return Column(
               children: [
                 _topBar(),
@@ -488,6 +498,7 @@ class _LightColorScreenState extends State<LightColorScreen>
               ],
             );
           },
+          ),
         ),
       ),
     );
@@ -608,29 +619,68 @@ class _LightColorScreenState extends State<LightColorScreen>
 
   Widget _topBar() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.close, color: CceColors.textPrimary),
-            onPressed: () => Navigator.of(context).pop(),
+          // Chip circular de cerrar (neumórfico, ícono icons0).
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CceColors.surfaceHigh,
+              border: Border.all(color: CceColors.stroke, width: 1),
+              boxShadow: CceShadows.neo(blur: 10, offset: 4, intensity: 0.8),
+            ),
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                child: const Center(
+                  child: CceIcon(CceIcons.close,
+                      size: 20, color: CceColors.textPrimary, emboss: false),
+                ),
+              ),
+            ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               _title(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: CceText.title,
+              textAlign: TextAlign.center,
+              style: CceText.title
+                  .copyWith(fontSize: 17, fontWeight: FontWeight.w600),
             ),
           ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Listo',
-                style: TextStyle(
-                    color: CceColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600)),
+          const SizedBox(width: 12),
+          // Chip pill "Listo".
+          Material(
+            color: CceColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(CceRadii.pill),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(CceRadii.pill),
+                  border: Border.all(color: CceColors.stroke, width: 1),
+                  boxShadow:
+                      CceShadows.neo(blur: 10, offset: 4, intensity: 0.8),
+                ),
+                child: const Text('Listo',
+                    style: TextStyle(
+                        color: CceColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2)),
+              ),
+            ),
           ),
         ],
       ),
@@ -669,7 +719,7 @@ class _LightColorScreenState extends State<LightColorScreen>
     final lights = _roomLights();
     if (lights.length <= 1) return const SizedBox.shrink();
     return SizedBox(
-      height: 150,
+      height: 156,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -765,9 +815,13 @@ class _ColorDisk extends StatelessWidget {
                       ),
                 boxShadow: [
                   BoxShadow(
-                    color: glowColor.withValues(alpha: 0.35),
-                    blurRadius: 60,
-                    spreadRadius: 4,
+                    color: glowColor.withValues(alpha: 0.22),
+                    blurRadius: 34,
+                  ),
+                  BoxShadow(
+                    color: glowColor.withValues(alpha: 0.12),
+                    blurRadius: 90,
+                    spreadRadius: -6,
                   ),
                 ],
               ),
@@ -780,10 +834,26 @@ class _ColorDisk extends StatelessWidget {
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
                     colors: [Colors.white, Color(0x00FFFFFF)],
-                    stops: [0.0, 0.9],
+                    stops: [0.0, 0.82],
                   ),
                 ),
               ),
+            // Feather del borde del disco (ambos modos) → corte suave, no duro.
+            Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0x00000000),
+                    const Color(0x00000000),
+                    Colors.black.withValues(alpha: 0.10),
+                  ],
+                  stops: const [0.0, 0.92, 1.0],
+                ),
+              ),
+            ),
             ...markers,
           ],
         ),
@@ -860,8 +930,9 @@ class _Marker extends StatelessWidget {
             label!,
             style: TextStyle(
               color: ink,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
+              fontSize: 19,
+              fontWeight: FontWeight.w600,
+              letterSpacing: -0.2,
             ),
           )
         : child;
@@ -907,20 +978,6 @@ class _PinPainter extends CustomPainter {
   final Color ink; // tinta del contenido (para repintar al cambiar color)
   const _PinPainter({required this.color, required this.ink});
 
-  /// Color para el glow que no se rompe en el centro desaturado: si la
-  /// saturación es casi nula (hue inestable cerca del blanco) cae a un neutro
-  /// fijo para evitar el shimmer arcoíris al arrastrar por el centro.
-  Color get _signal {
-    final hsl = HSLColor.fromColor(color);
-    if (hsl.saturation < 0.12) {
-      return const Color(0xFF8A8A92);
-    }
-    return hsl
-        .withSaturation(hsl.saturation.clamp(0.45, 1.0).toDouble())
-        .withLightness(hsl.lightness.clamp(0.42, 0.60).toDouble())
-        .toColor();
-  }
-
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width;
@@ -928,7 +985,6 @@ class _PinPainter extends CustomPainter {
     const headCy = _Marker.headCy;
     const tipY = _Marker.tipY;
     final cx = w / 2;
-    final signal = _signal;
 
     // --- Silueta tipo gota: cabeza circular ∪ triángulo tangente a la punta -
     // Los lados del triángulo son TANGENTES a la cabeza → la unión es suave
@@ -950,37 +1006,35 @@ class _PinPainter extends CustomPainter {
       ..close();
     final body = Path.combine(PathOperation.union, head, tail);
 
-    // --- 1) Glow de color suave bajo la punta (premium, color-aware) -------
-    canvas.drawCircle(
-      Offset(cx, tipY - 2),
-      6,
-      Paint()
-        ..color = signal.withValues(alpha: 0.40)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
+    // --- 1) Sombra suave y baja (despega sin "stickerear") ----------------
+    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.22), 3, true);
 
-    // --- 2) Sombra de elevación (despega del centro blanco del disco) ------
-    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.45), 5, false);
-
-    // --- 3) Relleno con el color seleccionado -----------------------------
+    // --- 2) Relleno FROSTED en dos capas → el gradiente se ve A TRAVÉS ------
     canvas.drawPath(
       body,
       Paint()
-        ..color = color
+        ..color = Colors.white.withValues(alpha: 0.10)
+        ..style = PaintingStyle.fill
+        ..isAntiAlias = true,
+    );
+    canvas.drawPath(
+      body,
+      Paint()
+        ..color = color.withValues(alpha: 0.34)
         ..style = PaintingStyle.fill
         ..isAntiAlias = true,
     );
 
-    // --- 4) Gloss superior en la cabeza (look gema/premium) ---------------
+    // --- 3) Sheen sutil en la cabeza --------------------------------------
     final sheen = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          Colors.white.withValues(alpha: 0.28),
+          Colors.white.withValues(alpha: 0.18),
           Colors.white.withValues(alpha: 0.0),
         ],
-        stops: const [0.0, 0.6],
+        stops: const [0.0, 0.5],
       ).createShader(Rect.fromLTWH(
           cx - headR, headCy - headR, 2 * headR, 2 * headR));
     canvas.save();
@@ -989,37 +1043,29 @@ class _PinPainter extends CustomPainter {
         Rect.fromLTWH(cx - headR, headCy - headR, 2 * headR, 2 * headR), sheen);
     canvas.restore();
 
-    // --- 5) DOBLE CONTORNO adaptativo (clave de legibilidad universal) -----
-    // 5a) Keyline oscuro EXTERIOR → carga la silueta sobre el centro blanco del
-    //     disco y sobre colores claros (amarillo/cian).
+    // --- 4) Contorno: UNA hairline fina (reemplaza el doble contorno) ------
     canvas.drawPath(
       body,
       Paint()
-        ..color = Colors.black.withValues(alpha: 0.30)
+        ..color = Colors.white.withValues(alpha: 0.55)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0
-        ..strokeJoin = StrokeJoin.round
-        ..isAntiAlias = true,
-    );
-    // 5b) Aro blanco crujiente ENCIMA → separa de bordes saturados y del
-    //     gradiente CT (rojo-sobre-rojo, azul-sobre-azul, cálido-sobre-cálido).
-    canvas.drawPath(
-      body,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.0
+        ..strokeWidth = 1.2
         ..strokeJoin = StrokeJoin.round
         ..isAntiAlias = true,
     );
 
-    // --- 6) Núcleo blanco en la punta → marca el punto EXACTO incluso si el
-    //     color del pin iguala el fondo (siempre hay blanco-sobre-color ahí).
+    // --- 5) Núcleo en la punta → marca el punto EXACTO aunque el relleno
+    //     translúcido iguale el fondo (siempre hay blanco-sobre-color ahí).
     canvas.drawCircle(
       Offset(cx, tipY - 5),
-      2.6,
+      3.0,
+      Paint()..color = Colors.black.withValues(alpha: 0.18),
+    );
+    canvas.drawCircle(
+      Offset(cx, tipY - 5),
+      2.2,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.95)
+        ..color = Colors.white.withValues(alpha: 0.92)
         ..isAntiAlias = true,
     );
   }
@@ -1041,6 +1087,7 @@ class _ModeToggle extends StatelessWidget {
       decoration: BoxDecoration(
         color: CceColors.surfaceHigh,
         borderRadius: BorderRadius.circular(CceRadii.pill),
+        boxShadow: CceShadows.neo(blur: 10, offset: 4, intensity: 0.7),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1077,8 +1124,8 @@ class _ModeToggle extends StatelessWidget {
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(
-            color: selected ? Colors.white : Colors.transparent,
-            width: 2.5,
+            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.14),
+            width: selected ? 2.5 : 1.5,
           ),
         ),
         child: Container(
@@ -1120,18 +1167,14 @@ class _BrightnessPill extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              color: CceColors.surfaceHigh,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+              color: CceColors.neoBase,
+              shape: BoxShape.circle,
+              boxShadow: CceShadows.neo(blur: 12, offset: 5, intensity: 0.9),
             ),
-            child: const Icon(Icons.wb_sunny_rounded,
-                color: CceColors.textPrimary, size: 26),
+            child: const Center(
+              child: CceIcon(CceIcons.sun,
+                  size: 26, color: CceColors.textPrimary, emboss: false),
+            ),
           ),
         ),
       ],
@@ -1166,40 +1209,45 @@ class _DeviceMiniCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 122,
+        width: 124,
         decoration: BoxDecoration(
           color: on ? null : CceColors.surface,
           gradient: on ? CceGradients.huePastel([tint]) : null,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
+          // Selección con el propio tinte de la luz (dorado para cálido).
           border: Border.all(
             color: selected
-                ? Colors.white
+                ? mid
                 : (on
-                    ? Colors.white.withValues(alpha: 0.15)
+                    ? Colors.white.withValues(alpha: 0.12)
                     : CceColors.stroke),
             width: selected ? 2 : 1,
           ),
           boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
+              ? CceShadows.glowOn(mid)
+              : (on ? CceShadows.cardFloat(intensity: 0.6) : null),
         ),
         clipBehavior: Clip.antiAlias,
         child: Column(
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 14, 10, 6),
+                padding: const EdgeInsets.fromLTRB(10, 13, 10, 4),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    SizedBox(height: 26, child: Center(child: iconBuilder(fg))),
-                    const SizedBox(height: 8),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: on
+                            ? Colors.white.withValues(alpha: 0.16)
+                            : CceColors.surfaceHigh,
+                      ),
+                      child: Center(child: iconBuilder(fg)),
+                    ),
+                    const SizedBox(height: 7),
                     Text(
                       name,
                       maxLines: 2,
@@ -1207,24 +1255,30 @@ class _DeviceMiniCard extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: fg,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.12,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        height: 1.1,
+                        letterSpacing: -0.1,
                       ),
                     ),
                     if (!reachable) ...[
-                      const SizedBox(height: 2),
-                      Text('Sin conexión',
+                      const SizedBox(height: 3),
+                      Text('Sin conexión'.toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: fgSub, fontSize: 11)),
+                          style: TextStyle(
+                            color: fgSub,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          )),
                     ],
                   ],
                 ),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 11),
               child: _HueSwitch(
                 value: on,
                 onChanged: onToggle,
@@ -1249,7 +1303,7 @@ class _HueSwitch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const w = 54.0, h = 32.0, thumb = 26.0;
+    const w = 46.0, h = 28.0, thumb = 22.0;
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
@@ -1264,7 +1318,7 @@ class _HueSwitch extends StatelessWidget {
         decoration: BoxDecoration(
           color: value
               ? (onColor ?? Colors.white.withValues(alpha: 0.45))
-              : Colors.black.withValues(alpha: 0.30),
+              : Colors.white.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(h / 2),
         ),
         child: AnimatedAlign(
@@ -1275,12 +1329,12 @@ class _HueSwitch extends StatelessWidget {
             width: thumb,
             height: thumb,
             decoration: BoxDecoration(
-              color: value ? Colors.white : const Color(0xFFE6E6E6),
+              color: value ? Colors.white : const Color(0xFFCFCFD4),
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.22),
-                  blurRadius: 3,
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 4,
                   offset: const Offset(0, 1),
                 ),
               ],
