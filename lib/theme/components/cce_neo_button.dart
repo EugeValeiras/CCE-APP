@@ -102,9 +102,13 @@ class CceNeoSvgIconButton extends StatelessWidget {
           color: CceColors.neoBase,
           boxShadow: enabled ? _lerpShadow(raised, inset, t) : const [],
         ),
+        // emboss:false → glifo PLANO. El relieve ya lo da el botón (raised); el
+        // emboss del ícono suma un ghost desplazado (1.3,2.2) que lo corre y lo
+        // hace ver descentrado dentro del círculo.
         child: CceIcon(
           svg,
           size: size * 0.5,
+          emboss: false,
           color: enabled
               ? (iconColor ?? CceColors.neoText)
               : CceColors.neoTextSub,
