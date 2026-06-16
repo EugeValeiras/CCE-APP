@@ -66,11 +66,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 : CceColors.textSecondary);
         final sub = !online
             ? 'Fuera de línea'
-            : (on
-                ? (tv.hasVolume
-                    ? 'Encendido · volumen ${tv.volume}'
-                    : 'Encendido')
-                : 'En espera');
+            : (on ? 'Encendido' : 'En espera');
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
         final dotColor = !online
             ? CceColors.textTertiary

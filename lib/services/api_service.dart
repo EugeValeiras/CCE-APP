@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/server_config.dart';
 import '../models/device.dart';
@@ -121,7 +122,47 @@ class ApiService {
         }
       });
     }
-    return FloorPlansData(plans: plans, activePlanId: activePlanId, positions: positions);
+    // Posiciones de los dispositivos dedicados (TV / JBL): una posición ÚNICA
+    // por plano, {planId: {x, y}}. Mismo estilo defensivo que /config/positions:
+    // si el endpoint falla / no responde 200, el mapa queda vacío y el plano
+    // simplemente no muestra ese marker.
+    final jblPositions = await _fetchDevicePositions('/config/jbl-positions');
+    final tvPositions =
+        await _fetchDevicePositions('/config/samsung-tv-positions');
+
+    return FloorPlansData(
+      plans: plans,
+      activePlanId: activePlanId,
+      positions: positions,
+      jblPositions: jblPositions,
+      tvPositions: tvPositions,
+    );
+  }
+
+  /// GET de un mapa {planId: {x, y}} (posición única por plano) para un
+  /// dispositivo dedicado (TV / JBL). Defensivo: timeout igual al de los planos
+  /// (5s) y, ante cualquier fallo (status != 200, JSON inválido, red caída),
+  /// devuelve un mapa vacío en lugar de tirar.
+  Future<Map<String, LightPosition>> _fetchDevicePositions(String path) async {
+    final out = <String, LightPosition>{};
+    try {
+      final resp = await http
+          .get(Uri.parse('${config.baseUrl}$path'))
+          .timeout(const Duration(seconds: 5));
+      if (resp.statusCode != 200) return out;
+      final data = jsonDecode(resp.body);
+      if (data is Map) {
+        data.forEach((planId, xy) {
+          if (xy is Map) {
+            out[planId.toString()] =
+                LightPosition.fromJson(Map<String, dynamic>.from(xy));
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[FloorPlan] $path no disponible: $e');
+    }
+    return out;
   }
 
   /// Escenas de config CCE (GET /config/scenes).
