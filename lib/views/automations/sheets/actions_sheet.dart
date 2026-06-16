@@ -1142,6 +1142,8 @@ class _JblActionEditorState extends State<_JblActionEditor> {
   late String? _radioName = widget.action.jblRadioName;
   // Volumen de arranque (escala display 0..31); null = no fijar.
   late int? _volume = widget.action.jblVolume;
+  // Iniciar en modo noche al prender.
+  late bool _nightMode = widget.action.jblNightMode;
   late final Future<List<String>> _radios = _fetchRadios();
 
   Future<List<String>> _fetchRadios() async {
@@ -1263,6 +1265,12 @@ class _JblActionEditorState extends State<_JblActionEditor> {
                 ),
             ],
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Iniciar en modo noche', style: CceText.body),
+            value: _nightMode,
+            onChanged: (v) => setState(() => _nightMode = v),
+          ),
         ],
         const SizedBox(height: 18),
         FilledButton(
@@ -1273,6 +1281,7 @@ class _JblActionEditorState extends State<_JblActionEditor> {
                     onMode: _jblAction == 'on' ? _onMode : null,
                     radioName: _radioName,
                     volume: _jblAction == 'on' ? _volume : null,
+                    nightMode: _jblAction == 'on' && _nightMode,
                   );
                   Navigator.of(context).pop(true);
                 }

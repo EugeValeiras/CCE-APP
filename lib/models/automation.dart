@@ -332,6 +332,8 @@ class AutomationAction {
   String? get jblRadioName => raw['jblRadioName'] as String?;
   /// Volumen de arranque (escala display 0..31). null = no fijar volumen.
   int? get jblVolume => (raw['jblVolume'] as num?)?.toInt();
+  /// Iniciar en modo noche al prender. false = no tocar.
+  bool get jblNightMode => raw['jblNightMode'] == true;
 
   AutomationActionKind get kind {
     if (lightId == '__notification__' || on == 'notification') {
@@ -412,6 +414,7 @@ class AutomationAction {
     String? onMode,
     String? radioName,
     int? volume,
+    bool nightMode = false,
   }) {
     raw['lightId'] = '__jbl__';
     raw['on'] = 'jbl';
@@ -423,6 +426,8 @@ class AutomationAction {
     );
     // Volumen de arranque: solo con 'on'; null lo remueve (no fijar).
     _setOrRemove('jblVolume', action == 'on' ? volume : null);
+    // Modo noche: solo con 'on' y true; false/off lo remueve (no tocar).
+    _setOrRemove('jblNightMode', action == 'on' && nightMode ? true : null);
     edited = true;
   }
 
