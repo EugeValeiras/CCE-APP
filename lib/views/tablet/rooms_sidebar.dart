@@ -6,6 +6,7 @@ import '../../models/room_ref.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../theme/components/cce_logo.dart';
 import '../../theme/components/room_card.dart';
 import '../../utils/icon_resolver.dart';
 import '../../widgets/pulse_on_update.dart';
@@ -22,12 +23,18 @@ class RoomsSidebar extends StatefulWidget {
     required this.selectedRoomId,
     required this.onSelect,
     this.neo = false,
+    this.deviceCards = const <Widget>[],
   });
 
   final DevicesService service;
   final String? selectedRoomId;
   final ValueChanged<String?> onSelect; // null = Toda la casa
   final bool neo;
+
+  /// Cards de dispositivos dedicados (TV, JBL) que se insertan en la lista
+  /// DESPUÉS de "Toda la casa" y antes de las salas, para que aparezcan como
+  /// parte de la lista (no como una sección separada).
+  final List<Widget> deviceCards;
 
   @override
   State<RoomsSidebar> createState() => _RoomsSidebarState();
@@ -116,16 +123,23 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 12),
-              child: Text('CCE', style: CceText.display),
+            // Logo de la app arriba de todo (igual que en mobile), en vez del
+            // texto "CCE".
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 14),
+              child: CceLogo(height: 22, color: CceColors.neoText),
             ),
             Expanded(
               child: ListView.separated(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: rooms.length + 1,
+                // Toda la casa (1) + cards de dispositivos + salas.
+                itemCount: 1 + widget.deviceCards.length + rooms.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, i) {
+                  // Cards de dispositivos (TV/JBL) justo después de Toda la casa.
+                  if (i >= 1 && i <= widget.deviceCards.length) {
+                    return widget.deviceCards[i - 1];
+                  }
                   if (i == 0) {
                     // Entrada fija: vista general de la casa.
                     return RoomCard(
@@ -144,7 +158,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
                     );
                   }
 
-                  final room = rooms[i - 1];
+                  final room = rooms[i - 1 - widget.deviceCards.length];
                   final stats = service.statsFor(room);
                   return PulseOnUpdate(
                     triggerAt: stats.latestEventAt,

@@ -296,27 +296,17 @@ class _CasaSplitState extends State<_CasaSplit> {
           children: [
             SizedBox(
               width: 320,
-              child: Column(
-                children: [
-                  // Dispositivos dedicados ARRIBA de la lista (como en la mobile
-                  // app): TV primero, luego JBL. Tocarlos abre su control.
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    child: TvHomeCard(service: widget.tv, neo: true),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    child: SoundbarHomeCard(service: widget.jbl, neo: true),
-                  ),
-                  const SizedBox(height: 4),
-                  Expanded(
-                    child: RoomsSidebar(
-                      service: widget.devices,
-                      selectedRoomId: _selectedRoomId,
-                      onSelect: (id) => setState(() => _selectedRoomId = id),
-                      neo: true,
-                    ),
-                  ),
+              // Logo arriba + lista con "Toda la casa" primero y las cards de
+              // TV/JBL integradas COMO PARTE de la lista (deviceCards), como en
+              // la mobile app. Tocarlas abre su control.
+              child: RoomsSidebar(
+                service: widget.devices,
+                selectedRoomId: _selectedRoomId,
+                onSelect: (id) => setState(() => _selectedRoomId = id),
+                neo: true,
+                deviceCards: [
+                  TvHomeCard(service: widget.tv, neo: true),
+                  SoundbarHomeCard(service: widget.jbl, neo: true),
                 ],
               ),
             ),
