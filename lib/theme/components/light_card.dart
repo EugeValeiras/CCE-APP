@@ -5,10 +5,10 @@ import '../cce_tokens.dart';
 import 'cce_switch.dart';
 
 /// Card visual de una luz (SOLO presentacion; los gestos los pone LightTile).
-/// Card compacta estilo Hue (mismo tamaño que las scene cards): encendida =
-/// card SIEMPRE llena con gradiente vertical del color real (CceGradients
-/// .lightFull); el BRILLO modula lightness/saturación, NO la altura (sin línea
-/// dura). Apagada = card oscura; sin conexión = gris apagado + ícono wifi-off.
+/// Card compacta oscura (neumórfica). El color real de la luz NO llena el fondo:
+/// cuando está encendida el color va al ÍCONO + un borde y un glow del color
+/// (estilo "alerta" del sensor de movimiento), cuya intensidad sube con el
+/// BRILLO. Apagada = card neutra; sin conexión = color muteado + ícono wifi-off.
 class LightCard extends StatelessWidget {
   const LightCard({
     super.key,
@@ -51,66 +51,49 @@ class LightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final base = color ?? CceColors.warm;
     final displayColor = reachable ? base : _muted(base);
-    // Color representativo del fill (promedio top/mid) para decidir contraste.
-    final fgBase = on
-        ? CceGradients.lightFullSampleColor(displayColor, brightness ?? 1.0, reachable)
-        : (neo ? CceColors.neoBase : CceColors.cardOff);
-    final fg = on ? CceTint.textOn(fgBase) : CceColors.textPrimary;
-    final fgSub = on ? CceTint.subTextOn(fgBase) : CceColors.textSecondary;
+    final surfaceBase = neo ? CceColors.neoBase : CceColors.cardOff;
+    final b = (brightness ?? 1.0).clamp(0.0, 1.0).toDouble();
 
-    // ÍCONO GRANDE EXTRUIDO (sin círculo), mismo patrón que RoomCard. El glyph
-    // se "extruye" de la superficie real bajo él:
-    //  - OFF (superficie oscura cardOff/neoBase): par FIJO de CceEmboss
-    //    (lenguaje goma de la app, idéntico al IconTheme global y a RoomCard OFF).
-    //  - ON (fill saturado lightFull): relieve MOLDEADO derivado de `fgBase`
-    //    (muestra promedio del gradiente, NO el color crudo), para que el canto
-    //    de luz/sombra deriven del material de color y no laven/ensucien el glyph.
-    // glyphColor = fg (ink de contraste por luminancia, ya calculado arriba).
+    // La card es SIEMPRE oscura (apagada y encendida). Cuando está ENCENDIDA el
+    // color real de la luz NO llena el fondo: va en el ÍCONO + un borde y un
+    // glow del color (estilo "alerta" del sensor de movimiento / dimmer), cuya
+    // intensidad sube con el brillo. Apagada = card neutra raised.
+    final fgSub = on ? displayColor : CceColors.textSecondary; // estado en color
+
+    // Ícono: color de la luz cuando ON; blanco neutro cuando OFF. Relieve goma
+    // (par fijo CceEmboss) en ambos casos porque la superficie es oscura.
     const double iconSize = 34;
-    final Color glyphColor = fg;
-    final Color embHi, embSh;
-    if (on) {
-      final (h, s) = EmbossedGlyph.surfaceEmboss(fgBase);
-      embHi = h;
-      embSh = s;
-    } else {
-      embHi = CceEmboss.highlight.color;
-      embSh = CceEmboss.shadow.color;
-    }
+    final Color glyphColor = on ? displayColor : CceColors.textPrimary;
+    final embHi = CceEmboss.highlight.color;
+    final embSh = CceEmboss.shadow.color;
 
     return SizedBox(
       height: height,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          // Apagada/raised: superficie convexa (gradiente claro-arriba) + bevel
-          // hairline del canto superior. Encendida: color base plano (el fill
-          // saturado lightFull se pinta encima en el Stack) — SIN gradiente de
-          // almohada ni bevel para no lavar el color.
-          color: on ? (neo ? CceColors.neoBase : CceColors.cardOff) : null,
-          gradient: on
-              ? null
-              : CceGradients.cardSurface(
-                  neo ? CceColors.neoBase : CceColors.cardOff),
+          // Card oscura SIEMPRE (superficie convexa). El color de la luz va al
+          // borde + glow cuando ON (intensidad ∝ brillo); bevel hairline OFF.
+          gradient: CceGradients.cardSurface(surfaceBase),
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
           border: on
-              ? null
+              ? Border.all(
+                  color: displayColor.withValues(alpha: 0.50 + 0.30 * b),
+                  width: 1.6,
+                )
               : Border.all(color: CceColors.cardBevel),
-          boxShadow: neo ? CceShadows.cardFloat() : null,
+          boxShadow: [
+            if (neo) ...CceShadows.cardFloat(),
+            if (on)
+              BoxShadow(
+                color: displayColor.withValues(alpha: 0.18 + 0.22 * b),
+                blurRadius: 14 + 10 * b,
+                spreadRadius: 0,
+              ),
+          ],
         ),
         child: Stack(
           children: [
-            // Fill COMPLETO estilo Hue: card siempre llena cuando on, gradiente
-            // vertical modulado por brillo (sin línea dura). Off/neo intactos.
-            if (on)
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: CceGradients.lightFull(
-                        displayColor, brightness ?? 1.0, reachable),
-                  ),
-                ),
-              ),
             // Contenido.
             Column(
               children: [
@@ -154,12 +137,12 @@ class LightCard extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
                               letterSpacing: -0.1,
                               height: 1.15,
-                              color: fg,
+                              color: CceColors.textPrimary,
                             ),
                           ),
                         ),
@@ -189,9 +172,7 @@ class LightCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border(
                       top: BorderSide(
-                        color: (on && fgBase.computeLuminance() > 0.45)
-                            ? Colors.black.withValues(alpha: 0.16)
-                            : Colors.white.withValues(alpha: 0.10),
+                        color: Colors.white.withValues(alpha: 0.10),
                       ),
                     ),
                   ),
