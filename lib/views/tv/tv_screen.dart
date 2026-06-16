@@ -285,10 +285,6 @@ class _RemoteBody extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
-              // ── Accesos directos de apps (con color de marca) ─────────────
-              _AppShortcuts(service: service),
-              const SizedBox(height: 14),
-
               // ── Wordmark SAMSUNG ──────────────────────────────────────────
               Text(
                 'SAMSUNG',
@@ -608,113 +604,6 @@ class _RockerZone extends StatelessWidget {
         width: double.infinity,
         height: height,
         child: Center(child: child),
-      ),
-    );
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-//  ACCESOS DE APPS
-// ════════════════════════════════════════════════════════════════════════════
-
-/// Fila de 4 accesos directos de apps con color de marca, espejo del control
-/// real (Netflix, Prime Video, YouTube, www). Cada tap → launchApp con el appId
-/// canónico; www queda visual (no hay appId de browser). launchApp NO gatea por
-/// online (lanzar una app despierta el TV).
-class _AppShortcuts extends StatelessWidget {
-  const _AppShortcuts({required this.service});
-
-  final TvService service;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = service.app; // appId de la app en foco (resalta el botón).
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        _AppKey(
-          label: 'NETFLIX',
-          brand: const Color(0xFFE50914),
-          highlighted: active == TvApps.netflix,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            service.launchApp(TvApps.netflix);
-          },
-        ),
-        _AppKey(
-          label: 'prime',
-          brand: const Color(0xFF00A8E1),
-          highlighted: active == TvApps.prime,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            service.launchApp(TvApps.prime);
-          },
-        ),
-        _AppKey(
-          label: 'YouTube',
-          brand: const Color(0xFFFF0000),
-          highlighted: active == TvApps.youtube,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            service.launchApp(TvApps.youtube);
-          },
-        ),
-        // www: visual (no hay appId de browser). Sólo háptico.
-        _AppKey(
-          label: 'www',
-          brand: CceColors.textSecondary,
-          highlighted: false,
-          onTap: () => HapticFeedback.selectionClick(),
-        ),
-      ],
-    );
-  }
-}
-
-/// Botón de app: pastilla neumórfica raised con el wordmark de la marca en su
-/// color. Se hunde y resalta con un borde de marca si está en foco.
-class _AppKey extends StatelessWidget {
-  const _AppKey({
-    required this.label,
-    required this.brand,
-    required this.highlighted,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color brand;
-  final bool highlighted;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final raised = CceShadows.neo(blur: 8, offset: 3);
-    final inset = CceShadows.neoInset(blur: 6, offset: 2);
-    return _PressFx(
-      onTap: onTap,
-      builder: (t) => Container(
-        width: 66,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: CceColors.neoBase,
-          borderRadius: BorderRadius.circular(12),
-          border: highlighted
-              ? Border.all(color: brand.withValues(alpha: 0.9), width: 1.5)
-              : Border.all(color: CceColors.cardBevel, width: 1),
-          boxShadow: _lerp(raised, inset, t),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 0.2,
-            color: brand,
-          ),
-        ),
       ),
     );
   }

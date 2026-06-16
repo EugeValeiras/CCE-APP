@@ -246,7 +246,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         .map((d) => d.id)
         .toList();
     final sensorIds = _applyOrder(
-            devices.where((d) => d.isSensorDevice).toList(), _sensorOrder)
+            devices.where((d) => d.isSensorDevice || d.isSwitch).toList(),
+            _sensorOrder)
         .map((d) => d.id)
         .toList();
     if (lightIds.isEmpty && sensorIds.isEmpty) return;
@@ -367,7 +368,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             devices.where((d) => d.isLight && !d.isSensorDevice).toList(),
             _lightOrder);
         final sensors = _applyOrder(
-            devices.where((d) => d.isSensorDevice).toList(), _sensorOrder);
+            devices.where((d) => d.isSensorDevice || d.isSwitch).toList(),
+            _sensorOrder);
         final onCount = lights.where((l) => l.state.on).length;
 
         // Slivers por sección, renderizados según _order.

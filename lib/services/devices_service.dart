@@ -74,7 +74,8 @@ class DevicesService extends ChangeNotifier {
   // _byId sigue con todo para lookups internos (WS, comandos sobre grupos, etc.).
   List<Device> get all => _byId.values.where((d) => !d.hidden).toList();
   List<Device> get lights => all.where((d) => d.isLight && !d.isSensorDevice).toList();
-  List<Device> get sensors => all.where((d) => d.isSensorDevice).toList();
+  List<Device> get sensors =>
+      all.where((d) => d.isSensorDevice || d.isSwitch).toList();
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;

@@ -16,7 +16,9 @@ import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 import '../utils/plan_svg_theme.dart';
 import '../widgets/light_detail_sheet.dart';
+import 'dial_switch_screen.dart';
 import 'light_color_screen.dart';
+import 'switch_detail_screen.dart';
 
 /// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
 /// Si [planId] != null fuerza ese plano y oculta el selector (modo "Plano"
@@ -424,7 +426,8 @@ class _PlanCanvas extends StatelessWidget {
                           translation: const Offset(-0.5, -0.5),
                           child: _DeviceMarker(
                             listenable: tv!,
-                            icon: CceIcons.tv,
+                            shape: _MarkerShape.tv,
+                            label: 'Samsung TV',
                             onColor: const Color(0xFF1428A0),
                             isOnline: () => tv!.online,
                             isOn: () => tv!.isOn,
@@ -441,7 +444,8 @@ class _PlanCanvas extends StatelessWidget {
                           translation: const Offset(-0.5, -0.5),
                           child: _DeviceMarker(
                             listenable: jbl!,
-                            icon: CceIcons.speaker,
+                            shape: _MarkerShape.jbl,
+                            label: 'Soundbar',
                             onColor: const Color(0xFF3A6BC5),
                             isOnline: () => jbl!.online,
                             isOn: () => jbl!.isOn,
@@ -616,30 +620,53 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
             ? _readingBadge(accent, temp, hum, shadows)
             : _circleDot(accent, active, isLight, shadows, offline);
 
+        // Item 5: el botón/switch sólo es tocable en el tablet (openOnTap); en
+        // el phone queda inerte (sin openOnTap) para no cambiar su conducta.
+        final isSwitch = device.isSwitch;
+        final tappable = isLight || (widget.openOnTap && isSwitch);
+
         return Transform.scale(
           scale: _tapScale.value,
           child: GestureDetector(
-            onTap: isLight
-                ? () {
+            onTap: !tappable
+                ? null
+                : () {
                     HapticFeedback.selectionClick();
                     _tapCtrl.forward(from: 0);
-                    if (widget.openOnTap) {
-                      // Tablet: abrir el control de la luz (LightColorScreen).
-                      // Su top bar tiene cerrar + "Listo" (Navigator.pop), así
-                      // que el back funciona (item 6).
+                    if (isLight) {
+                      if (widget.openOnTap) {
+                        // Tablet: abrir el control de la luz (LightColorScreen).
+                        // Su top bar tiene cerrar + "Listo" (Navigator.pop), así
+                        // que el back funciona (item 6).
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => LightColorScreen(
+                              device: device,
+                              service: widget.service,
+                            ),
+                          ),
+                        );
+                      } else {
+                        widget.service.toggleLight(device);
+                      }
+                    } else {
+                      // Tablet + botón/switch: abrir su pantalla canónica (la
+                      // misma que usa SensorTile): dial si es multi-botón.
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (_) => LightColorScreen(
-                            device: device,
-                            service: widget.service,
-                          ),
+                          builder: (_) => device.isMultiButton
+                              ? DialSwitchScreen(
+                                  device: device,
+                                  service: widget.service,
+                                )
+                              : SwitchDetailScreen(
+                                  device: device,
+                                  service: widget.service,
+                                ),
                         ),
                       );
-                    } else {
-                      widget.service.toggleLight(device);
                     }
-                  }
-                : null,
+                  },
             onLongPress: isLight
                 ? () {
                     HapticFeedback.mediumImpact();
@@ -780,14 +807,22 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
   }
 }
 
-/// Marker de un dispositivo dedicado (TV / JBL) en el plano. Mismo tamaño /
-/// estilo de círculo que [_DeviceDot] para coherencia visual: dot pleno con
-/// glow cuando el equipo está online && encendido (con su [onColor] de marca),
-/// ghost gris cuando no. Escucha el [listenable] (el propio service) para
-/// recolorear con el status. Tap → [onTap] (abre el control dedicado).
+/// Forma del marker dedicado. Espeja la web (floor-plan.component.ts):
+/// ambas son píldoras verticales; la TV dibuja la pantalla mirando a la
+/// izquierda (línea de borde + triángulo), la JBL es una píldora lisa.
+enum _MarkerShape { tv, jbl }
+
+/// Marker de un dispositivo dedicado (TV / JBL) en el plano, espejando el
+/// dashboard web: una píldora vertical con el logo de marca centrado
+/// ([CceIcons.samsung] / [CceIcons.jbl]), un punto de estado online en la
+/// esquina superior derecha y un [label] debajo. Color de marca [onColor]
+/// cuando online && encendido; gris [_offColor] si no. Escucha el
+/// [listenable] (el propio service) para recolorear con el status.
+/// Tap → [onTap] (abre el control dedicado).
 class _DeviceMarker extends StatelessWidget {
   final Listenable listenable;
-  final String icon;
+  final _MarkerShape shape;
+  final String label;
   final Color onColor;
   final bool Function() isOnline;
   final bool Function() isOn;
@@ -798,7 +833,8 @@ class _DeviceMarker extends StatelessWidget {
 
   const _DeviceMarker({
     required this.listenable,
-    required this.icon,
+    required this.shape,
+    required this.label,
     required this.onColor,
     required this.isOnline,
     required this.isOn,
@@ -811,47 +847,103 @@ class _DeviceMarker extends StatelessWidget {
     return AnimatedBuilder(
       animation: listenable,
       builder: (context, _) {
-        final active = isOnline() && isOn();
+        final online = isOnline();
+        final active = online && isOn();
         final accent = active ? onColor : _offColor;
-        final body = active
-            ? Container(
-                width: size,
-                height: size,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: accent,
-                  boxShadow: [
+
+        // Proporción ~18×100 de la web, escalada al dotSize del plano sin
+        // pisar dots vecinos.
+        final pillW = size * 0.34;
+        final pillH = size * 1.40;
+        final isTv = shape == _MarkerShape.tv;
+
+        final pill = Container(
+          width: pillW,
+          height: pillH,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(pillW),
+            // TV: borde izquierdo marcado = la pantalla mira a la izquierda.
+            border: isTv
+                ? Border(
+                    left: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      width: 2,
+                    ),
+                  )
+                : null,
+            boxShadow: active
+                ? [
                     BoxShadow(
                       color: accent.withValues(alpha: 0.45),
                       blurRadius: 18,
                       spreadRadius: 2,
                     ),
-                  ],
-                ),
-                child: CceIcon(
-                  icon,
-                  size: size * 0.52,
-                  color: CceTint.textOn(accent),
-                  emboss: false,
-                ),
+                  ]
+                : null,
+          ),
+          child: CceIcon(
+            isTv ? CceIcons.samsung : CceIcons.jbl,
+            size: pillW * 0.78,
+            color: active
+                ? CceTint.textOn(accent)
+                : Colors.white.withValues(alpha: 0.85),
+            emboss: false,
+          ),
+        );
+
+        // Triángulo apuntando a la IZQUIERDA, pegado al borde de la pantalla.
+        final pillWithScreen = isTv
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CustomPaint(
+                    size: Size(size * 0.12, size * 0.20),
+                    painter: _LeftTrianglePainter(accent),
+                  ),
+                  pill,
+                ],
               )
-            : Container(
-                width: size,
-                height: size,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: CceColors.surfaceHigh.withValues(alpha: 0.80),
-                  border: Border.all(color: CceColors.stroke),
+            : pill;
+
+        final onlineDot = Container(
+          width: size * 0.20,
+          height: size * 0.20,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: online ? CceColors.ok : _offColor,
+            border: Border.all(color: CceColors.surface, width: 1.5),
+          ),
+        );
+
+        final body = Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                pillWithScreen,
+                Positioned(
+                  right: -size * 0.06,
+                  top: -size * 0.06,
+                  child: onlineDot,
                 ),
-                child: CceIcon(
-                  icon,
-                  size: size * 0.52,
-                  color: Colors.white.withValues(alpha: 0.38),
-                  emboss: false,
-                ),
-              );
+              ],
+            ),
+            SizedBox(height: size * 0.10),
+            Text(
+              label,
+              style: TextStyle(
+                color: CceColors.textPrimary,
+                fontSize: size * 0.22,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ],
+        );
 
         return GestureDetector(
           onTap: onTap == null
@@ -866,4 +958,27 @@ class _DeviceMarker extends StatelessWidget {
       },
     );
   }
+}
+
+/// Triángulo isósceles que apunta a la izquierda (la pantalla del TV).
+class _LeftTrianglePainter extends CustomPainter {
+  final Color color;
+  const _LeftTrianglePainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    final path = Path()
+      ..moveTo(0, size.height / 2)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LeftTrianglePainter oldDelegate) =>
+      oldDelegate.color != color;
 }

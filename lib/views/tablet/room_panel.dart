@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../../models/device.dart';
 import '../../models/room_ref.dart';
 import '../../services/devices_service.dart';
+import '../../services/jbl_service.dart';
+import '../../services/tv_service.dart';
 import '../../services/ui_settings_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -30,6 +32,10 @@ class RoomPanel extends StatelessWidget {
     required this.onCycleTileSize,
     required this.onRefresh,
     this.neo = false,
+    this.tv,
+    this.jbl,
+    this.onOpenTv,
+    this.onOpenJbl,
   });
 
   final DevicesService service;
@@ -39,6 +45,15 @@ class RoomPanel extends StatelessWidget {
   final VoidCallback onCycleTileSize;
   final VoidCallback onRefresh;
   final bool neo;
+
+  /// Servicios + callbacks de los dispositivos dedicados (item 6): se
+  /// reenvían a [FloorPlanPanel] para que el plano de la sala muestre los
+  /// markers de TV / JBL si están ubicados en ESE plano y el tap abra el
+  /// control inline en el panel derecho (igual que "Toda la casa").
+  final TvService? tv;
+  final JblService? jbl;
+  final VoidCallback? onOpenTv;
+  final VoidCallback? onOpenJbl;
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -185,6 +200,10 @@ class RoomPanel extends StatelessWidget {
                       showPlanChips: false,
                       dotSize: tileSize.floorPlanDotSize,
                       neo: neo,
+                      tv: tv,
+                      jbl: jbl,
+                      onOpenTv: onOpenTv,
+                      onOpenJbl: onOpenJbl,
                     )
                   : _buildLights(),
             ),
@@ -199,7 +218,8 @@ class RoomPanel extends StatelessWidget {
         room.deviceIds.map(service.byId).whereType<Device>().toList();
     final lights =
         devices.where((d) => d.isLight && !d.isSensorDevice).toList();
-    final sensors = devices.where((d) => d.isSensorDevice).toList();
+    final sensors =
+        devices.where((d) => d.isSensorDevice || d.isSwitch).toList();
 
     if (devices.isEmpty) {
       return const Center(

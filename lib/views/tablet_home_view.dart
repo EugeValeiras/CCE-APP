@@ -310,6 +310,13 @@ class _CasaSplitState extends State<_CasaSplit> {
             onCycleTileSize: widget.ui.cycle,
             onRefresh: widget.devices.refresh,
             neo: true,
+            // Item 6: markers TV/JBL en el plano de la sala; tap abre el
+            // control inline en el panel derecho (mismos callbacks que las
+            // cards y que "Toda la casa").
+            tv: widget.tv,
+            jbl: widget.jbl,
+            onOpenTv: () => setState(() => _selectedDevice = 'tv'),
+            onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
           );
         }
 
