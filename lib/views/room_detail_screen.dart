@@ -12,6 +12,7 @@ import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
+import '../widgets/thermostat_tile.dart';
 
 class RoomDetailScreen extends StatefulWidget {
   final String title;
@@ -34,7 +35,7 @@ class RoomDetailScreen extends StatefulWidget {
 class _RoomDetailScreenState extends State<RoomDetailScreen> {
   // Orden de las secciones, persistido localmente. Reordenable desde el menú.
   static const _orderKey = 'room.sectionOrder';
-  static const _defaultOrder = ['scenes', 'lights', 'sensors'];
+  static const _defaultOrder = ['scenes', 'lights', 'thermostats', 'sensors'];
   List<String> _order = List.of(_defaultOrder);
 
   // Orden de los elementos (deviceIds) por sección, persistido por habitación.
@@ -241,12 +242,17 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     final devices =
         widget.deviceIds.map(service.byId).whereType<Device>().toList();
     final lightIds = _applyOrder(
-            devices.where((d) => d.isLight && !d.isSensorDevice).toList(),
+            devices
+                .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
+                .toList(),
             _lightOrder)
         .map((d) => d.id)
         .toList();
     final sensorIds = _applyOrder(
-            devices.where((d) => d.isSensorDevice || d.isSwitch).toList(),
+            devices
+                .where((d) =>
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+                .toList(),
             _sensorOrder)
         .map((d) => d.id)
         .toList();
@@ -365,10 +371,18 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final devices =
             widget.deviceIds.map(service.byId).whereType<Device>().toList();
         final lights = _applyOrder(
-            devices.where((d) => d.isLight && !d.isSensorDevice).toList(),
+            devices
+                .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
+                .toList(),
             _lightOrder);
+        final thermostats =
+            devices.where((d) => d.isThermostat).toList()
+              ..sort((a, b) => a.name.compareTo(b.name));
         final sensors = _applyOrder(
-            devices.where((d) => d.isSensorDevice || d.isSwitch).toList(),
+            devices
+                .where((d) =>
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+                .toList(),
             _sensorOrder);
         final onCount = lights.where((l) => l.state.on).length;
 
@@ -418,6 +432,42 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                           },
                         ),
                         childCount: lights.length,
+                      ),
+                    ),
+                  ),
+                ]
+              : const [],
+          'thermostats': thermostats.isNotEmpty
+              ? [
+                  const SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(
+                      child: SectionHeader(title: 'Clima'),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        mainAxisExtent: TileSize.medium.sensorTileHeight,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => ListenableBuilder(
+                          listenable: service,
+                          builder: (ctx, _) {
+                            final d =
+                                service.byId(thermostats[i].id) ?? thermostats[i];
+                            return ThermostatTile(
+                                device: d,
+                                service: service,
+                                size: TileSize.medium,
+                                neo: true);
+                          },
+                        ),
+                        childCount: thermostats.length,
                       ),
                     ),
                   ),

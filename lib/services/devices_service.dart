@@ -73,9 +73,11 @@ class DevicesService extends ChangeNotifier {
   // Listas visibles: excluyen devices marcados como hidden en backend.
   // _byId sigue con todo para lookups internos (WS, comandos sobre grupos, etc.).
   List<Device> get all => _byId.values.where((d) => !d.hidden).toList();
-  List<Device> get lights => all.where((d) => d.isLight && !d.isSensorDevice).toList();
+  List<Device> get lights =>
+      all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat).toList();
   List<Device> get sensors =>
-      all.where((d) => d.isSensorDevice || d.isSwitch).toList();
+      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat).toList();
+  List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
@@ -251,6 +253,66 @@ class DevicesService extends ChangeNotifier {
       await _api.setDeviceState(d.id, {'ct': clamped, 'on': true});
     } catch (e) {
       debugPrint('setCt error: $e');
+    }
+  }
+
+  // ===========================================================================
+  // Termostato (Tuya cat 'wk') — optimista con revert, mismo patrón que las luces.
+  // ===========================================================================
+
+  /// Redondea [temp] al paso de 0.5 °C y lo clampea al rango [minTemp,maxTemp]
+  /// del device (defaults 5..45 si el device no los reporta).
+  double _clampTargetTemp(Device d, double temp) {
+    final min = d.state.minTemp ?? 5;
+    final max = d.state.maxTemp ?? 45;
+    final stepped = (temp * 2).round() / 2; // paso 0.5
+    return stepped.clamp(min, max).toDouble();
+  }
+
+  /// Setpoint del termostato (paso 0.5 °C, clamp [minTemp,maxTemp]). Optimista
+  /// con revert al valor previo si el PUT falla.
+  Future<void> setTargetTemp(Device d, double temp) async {
+    final clamped = _clampTargetTemp(d, temp);
+    final prev = d.state.targetTemp;
+    if (clamped == prev) return;
+    d.state = d.state.copyWith(targetTemp: clamped);
+    notifyListeners();
+    try {
+      await _api.setDeviceState(d.id, {'targetTemp': clamped});
+    } catch (e) {
+      debugPrint('setTargetTemp error: $e');
+      d.state = d.state.copyWith(targetTemp: prev);
+      notifyListeners();
+    }
+  }
+
+  /// Prende/apaga el termostato (power, DP1). Optimista con revert.
+  Future<void> setThermostatPower(Device d, bool on) async {
+    final prev = d.state.on;
+    if (on == prev) return;
+    d.state = d.state.copyWith(on: on);
+    notifyListeners();
+    try {
+      await _api.setDeviceState(d.id, {'on': on});
+    } catch (e) {
+      debugPrint('setThermostatPower error: $e');
+      d.state = d.state.copyWith(on: prev);
+      notifyListeners();
+    }
+  }
+
+  /// Modo del termostato ('Manual' | 'Program', DP4). Optimista con revert.
+  Future<void> setTempMode(Device d, String mode) async {
+    final prev = d.state.tempMode;
+    if (mode == prev) return;
+    d.state = d.state.copyWith(tempMode: mode);
+    notifyListeners();
+    try {
+      await _api.setDeviceState(d.id, {'tempMode': mode});
+    } catch (e) {
+      debugPrint('setTempMode error: $e');
+      d.state = d.state.copyWith(tempMode: prev);
+      notifyListeners();
     }
   }
 
@@ -669,6 +731,14 @@ class DevicesService extends ChangeNotifier {
         'mode': ev.state!['mode'] ?? d.state.mode,
         'colormode': ev.state!['colormode'] ?? d.state.colormode,
         'xy': ev.state!['xy'] ?? d.state.xy,
+        // Termostato: sin estos campos los updates en vivo del setpoint /
+        // temp actual se perderían (el WS state se re-arma campo por campo).
+        'currentTemp': ev.state!['currentTemp'] ?? d.state.currentTemp,
+        'targetTemp': ev.state!['targetTemp'] ?? d.state.targetTemp,
+        'tempMode': ev.state!['tempMode'] ?? d.state.tempMode,
+        'systemMode': ev.state!['systemMode'] ?? d.state.systemMode,
+        'minTemp': ev.state!['minTemp'] ?? d.state.minTemp,
+        'maxTemp': ev.state!['maxTemp'] ?? d.state.maxTemp,
       });
       d.state = partial;
       changed = true;

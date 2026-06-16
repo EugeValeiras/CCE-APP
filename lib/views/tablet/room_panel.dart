@@ -15,6 +15,7 @@ import '../../widgets/light_tile.dart';
 import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
 import '../../widgets/temperature_summary_card.dart';
+import '../../widgets/thermostat_tile.dart';
 import '../floor_plan_tab.dart';
 
 /// Panel derecho de la tab Casa cuando hay una habitacion seleccionada:
@@ -216,10 +217,13 @@ class RoomPanel extends StatelessWidget {
   Widget _buildLights() {
     final devices =
         room.deviceIds.map(service.byId).whereType<Device>().toList();
-    final lights =
-        devices.where((d) => d.isLight && !d.isSensorDevice).toList();
-    final sensors =
-        devices.where((d) => d.isSensorDevice || d.isSwitch).toList();
+    final lights = devices
+        .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
+        .toList();
+    final thermostats = devices.where((d) => d.isThermostat).toList();
+    final sensors = devices
+        .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+        .toList();
 
     if (devices.isEmpty) {
       return const Center(
@@ -267,6 +271,40 @@ class RoomPanel extends StatelessWidget {
                   },
                 ),
                 childCount: lights.length,
+              ),
+            ),
+          ),
+        ],
+        if (thermostats.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: const SliverToBoxAdapter(
+              child: SectionHeader(title: 'Clima'),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: tileSize.maxTileExtent,
+                mainAxisExtent: tileSize.sensorTileHeight,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => ListenableBuilder(
+                  listenable: service,
+                  builder: (context, _) {
+                    final d = service.byId(thermostats[i].id) ?? thermostats[i];
+                    return ThermostatTile(
+                      device: d,
+                      service: service,
+                      size: tileSize,
+                      neo: neo,
+                    );
+                  },
+                ),
+                childCount: thermostats.length,
               ),
             ),
           ),

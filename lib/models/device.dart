@@ -9,6 +9,14 @@ class DeviceState {
   final String? colormode; // 'hs' | 'xy' | 'ct' — solo provider hue
   final List<double>? xy; // [x, y] CIE — solo provider hue
 
+  // ── Termostato (Tuya cat 'wk') — todos opcionales, viajan dentro de state ──
+  final double? currentTemp; // °C, lectura del sensor (DP24)
+  final double? targetTemp; // °C, setpoint editable (DP3)
+  final String? tempMode; // 'Manual' | 'Program' (DP4)
+  final String? systemMode; // ej 'heat' (DP28)
+  final double? minTemp; // mínimo del setpoint (DP113)
+  final double? maxTemp; // máximo del setpoint (DP112)
+
   DeviceState({
     this.on = false,
     this.bri = 0,
@@ -19,6 +27,12 @@ class DeviceState {
     this.mode,
     this.colormode,
     this.xy,
+    this.currentTemp,
+    this.targetTemp,
+    this.tempMode,
+    this.systemMode,
+    this.minTemp,
+    this.maxTemp,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -34,6 +48,12 @@ class DeviceState {
       xy: (json['xy'] is List && (json['xy'] as List).length >= 2)
           ? [(json['xy'][0] as num).toDouble(), (json['xy'][1] as num).toDouble()]
           : null,
+      currentTemp: (json['currentTemp'] as num?)?.toDouble(),
+      targetTemp: (json['targetTemp'] as num?)?.toDouble(),
+      tempMode: json['tempMode'] as String?,
+      systemMode: json['systemMode'] as String?,
+      minTemp: (json['minTemp'] as num?)?.toDouble(),
+      maxTemp: (json['maxTemp'] as num?)?.toDouble(),
     );
   }
 
@@ -41,7 +61,23 @@ class DeviceState {
   // conserva el valor previo); por eso los setters optimistas de
   // DevicesService pisan `colormode` explícitamente ('hs' en setColor,
   // 'ct' en setCt) para que resolveLightColor ignore el xy viejo.
-  DeviceState copyWith({bool? on, int? bri, int? hue, int? sat, int? ct, bool? reachable, String? mode, String? colormode, List<double>? xy}) {
+  DeviceState copyWith({
+    bool? on,
+    int? bri,
+    int? hue,
+    int? sat,
+    int? ct,
+    bool? reachable,
+    String? mode,
+    String? colormode,
+    List<double>? xy,
+    double? currentTemp,
+    double? targetTemp,
+    String? tempMode,
+    String? systemMode,
+    double? minTemp,
+    double? maxTemp,
+  }) {
     return DeviceState(
       on: on ?? this.on,
       bri: bri ?? this.bri,
@@ -52,6 +88,12 @@ class DeviceState {
       mode: mode ?? this.mode,
       colormode: colormode ?? this.colormode,
       xy: xy ?? this.xy,
+      currentTemp: currentTemp ?? this.currentTemp,
+      targetTemp: targetTemp ?? this.targetTemp,
+      tempMode: tempMode ?? this.tempMode,
+      systemMode: systemMode ?? this.systemMode,
+      minTemp: minTemp ?? this.minTemp,
+      maxTemp: maxTemp ?? this.maxTemp,
     );
   }
 }
@@ -99,6 +141,9 @@ class Device {
   final String type;
   final String? source;
   final List<String> bindingIds;
+  /// Capabilities del descriptor (array de strings: 'switch', 'brightness',
+  /// 'color_hsv', 'thermostat', …). Fuente canónica para detectar el tipo.
+  final List<String> capabilities;
   final bool hidden;
   DeviceState state;
   DeviceSensor? sensor;
@@ -112,6 +157,7 @@ class Device {
     required this.type,
     this.source,
     this.bindingIds = const [],
+    this.capabilities = const [],
     this.hidden = false,
     required this.state,
     this.sensor,
@@ -127,12 +173,17 @@ class Device {
         }
       }
     }
+    final rawCaps = json['capabilities'];
+    final capabilities = rawCaps is List
+        ? rawCaps.map((c) => c.toString()).toList()
+        : const <String>[];
     return Device(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       type: (json['type'] ?? '').toString(),
       source: json['source'] as String?,
       bindingIds: bindingIds,
+      capabilities: capabilities,
       hidden: json['hidden'] == true,
       state: DeviceState.fromJson(Map<String, dynamic>.from(json['state'] ?? {})),
       sensor: json['sensor'] == null
@@ -141,8 +192,16 @@ class Device {
     );
   }
 
+  /// Termostato: capability 'thermostat' en el descriptor (fuente canónica),
+  /// con fallbacks por tipo / presencia de setpoint para descriptores legacy.
+  bool get isThermostat =>
+      capabilities.contains('thermostat') ||
+      type.toLowerCase().contains('thermostat') ||
+      state.targetTemp != null;
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
+    if (isThermostat) return false;
     final t = type.toLowerCase();
     return t.contains('light') ||
         t.contains('bulb') ||
