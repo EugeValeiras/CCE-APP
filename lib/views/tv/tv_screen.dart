@@ -177,8 +177,9 @@ class _RemoteBody extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              // ── Fila de utilidades (5 en una línea): Guía · Home · Back ·
-              //    123 · Mute ──────────────────────────────────────────────────
+              // ── Fila de utilidades (4 en una línea): Guía · Home · Back ·
+              //    123. El mute NO va acá (vive al centro del rocker VOL) para
+              //    no duplicarlo en la misma pantalla.
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -206,17 +207,6 @@ class _RemoteBody extends StatelessWidget {
                     label: '123',
                     semantic: 'Teclado numérico',
                     onTap: () => _openNumPad(context, service),
-                  ),
-                  // Mute (toggle). Refleja estado actual con el ícono volume-x.
-                  _RoundKey(
-                    svg: service.muted ? CceIcons.volumeX : CceIcons.volume2,
-                    semantic: service.muted ? 'Quitar silencio' : 'Silenciar',
-                    enabled: online,
-                    active: service.muted,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      service.toggleMute();
-                    },
                   ),
                 ],
               ),
