@@ -52,7 +52,7 @@ class ThermostatTile extends StatelessWidget {
         ? 'Sin conexión'
         : (on
             ? (current != null
-                ? 'Ambiente ${current.toStringAsFixed(1)}°'
+                ? 'Actual ${current.toStringAsFixed(1)}°'
                 : 'Encendido')
             : 'Apagado');
 

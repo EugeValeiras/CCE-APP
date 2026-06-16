@@ -139,7 +139,7 @@ class ThermostatScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Ambiente ${current.toStringAsFixed(1)}°',
+                        'Actual ${current.toStringAsFixed(1)}°',
                         style: CceText.caption.copyWith(fontSize: 14),
                       ),
                     ],

@@ -179,9 +179,9 @@ class _RemoteBody extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              // ── Fila de utilidades (4 en una línea): Guía · Home · Back ·
-              //    123. El mute NO va acá (vive al centro del rocker VOL) para
-              //    no duplicarlo en la misma pantalla.
+              // ── Fila de utilidades (5 en una línea): Guía · Apps · Home ·
+              //    Back · Ajustes. El mute NO va acá (vive al centro del rocker
+              //    VOL); el teclado 123 se abre desde el centro del rocker CH.
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -204,18 +204,19 @@ class _RemoteBody extends StatelessWidget {
                     semantic: 'Home',
                     onTap: () => _key(service, TvRemoteKeys.home, gate: false),
                   ),
-                  // Return / Back.
+                  // Return / Back: flecha que da la vuelta (como el control físico).
                   _RoundKey(
-                    icon: Icons.keyboard_return_rounded,
+                    svg: CceIcons.returnArrow,
                     semantic: 'Volver',
                     enabled: online,
                     onTap: () => _key(service, TvRemoteKeys.back),
                   ),
-                  // 123 → teclado numérico.
+                  // Ajustes (KEY_MENU del Samsung).
                   _RoundKey(
-                    label: '123',
-                    semantic: 'Teclado numérico',
-                    onTap: () => _openNumPad(context, service),
+                    svg: CceIcons.settings,
+                    semantic: 'Ajustes',
+                    enabled: online,
+                    onTap: () => _key(service, TvRemoteKeys.menu),
                   ),
                 ],
               ),
@@ -614,14 +615,13 @@ class _RockerZone extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════════════════
 
 /// Botón circular neumórfico raised genérico del anillo de utilidades. Acepta un
-/// SVG de [CceIcons], un [IconData] de Material, o un [label] de texto (123).
+/// SVG de [CceIcons] o un [IconData] de Material.
 /// `enabled`=false ⇒ plano, glyph atenuado. `active`=true ⇒ glyph en acento info
 /// (p.ej. mute encendido). `accent` tiñe el glyph (p.ej. power en rojo).
 class _RoundKey extends StatelessWidget {
   const _RoundKey({
     this.svg,
     this.icon,
-    this.label,
     required this.semantic,
     required this.onTap,
     this.enabled = true,
@@ -632,7 +632,6 @@ class _RoundKey extends StatelessWidget {
 
   final String? svg;
   final IconData? icon;
-  final String? label;
   final String semantic;
   final VoidCallback? onTap;
   final bool enabled;
@@ -649,17 +648,7 @@ class _RoundKey extends StatelessWidget {
         : (accent ?? (active ? CceColors.info : CceColors.neoText));
 
     Widget content;
-    if (label != null) {
-      content = Text(
-        label!,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.5,
-          color: glyph,
-        ),
-      );
-    } else if (svg != null) {
+    if (svg != null) {
       content = CceIcon(svg!, size: size * 0.42, color: glyph);
     } else {
       content = Icon(icon, size: size * 0.46, color: glyph);
