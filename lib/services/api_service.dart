@@ -704,6 +704,34 @@ class ApiService {
         .toList();
   }
 
+  /// Apps INSTALADAS sondeadas en el TV (GET /tv/apps/installed →
+  /// { apps: [ { appId, label, brand } ] }). El backend NUNCA tira por TV
+  /// inalcanzable: devuelve la última lista cacheada, o {apps:[]} si no hay
+  /// nada. Acá tampoco propagamos errores: ante cualquier fallo (red/API down/
+  /// timeout/JSON inesperado) devolvemos [] para que la grilla muestre el
+  /// estado "vacío" sin romper. Timeout 8s: el sondeo del TV puede tardar más
+  /// que un comando simple (igual criterio que getTvStatus).
+  Future<List<TvInstalledApp>> getInstalledTvApps() async {
+    try {
+      final resp = await http
+          .get(Uri.parse('${config.baseUrl}/tv/apps/installed'))
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body);
+      // Contrato: { apps: [...] }. Toleramos también una List cruda por las
+      // dudas; cualquier otra forma ⇒ lista vacía.
+      final list = data is Map ? data['apps'] : data;
+      if (list is! List) return const [];
+      return list
+          .whereType<Map>()
+          .map((e) => TvInstalledApp.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      // NUNCA tira: la grilla cae al estado vacío.
+      return const [];
+    }
+  }
+
   /// Activa el modo ambiente del TV (POST /tv/ambient/on).
   Future<void> tvAmbientOn() async {
     final resp = await http

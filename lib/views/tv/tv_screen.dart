@@ -189,6 +189,13 @@ class _RemoteBody extends StatelessWidget {
                     semantic: 'Guía / Fuentes',
                     onTap: () => _openSourcesSheet(context, service),
                   ),
+                  // Apps → grilla de apps instaladas (sheet). NO gatea por
+                  // online: lanzar una app despierta el TV desde standby.
+                  _RoundKey(
+                    icon: Icons.apps_rounded,
+                    semantic: 'Apps instaladas',
+                    onTap: () => _openAppsSheet(context, service),
+                  ),
                   // Home: NO gatea por online (despierta el TV).
                   _RoundKey(
                     icon: Icons.home_rounded,
@@ -1222,6 +1229,217 @@ class _SheetLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(text.toUpperCase(), style: CceText.section);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  SHEET DE APPS INSTALADAS (grilla)
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Abre el sheet con la GRILLA de apps instaladas en el TV. Al abrir se sondea
+/// service.installedApps() (GET /tv/apps/installed). Tap en un tile → launchApp
+/// + cierra el sheet + háptico. launchApp NO gatea por online (lanzar una app
+/// despierta el TV desde standby), por eso el sheet se abre siempre.
+void _openAppsSheet(BuildContext context, TvService service) {
+  HapticFeedback.selectionClick();
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: CceColors.neoBase,
+    showDragHandle: true,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+    ),
+    builder: (_) => _AppsSheet(service: service),
+  );
+}
+
+/// Bottom-sheet con la grilla de apps instaladas. StatefulWidget porque sondea
+/// la lista una sola vez al abrir y maneja su propio estado (cargando / datos /
+/// vacío) sin tocar el TvService (que es solo para comandos + status).
+class _AppsSheet extends StatefulWidget {
+  const _AppsSheet({required this.service});
+
+  final TvService service;
+
+  @override
+  State<_AppsSheet> createState() => _AppsSheetState();
+}
+
+class _AppsSheetState extends State<_AppsSheet> {
+  bool _loading = true;
+  List<TvInstalledApp> _apps = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    // installedApps() NUNCA tira (la api garantiza [] ante error), pero
+    // igualmente protegemos el setState con el guard de `mounted`.
+    final apps = await widget.service.installedApps();
+    if (!mounted) return;
+    setState(() {
+      _apps = apps;
+      _loading = false;
+    });
+  }
+
+  /// Lanza la app y cierra el sheet (con háptico). No esperamos el resultado:
+  /// launchApp es optimista y el sheet ya cumplió su función al elegir la app.
+  void _launch(TvInstalledApp app) {
+    HapticFeedback.selectionClick();
+    widget.service.launchApp(app.appId);
+    Navigator.of(context).maybePop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Center(child: Text('Apps', style: CceText.title)),
+            const SizedBox(height: 20),
+            _buildContent(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent() {
+    // Estado: cargando (spinner centrado).
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 36),
+        child: Center(
+          child: CircularProgressIndicator(color: CceColors.textTertiary),
+        ),
+      );
+    }
+
+    // Estado: vacío (no se detectaron apps / TV apagado).
+    if (_apps.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(
+            'No se detectaron apps · encendé el TV',
+            textAlign: TextAlign.center,
+            style: CceText.caption,
+          ),
+        ),
+      );
+    }
+
+    // Estado: datos. Grilla de tiles (color de marca + nombre). shrinkWrap +
+    // never-scroll porque ya vivimos dentro de un sheet scrollable (el Column
+    // con MainAxisSize.min); el isScrollControlled del sheet le da el alto.
+    final active = widget.service.app; // appId en foco → resalta el tile.
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.4,
+      ),
+      itemCount: _apps.length,
+      itemBuilder: (context, i) {
+        final app = _apps[i];
+        return _AppGridTile(
+          app: app,
+          highlighted: active == app.appId,
+          onTap: () => _launch(app),
+        );
+      },
+    );
+  }
+}
+
+/// Tile de la grilla de apps: pastilla neumórfica raised con un punto del color
+/// de marca + el nombre de la app. Se hunde al tocar y resalta con un borde de
+/// marca si está en foco (mismo lenguaje visual que _AppKey / _SourceChip).
+class _AppGridTile extends StatelessWidget {
+  const _AppGridTile({
+    required this.app,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  final TvInstalledApp app;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final raised = CceShadows.neo(blur: 8, offset: 3);
+    final inset = CceShadows.neoInset(blur: 6, offset: 2);
+    final brand = _parseBrand(app.brand);
+    return _PressFx(
+      onTap: onTap,
+      builder: (t) => Container(
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: CceColors.neoBase,
+          borderRadius: BorderRadius.circular(CceRadii.control),
+          border: highlighted
+              ? Border.all(color: brand.withValues(alpha: 0.9), width: 1.5)
+              : Border.all(color: CceColors.cardBevel, width: 1),
+          boxShadow: _lerp(raised, inset, t),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Punto del color de marca (sin logos vendoreados: el contrato sólo
+            // da un hex, no un asset por app).
+            Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: brand,
+                boxShadow: CceShadows.neo(blur: 4, offset: 2),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              app.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: CceColors.neoText,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Convierte el hex de marca ("#E50914" / "E50914" / "#FFE50914") a Color.
+  /// Cae a un gris neutro si viene vacío o malformado (el contrato dice que
+  /// `brand` puede no venir). El parseo vive en la vista para que el modelo
+  /// quede libre de dependencias de Flutter.
+  static Color _parseBrand(String hex) {
+    var h = hex.trim().replaceFirst('#', '');
+    if (h.length == 6) h = 'FF$h'; // sin alpha ⇒ opaco.
+    final value = int.tryParse(h, radix: 16);
+    if (value == null) return CceColors.textSecondary;
+    return Color(value);
   }
 }
 

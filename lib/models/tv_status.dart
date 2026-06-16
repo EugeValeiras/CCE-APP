@@ -196,3 +196,35 @@ class TvApp {
     );
   }
 }
+
+/// Una app INSTALADA del TV (← items de GET /tv/apps/installed). A diferencia de
+/// [TvApp] (catálogo de accesos fijos), estas son las apps realmente sondeadas
+/// en el TV. `appId` = id real de la plataforma que se manda en POST
+/// /tv/app/launch {appId}, `label` = nombre para mostrar, `brand` = color de
+/// marca en hex (ej "#E50914"); se guarda como String crudo y la vista lo
+/// convierte a Color (este modelo no depende de Flutter). El endpoint NUNCA
+/// tira: devuelve solo las instaladas o la última lista cacheada.
+class TvInstalledApp {
+  final String appId;
+  final String label;
+
+  /// Color de marca en hex tal como lo manda el backend (ej "#E50914"). Puede
+  /// venir vacío si el backend no lo conoce; la vista cae a un color neutro.
+  final String brand;
+
+  const TvInstalledApp({
+    required this.appId,
+    required this.label,
+    required this.brand,
+  });
+
+  factory TvInstalledApp.fromJson(Map<String, dynamic> json) {
+    final appId = (json['appId'] ?? '').toString();
+    return TvInstalledApp(
+      appId: appId,
+      // Si no viene label, usamos el appId como fallback legible.
+      label: (json['label'] ?? appId).toString(),
+      brand: (json['brand'] ?? '').toString(),
+    );
+  }
+}

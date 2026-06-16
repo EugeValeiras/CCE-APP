@@ -452,6 +452,11 @@ class TvService extends ChangeNotifier {
     }
   }
 
+  /// Lista de apps INSTALADAS sondeadas en el TV (passthrough a
+  /// [ApiService.getInstalledTvApps]). NUNCA tira (la api ya garantiza []
+  /// ante error); no cachea ni notifica: el sheet la pide on-demand al abrir.
+  Future<List<TvInstalledApp>> installedApps() => _api.getInstalledTvApps();
+
   /// Activa el modo ambiente del TV (POST /tv/ambient/on).
   Future<bool> ambientOn() async {
     if (_status == null) return false;
