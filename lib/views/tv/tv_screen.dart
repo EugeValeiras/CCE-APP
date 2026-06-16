@@ -230,49 +230,61 @@ class _RemoteBody extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Píldora fina centrada en la columna izquierda (VOL).
                   Expanded(
-                    child: _Rocker(
-                      label: 'VOL',
-                      topIcon: Icons.add_rounded,
-                      bottomIcon: Icons.remove_rounded,
-                      // Centro: mute (igual que el control físico).
-                      centerSvg: service.muted
-                          ? CceIcons.volumeX
-                          : CceIcons.volume2,
-                      centerActive: service.muted,
-                      enabled: online,
-                      onTop: () {
-                        HapticFeedback.selectionClick();
-                        service.volumeUp();
-                      },
-                      onBottom: () {
-                        HapticFeedback.selectionClick();
-                        service.volumeDown();
-                      },
-                      onCenter: () {
-                        HapticFeedback.selectionClick();
-                        service.toggleMute();
-                      },
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 86),
+                        child: _Rocker(
+                          label: 'VOL',
+                          topIcon: Icons.add_rounded,
+                          bottomIcon: Icons.remove_rounded,
+                          // Centro: mute (igual que el control físico).
+                          centerSvg: service.muted
+                              ? CceIcons.volumeX
+                              : CceIcons.volume2,
+                          centerActive: service.muted,
+                          enabled: online,
+                          onTop: () {
+                            HapticFeedback.selectionClick();
+                            service.volumeUp();
+                          },
+                          onBottom: () {
+                            HapticFeedback.selectionClick();
+                            service.volumeDown();
+                          },
+                          onCenter: () {
+                            HapticFeedback.selectionClick();
+                            service.toggleMute();
+                          },
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 22),
+                  // Píldora fina centrada en la columna derecha (CH).
                   Expanded(
-                    child: _Rocker(
-                      label: 'CH',
-                      topIcon: Icons.keyboard_arrow_up_rounded,
-                      bottomIcon: Icons.keyboard_arrow_down_rounded,
-                      // Centro: lista de canales (visual → 123 / guía).
-                      centerIcon: Icons.menu_rounded,
-                      enabled: online,
-                      onTop: () {
-                        HapticFeedback.selectionClick();
-                        service.channelUp();
-                      },
-                      onBottom: () {
-                        HapticFeedback.selectionClick();
-                        service.channelDown();
-                      },
-                      onCenter: () => _openNumPad(context, service),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 86),
+                        child: _Rocker(
+                          label: 'CH',
+                          topIcon: Icons.keyboard_arrow_up_rounded,
+                          bottomIcon: Icons.keyboard_arrow_down_rounded,
+                          // Centro: lista de canales (visual → 123 / guía).
+                          centerIcon: Icons.menu_rounded,
+                          enabled: online,
+                          onTop: () {
+                            HapticFeedback.selectionClick();
+                            service.channelUp();
+                          },
+                          onBottom: () {
+                            HapticFeedback.selectionClick();
+                            service.channelDown();
+                          },
+                          onCenter: () => _openNumPad(context, service),
+                        ),
+                      ),
                     ),
                   ),
                 ],

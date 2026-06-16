@@ -183,7 +183,10 @@ class TvService extends ChangeNotifier {
   /// Slider: pisa optimista, NO revierte en catch (igual que JblService.setVolume
   /// / setBrightness). El próximo poll reconcilia.
   Future<bool> setVolume(int v) async {
-    if (!canCommand) return false;
+    // Gateamos sólo por estado conocido (NO por online): el volumen debe poder
+    // enviarse aunque SmartThings reporte offline por rate-limit/timeout, igual
+    // que sendKey/togglePower. El TV real es la verdad, no el cache.
+    if (_status == null) return false;
     final clamped = v.clamp(0, kTvVolMax);
     _status = _status!.copyWith(volume: clamped);
     _safeNotify();
@@ -197,10 +200,13 @@ class TvService extends ChangeNotifier {
   }
 
   Future<bool> volumeUp() async {
-    if (!canCommand) return false;
+    // Sólo requiere estado conocido (NO online). NO abortamos en el extremo:
+    // el volumen cacheado no es confiable (SmartThings reporta 0 con una app
+    // abierta), así que SIEMPRE mandamos el comando al backend.
+    if (_status == null) return false;
     final current = _status!.volume ?? 0;
-    if (current >= kTvVolMax) return true;
-    // Optimismo +1 (el TV puede usar otro step; el poll reconcilia).
+    // Optimismo +1 sólo para el display (el TV puede usar otro step; el poll
+    // reconcilia). Nunca abortamos el envío por el cache.
     _status = _status!.copyWith(volume: (current + 1).clamp(0, kTvVolMax));
     _safeNotify();
     try {
@@ -217,9 +223,13 @@ class TvService extends ChangeNotifier {
   }
 
   Future<bool> volumeDown() async {
-    if (!canCommand) return false;
+    // Sólo requiere estado conocido (NO online). NO abortamos en el extremo:
+    // el volumen cacheado no es confiable (SmartThings reporta 0 con una app
+    // abierta), así que SIEMPRE mandamos el comando al backend.
+    if (_status == null) return false;
     final current = _status!.volume ?? 0;
-    if (current <= 0) return true;
+    // Optimismo -1 sólo para el display (el poll reconcilia). Nunca abortamos
+    // el envío por el cache.
     _status = _status!.copyWith(volume: (current - 1).clamp(0, kTvVolMax));
     _safeNotify();
     try {

@@ -153,7 +153,10 @@ class _TvHomeCardState extends State<TvHomeCard> {
               ),
               const SizedBox(width: 8),
               if (online)
-                CceSwitch(value: on, onChanged: (_) => tv.togglePower())
+                // Mandamos el estado EXPLÍCITO del switch (PUT /tv/power {on:v}):
+                // desde la home el isOn cacheado puede estar stale/"unknown",
+                // así que setPower garantiza la dirección correcta.
+                CceSwitch(value: on, onChanged: (v) => tv.setPower(v))
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
             ],
