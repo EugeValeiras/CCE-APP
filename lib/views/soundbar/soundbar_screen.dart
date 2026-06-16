@@ -107,20 +107,41 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
       );
     }
 
-    // Rama 4: online — control completo (dial de volumen + fuentes + accesos).
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: [
-        _SoundbarHeaderCard(service: service),
-        const SizedBox(height: 16),
-        _VolumeDialCard(service: service),
-        const SizedBox(height: 24),
-        const _SectionLabel('FUENTES'),
-        _SourcesRow(service: service),
-        const SizedBox(height: 24),
-        const _SectionLabel('ACCESOS RÁPIDOS'),
-        _QuickAccessGrid(service: service),
-      ],
+    // Rama 4: online — TODO el control en UN solo panel neumórfico (estilo
+    // "control remoto", como la pantalla de la TV): header + dial + fuentes +
+    // accesos viven dentro de la misma superficie, separados por hairlines.
+    Widget divider() => Container(
+          margin: const EdgeInsets.symmetric(vertical: 14),
+          height: 1,
+          color: Colors.white.withValues(alpha: 0.05),
+        );
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+        decoration: BoxDecoration(
+          gradient: CceGradients.cardSurface(CceColors.neoBase),
+          borderRadius: BorderRadius.circular(36),
+          border: Border.all(color: CceColors.cardBevel),
+          boxShadow: CceShadows.cardFloat(),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _SoundbarHeaderCard(service: service),
+            divider(),
+            _VolumeDialCard(service: service),
+            divider(),
+            const _SectionLabel('FUENTES'),
+            const SizedBox(height: 10),
+            _SourcesRow(service: service),
+            const SizedBox(height: 18),
+            const _SectionLabel('ACCESOS RÁPIDOS'),
+            const SizedBox(height: 10),
+            _QuickAccessGrid(service: service),
+          ],
+        ),
+      ),
     );
   }
 }

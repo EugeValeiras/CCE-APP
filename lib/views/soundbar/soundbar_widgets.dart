@@ -189,12 +189,8 @@ class _SoundbarHeaderCard extends StatelessWidget {
     // [CRÍTICA-13] capturar en local: null-promotion no aplica a getters.
     final src = service.source;
 
-    return CceCard(
-      // Contenedor RAISED del MISMO color que los botones (neoBase), como el
-      // dashboard: así los −/+ y el power se ven extruidos del fondo (antes era
-      // un well neoInset más oscuro y los botones no se fundían).
-      neo: true,
-      child: Row(
+    // Contenido del header (sin card propia: va dentro del panel del control).
+    return Row(
         children: [
           // Avatar del speaker: WELL hundido (neoSunken + neoInset opaco). El
           // ícono pasa a accent cuando isOn / neoTextSub cuando no.
@@ -247,7 +243,6 @@ class _SoundbarHeaderCard extends StatelessWidget {
             onPressed: () => _handle(service.togglePower(), context),
           ),
         ],
-      ),
     );
   }
 }
@@ -291,12 +286,8 @@ class _VolumeDialCard extends StatelessWidget {
     final muted = service.muted;
     final volume = service.volume;
 
-    return CceCard(
-      // Contenedor RAISED del MISMO color que los botones (neoBase), como el
-      // dashboard: así los −/+ y el power se ven extruidos del fondo (antes era
-      // un well neoInset más oscuro y los botones no se fundían).
-      neo: true,
-      child: Column(
+    // Contenido del volumen (sin card propia: va dentro del panel del control).
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -418,8 +409,7 @@ class _VolumeDialCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 }
 
