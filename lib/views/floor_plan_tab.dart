@@ -883,33 +883,36 @@ class _DeviceMarker extends StatelessWidget {
                   ]
                 : null,
           ),
-          child: CceIcon(
-            isTv ? CceIcons.samsung : CceIcons.jbl,
-            size: pillW * 0.78,
-            color: active
-                ? CceTint.textOn(accent)
-                : Colors.white.withValues(alpha: 0.85),
-            emboss: false,
-          ),
+          // El logo de Samsung (TV) va GIRADO 90° dentro de la píldora vertical;
+          // el de JBL queda derecho.
+          child: () {
+            final glyph = CceIcon(
+              isTv ? CceIcons.samsung : CceIcons.jbl,
+              size: pillW * 0.78,
+              color: active
+                  ? CceTint.textOn(accent)
+                  : Colors.white.withValues(alpha: 0.85),
+              emboss: false,
+            );
+            return isTv
+                ? RotatedBox(quarterTurns: 1, child: glyph)
+                : glyph;
+          }(),
         );
 
-        // Triángulo apuntando a la pantalla + TV girado 90° (queda horizontal,
-        // como se ve un televisor de verdad). El RotatedBox rota también el
-        // layout, así el dot de online queda bien ubicado.
+        // Triángulo apuntando a la IZQUIERDA, pegado al borde de la pantalla.
+        // El CUERPO del TV NO se gira; solo el logo Samsung de adentro (arriba).
         final pillWithScreen = isTv
-            ? RotatedBox(
-                quarterTurns: 1,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    CustomPaint(
-                      size: Size(size * 0.12, size * 0.20),
-                      painter: _LeftTrianglePainter(accent),
-                    ),
-                    pill,
-                  ],
-                ),
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CustomPaint(
+                    size: Size(size * 0.12, size * 0.20),
+                    painter: _LeftTrianglePainter(accent),
+                  ),
+                  pill,
+                ],
               )
             : pill;
 
