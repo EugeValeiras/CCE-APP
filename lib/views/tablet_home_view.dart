@@ -13,6 +13,7 @@ import '../theme/components/cce_segmented.dart';
 import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/sensor_tile.dart';
+import '../widgets/thermostat_tile.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
@@ -457,8 +458,9 @@ class _AllHouseLights extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lights = service.lights;
+    final thermostats = service.thermostats;
     final sensors = service.sensors;
-    if (lights.isEmpty && sensors.isEmpty) {
+    if (lights.isEmpty && thermostats.isEmpty && sensors.isEmpty) {
       return const Center(
         child: Text('Sin dispositivos', style: CceText.caption),
       );
@@ -492,6 +494,35 @@ class _AllHouseLights extends StatelessWidget {
                 },
               ),
               childCount: lights.length,
+            ),
+          ),
+        ],
+        // Clima: termostatos de toda la casa (faltaba esta sección acá).
+        if (thermostats.isNotEmpty) ...[
+          const SliverToBoxAdapter(
+            child: SectionHeader(title: 'Clima'),
+          ),
+          SliverGrid(
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: tileSize.maxTileExtent,
+              mainAxisExtent: tileSize.sensorTileHeight,
+              crossAxisSpacing: 12,
+              mainAxisSpacing: 12,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => ListenableBuilder(
+                listenable: service,
+                builder: (context, _) {
+                  final d = service.byId(thermostats[i].id) ?? thermostats[i];
+                  return ThermostatTile(
+                    device: d,
+                    service: service,
+                    size: tileSize,
+                    neo: true,
+                  );
+                },
+              ),
+              childCount: thermostats.length,
             ),
           ),
         ],

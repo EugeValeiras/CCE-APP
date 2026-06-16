@@ -427,8 +427,8 @@ class _PlanCanvas extends StatelessWidget {
                           child: _DeviceMarker(
                             listenable: tv!,
                             shape: _MarkerShape.tv,
-                            label: 'Samsung TV',
-                            onColor: const Color(0xFF1428A0),
+                            label: '', // sin nombre en el plano
+                            onColor: const Color(0xFF3A6BC5), // azul (el que tenía el soundbar)
                             isOnline: () => tv!.online,
                             isOn: () => tv!.isOn,
                             size: dotSize,
@@ -445,8 +445,8 @@ class _PlanCanvas extends StatelessWidget {
                           child: _DeviceMarker(
                             listenable: jbl!,
                             shape: _MarkerShape.jbl,
-                            label: 'Soundbar',
-                            onColor: const Color(0xFF3A6BC5),
+                            label: '', // sin nombre en el plano
+                            onColor: const Color(0xFFE06A2C), // naranja JBL (no chillón)
                             isOnline: () => jbl!.online,
                             isOn: () => jbl!.isOn,
                             size: dotSize,
@@ -893,18 +893,23 @@ class _DeviceMarker extends StatelessWidget {
           ),
         );
 
-        // Triángulo apuntando a la IZQUIERDA, pegado al borde de la pantalla.
+        // Triángulo apuntando a la pantalla + TV girado 90° (queda horizontal,
+        // como se ve un televisor de verdad). El RotatedBox rota también el
+        // layout, así el dot de online queda bien ubicado.
         final pillWithScreen = isTv
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  CustomPaint(
-                    size: Size(size * 0.12, size * 0.20),
-                    painter: _LeftTrianglePainter(accent),
-                  ),
-                  pill,
-                ],
+            ? RotatedBox(
+                quarterTurns: 1,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    CustomPaint(
+                      size: Size(size * 0.12, size * 0.20),
+                      painter: _LeftTrianglePainter(accent),
+                    ),
+                    pill,
+                  ],
+                ),
               )
             : pill;
 
@@ -932,16 +937,18 @@ class _DeviceMarker extends StatelessWidget {
                 ),
               ],
             ),
-            SizedBox(height: size * 0.10),
-            Text(
-              label,
-              style: TextStyle(
-                color: CceColors.textPrimary,
-                fontSize: size * 0.22,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.2,
+            if (label.isNotEmpty) ...[
+              SizedBox(height: size * 0.10),
+              Text(
+                label,
+                style: TextStyle(
+                  color: CceColors.textPrimary,
+                  fontSize: size * 0.22,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.2,
+                ),
               ),
-            ),
+            ],
           ],
         );
 
