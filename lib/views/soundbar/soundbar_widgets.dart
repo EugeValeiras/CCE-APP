@@ -190,7 +190,10 @@ class _SoundbarHeaderCard extends StatelessWidget {
     final src = service.source;
 
     return CceCard(
-      neoInset: true,
+      // Contenedor RAISED del MISMO color que los botones (neoBase), como el
+      // dashboard: así los −/+ y el power se ven extruidos del fondo (antes era
+      // un well neoInset más oscuro y los botones no se fundían).
+      neo: true,
       child: Row(
         children: [
           // Avatar del speaker: WELL hundido (neoSunken + neoInset opaco). El
@@ -289,7 +292,10 @@ class _VolumeDialCard extends StatelessWidget {
     final volume = service.volume;
 
     return CceCard(
-      neoInset: true,
+      // Contenedor RAISED del MISMO color que los botones (neoBase), como el
+      // dashboard: así los −/+ y el power se ven extruidos del fondo (antes era
+      // un well neoInset más oscuro y los botones no se fundían).
+      neo: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
