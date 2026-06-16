@@ -116,9 +116,12 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
           color: Colors.white.withValues(alpha: 0.05),
         );
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      // Sin padding inferior: el panel llega hasta abajo así no se corta la
+      // última fila de accesos en el teléfono (antes el bottom 16 + 18 del panel
+      // empujaban la grilla fuera de pantalla).
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
         decoration: BoxDecoration(
           gradient: CceGradients.cardSurface(CceColors.neoBase),
           borderRadius: BorderRadius.circular(36),
