@@ -2,11 +2,13 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../models/tv_status.dart';
 import '../../services/tv_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import 'tv_app_logos.dart';
 
 /// Pantalla completa del Samsung TV: SIMULA EL CONTROL REMOTO real del usuario
 /// (Samsung One Remote / SolarCell), fiel a la foto de su control. El cuerpo es
@@ -1400,17 +1402,10 @@ class _AppGridTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Punto del color de marca (sin logos vendoreados: el contrato sólo
-            // da un hex, no un asset por app).
-            Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: brand,
-                boxShadow: CceShadows.neo(blur: 4, offset: 2),
-              ),
-            ),
+            // Logo oficial de la marca (vendoreado de icons0.dev), teñido con
+            // el color de marca. Si la app no tiene logo conocido (p. ej. Flow)
+            // cae al lettermark con la inicial sobre el color de marca.
+            _AppLogo(appId: app.appId, label: app.label, brand: brand),
             const SizedBox(height: 8),
             Text(
               app.label,
@@ -1439,6 +1434,59 @@ class _AppGridTile extends StatelessWidget {
     final value = int.tryParse(h, radix: 16);
     if (value == null) return CceColors.textSecondary;
     return Color(value);
+  }
+}
+
+/// Logo de una app del TV: el SVG oficial vendoreado ([TvAppLogos]) teñido con
+/// el color de marca, o —si no tenemos logo para ese `appId`— un lettermark con
+/// la inicial sobre un disco del color de marca. Tamaño fijo 26 para alinear
+/// con el resto de la grilla.
+class _AppLogo extends StatelessWidget {
+  const _AppLogo({
+    required this.appId,
+    required this.label,
+    required this.brand,
+  });
+
+  final String appId;
+  final String label;
+  final Color brand;
+
+  @override
+  Widget build(BuildContext context) {
+    final svg = TvAppLogos.forAppId(appId);
+    if (svg != null) {
+      return SizedBox(
+        width: 26,
+        height: 26,
+        child: SvgPicture.string(
+          svg,
+          width: 26,
+          height: 26,
+          colorFilter: ColorFilter.mode(brand, BlendMode.srcIn),
+        ),
+      );
+    }
+    // Fallback (sin logo conocido): disco de marca con la inicial.
+    final initial = label.isNotEmpty ? label.substring(0, 1).toUpperCase() : '?';
+    return Container(
+      width: 26,
+      height: 26,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: brand,
+        boxShadow: CceShadows.neo(blur: 4, offset: 2),
+      ),
+      child: Text(
+        initial,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+    );
   }
 }
 
