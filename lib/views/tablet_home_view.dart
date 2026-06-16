@@ -21,7 +21,9 @@ import 'floor_plan_tab.dart';
 import 'history_screen.dart';
 import 'settings_view.dart';
 import 'soundbar/soundbar_screen.dart';
+import 'soundbar/soundbar_home_card.dart';
 import 'tv/tv_screen.dart';
+import 'tv/tv_home_card.dart';
 import 'tablet/room_panel.dart';
 import 'tablet/rooms_sidebar.dart';
 
@@ -55,6 +57,11 @@ class _TabletHomeViewState extends State<TabletHomeView> {
     _devices.refresh();
     _jbl = JblService(config: widget.config);
     _tv = TvService(config: widget.config);
+    // Polling continuo (como el phone): las cards de TV/JBL viven ahora en la
+    // home (lista), así que el estado debe estar siempre fresco, no sólo cuando
+    // se abre su pantalla dedicada.
+    _jbl.startPolling();
+    _tv.startPolling();
     _ui.load();
   }
 
@@ -91,7 +98,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
         // AlarmView SIEMPRE montada (IndexedStack) para escuchar
         // alarm:triggered en foreground aunque se este en otra tab.
         final tabs = <Widget>[
-          _CasaSplit(devices: _devices, ui: _ui),
+          _CasaSplit(devices: _devices, ui: _ui, jbl: _jbl, tv: _tv),
           AutomationsView(devices: _devices, config: widget.config),
           HistoryScreen(config: widget.config, devices: _devices, neo: true),
           ChatScreen(config: widget.config),
@@ -110,20 +117,9 @@ class _TabletHomeViewState extends State<TabletHomeView> {
                 ),
                 _HueBottomNav(
                   selected: _tab,
-                  onSelect: (i) {
-                    // El shell posee el ciclo de polling de los dispositivos
-                    // dedicados: el soundbar pollea solo en la tab Sonido (5) y
-                    // el TV solo en su tab TV (6).
-                    final wasSound = _tab == 5;
-                    final isSound = i == 5;
-                    if (isSound && !wasSound) _jbl.startPolling();
-                    if (!isSound && wasSound) _jbl.stopPolling();
-                    final wasTv = _tab == 6;
-                    final isTv = i == 6;
-                    if (isTv && !wasTv) _tv.startPolling();
-                    if (!isTv && wasTv) _tv.stopPolling();
-                    setState(() => _tab = i);
-                  },
+                  // El polling de soundbar/TV es continuo (ver initState), así
+                  // que el cambio de tab solo actualiza el índice.
+                  onSelect: (i) => setState(() => _tab = i),
                   onSettings: _openSettings,
                 ),
               ],
@@ -250,10 +246,17 @@ class _NavItem extends StatelessWidget {
 /// derecho ("Toda la casa" con el plano completo, o RoomPanel de la sala
 /// seleccionada).
 class _CasaSplit extends StatefulWidget {
-  const _CasaSplit({required this.devices, required this.ui});
+  const _CasaSplit({
+    required this.devices,
+    required this.ui,
+    required this.jbl,
+    required this.tv,
+  });
 
   final DevicesService devices;
   final UiSettingsService ui;
+  final JblService jbl;
+  final TvService tv;
 
   @override
   State<_CasaSplit> createState() => _CasaSplitState();
@@ -293,11 +296,28 @@ class _CasaSplitState extends State<_CasaSplit> {
           children: [
             SizedBox(
               width: 320,
-              child: RoomsSidebar(
-                service: widget.devices,
-                selectedRoomId: _selectedRoomId,
-                onSelect: (id) => setState(() => _selectedRoomId = id),
-                neo: true,
+              child: Column(
+                children: [
+                  // Dispositivos dedicados ARRIBA de la lista (como en la mobile
+                  // app): TV primero, luego JBL. Tocarlos abre su control.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+                    child: TvHomeCard(service: widget.tv, neo: true),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    child: SoundbarHomeCard(service: widget.jbl, neo: true),
+                  ),
+                  const SizedBox(height: 4),
+                  Expanded(
+                    child: RoomsSidebar(
+                      service: widget.devices,
+                      selectedRoomId: _selectedRoomId,
+                      onSelect: (id) => setState(() => _selectedRoomId = id),
+                      neo: true,
+                    ),
+                  ),
+                ],
               ),
             ),
             const VerticalDivider(),

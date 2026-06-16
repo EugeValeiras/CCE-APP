@@ -52,7 +52,15 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
       body: SafeArea(
         child: AnimatedBuilder(
           animation: service,
-          builder: (context, _) => _buildBody(context, service),
+          // Centrado a ancho de celular: en iPad el control NO ocupa todo el
+          // ancho (queda feo); en teléfono la pantalla es más angosta que 480
+          // así que igual se ve full.
+          builder: (context, _) => Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: _buildBody(context, service),
+            ),
+          ),
         ),
       ),
     );

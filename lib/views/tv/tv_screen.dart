@@ -95,10 +95,12 @@ class _TvScreenState extends State<TvScreen> {
               builder: (context, constraints) => FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.topCenter,
-                // ANCHO COMPLETO: el control ocupa todo el ancho disponible; el
-                // FittedBox solo lo achica si no entra en alto (nunca agranda).
+                // Ancho de celular: en teléfono usa todo el ancho disponible;
+                // en iPad se capea a 440 y el FittedBox (topCenter) lo deja
+                // CENTRADO (no full-width, que se veía feo). El FittedBox sigue
+                // achicando en alto si no entra (nunca agranda).
                 child: SizedBox(
-                  width: constraints.maxWidth,
+                  width: constraints.maxWidth > 440 ? 440 : constraints.maxWidth,
                   child: _RemoteBody(service: service, online: online),
                 ),
               ),
