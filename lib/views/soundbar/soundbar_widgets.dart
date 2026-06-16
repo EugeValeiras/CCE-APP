@@ -43,7 +43,7 @@ Future<void> _handle(Future<bool> action, BuildContext context) async {
 /// — un color con alpha rompe el well silenciosamente (se ve plano).
 ///
 /// Lo usan [_SourceChip], [_QuickButton] y la píldora de mute del volumen.
-class _NeoPressable extends StatefulWidget {
+class _NeoPressable extends StatelessWidget {
   const _NeoPressable({
     required this.child,
     required this.onTap,
@@ -65,61 +65,51 @@ class _NeoPressable extends StatefulWidget {
   final bool enabled;
 
   @override
-  State<_NeoPressable> createState() => _NeoPressableState();
-}
-
-class _NeoPressableState extends State<_NeoPressable> {
-  bool _pressed = false;
-  void _set(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final enabled = widget.enabled && widget.onTap != null;
-    // ACTIVO o PRESIONADO => well hundido; reposo habilitado => extruido;
-    // deshabilitado => plano (sin sombra).
-    final bool sunken = enabled && (widget.active || _pressed);
-    final List<BoxShadow> shadow = !enabled
-        ? const []
-        : (sunken
-            ? CceShadows.neoInset(blur: 7, offset: 3)
-            : CceShadows.neo(blur: 8, offset: 3));
-    // Fondo: el hundido usa neoSunken (cara del fondo del pozo); el raised usa
-    // neoBase. Opaco SIEMPRE (BlurStyle.inner lo exige).
-    final Color bg = sunken ? CceColors.neoSunken : CceColors.neoBase;
-    final Color? borderColor = widget.active ? widget.activeColor : null;
+    final on = enabled && onTap != null;
+    final br = BorderRadius.circular(radius);
+    // Reposo: inset si está activo (well permanente), si no extruido. Al apretar
+    // interpola raised→inset por `t` y la ESCALA la aporta CceNeoPress (feedback
+    // animado y consistente con el resto de la app, en vez del cambio de golpe).
+    final rest = active
+        ? CceShadows.neoInset(blur: 7, offset: 3)
+        : CceShadows.neo(blur: 8, offset: 3);
+    final pressed = CceShadows.neoInset(blur: 7, offset: 3);
+    final restBg = active ? CceColors.neoSunken : CceColors.neoBase;
+    final Color? borderColor = active ? activeColor : null;
 
-    final box = Container(
-      padding: widget.padding,
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(widget.radius),
-        boxShadow: shadow,
-        border: borderColor != null
-            ? Border.all(
-                color: borderColor.withValues(alpha: 0.55),
-                width: 1.2,
-              )
-            : null,
-      ),
-      child: widget.child,
-    );
+    Widget surface(double t) {
+      final shadow = !on
+          ? const <BoxShadow>[]
+          : [
+              for (var i = 0; i < rest.length; i++)
+                BoxShadow.lerp(rest[i], pressed[i], t)!,
+            ];
+      // Fondo opaco SIEMPRE (BlurStyle.inner del inset lo exige): interpola al
+      // pozo (neoSunken) a medida que se hunde.
+      final bg = Color.lerp(restBg, CceColors.neoSunken, on ? t : 0.0)!;
+      final box = Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: br,
+          boxShadow: shadow,
+          border: borderColor != null
+              ? Border.all(
+                  color: borderColor.withValues(alpha: 0.55),
+                  width: 1.2,
+                )
+              : null,
+        ),
+        child: child,
+      );
+      return on ? box : Opacity(opacity: 0.4, child: box);
+    }
 
-    final content = enabled ? box : Opacity(opacity: 0.4, child: box);
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: enabled ? (_) => _set(true) : null,
-      onTapUp: enabled ? (_) => _set(false) : null,
-      onTapCancel: enabled ? () => _set(false) : null,
-      onTap: enabled
-          ? () {
-              if (widget.haptic) HapticFeedback.selectionClick();
-              widget.onTap!();
-            }
-          : null,
-      child: content,
+    return CceNeoPress(
+      onTap: on ? onTap : null,
+      haptic: haptic,
+      builder: (ctx, t) => surface(t),
     );
   }
 }
