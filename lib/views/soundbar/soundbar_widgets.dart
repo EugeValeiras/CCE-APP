@@ -303,15 +303,6 @@ class _VolumeDialCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'VOLUMEN',
-            style: CceText.caption.copyWith(
-              color: CceColors.neoTextSub,
-              letterSpacing: 1.4,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
           Row(
             children: [
               CceNeoSvgIconButton(
