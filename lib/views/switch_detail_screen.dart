@@ -25,6 +25,13 @@ class SwitchDetailScreen extends StatelessWidget {
         automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         title: Text(service.displayName(device), style: CceText.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close, color: CceColors.textSecondary),
+            tooltip: 'Cerrar',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
       body: AnimatedBuilder(
         animation: service,

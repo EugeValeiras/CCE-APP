@@ -75,6 +75,13 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
         automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,
         title: Text(widget.service.displayName(d), style: CceText.title),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close, color: CceColors.textSecondary),
+            tooltip: 'Cerrar',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
       ),
       body: Center(
         child: Column(

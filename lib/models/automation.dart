@@ -330,6 +330,8 @@ class AutomationAction {
   String get jblAction => (raw['jblAction'] as String?) ?? 'on';
   String? get jblOnMode => raw['jblOnMode'] as String?;
   String? get jblRadioName => raw['jblRadioName'] as String?;
+  /// Volumen de arranque (escala display 0..31). null = no fijar volumen.
+  int? get jblVolume => (raw['jblVolume'] as num?)?.toInt();
 
   AutomationActionKind get kind {
     if (lightId == '__notification__' || on == 'notification') {
@@ -409,6 +411,7 @@ class AutomationAction {
     required String action,
     String? onMode,
     String? radioName,
+    int? volume,
   }) {
     raw['lightId'] = '__jbl__';
     raw['on'] = 'jbl';
@@ -418,6 +421,8 @@ class AutomationAction {
       'jblRadioName',
       action == 'on' && onMode == 'radio' ? radioName : null,
     );
+    // Volumen de arranque: solo con 'on'; null lo remueve (no fijar).
+    _setOrRemove('jblVolume', action == 'on' ? volume : null);
     edited = true;
   }
 

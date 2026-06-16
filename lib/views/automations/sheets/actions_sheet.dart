@@ -1140,6 +1140,8 @@ class _JblActionEditorState extends State<_JblActionEditor> {
   late String _jblAction = widget.action.jblAction == 'off' ? 'off' : 'on';
   late String _onMode = widget.action.jblOnMode ?? 'resume';
   late String? _radioName = widget.action.jblRadioName;
+  // Volumen de arranque (escala display 0..31); null = no fijar.
+  late int? _volume = widget.action.jblVolume;
   late final Future<List<String>> _radios = _fetchRadios();
 
   Future<List<String>> _fetchRadios() async {
@@ -1234,6 +1236,33 @@ class _JblActionEditorState extends State<_JblActionEditor> {
               },
             ),
           ],
+          _editorLabel('Volumen de arranque'),
+          Row(
+            children: [
+              Switch(
+                value: _volume != null,
+                onChanged: (on) => setState(() => _volume = on ? 12 : null),
+              ),
+              Expanded(
+                child: _volume == null
+                    ? const Text('Dejar el que tenga',
+                        style: CceText.caption)
+                    : Slider(
+                        value: _volume!.toDouble().clamp(0, 31),
+                        min: 0,
+                        max: 31,
+                        divisions: 31,
+                        label: '${_volume}',
+                        onChanged: (v) => setState(() => _volume = v.round()),
+                      ),
+              ),
+              if (_volume != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text('${_volume}', style: CceText.body),
+                ),
+            ],
+          ),
         ],
         const SizedBox(height: 18),
         FilledButton(
@@ -1243,6 +1272,7 @@ class _JblActionEditorState extends State<_JblActionEditor> {
                     action: _jblAction,
                     onMode: _jblAction == 'on' ? _onMode : null,
                     radioName: _radioName,
+                    volume: _jblAction == 'on' ? _volume : null,
                   );
                   Navigator.of(context).pop(true);
                 }
