@@ -264,6 +264,10 @@ class _CasaSplit extends StatefulWidget {
 
 class _CasaSplitState extends State<_CasaSplit> {
   String? _selectedRoomId; // null = Toda la casa
+  // Device dedicado seleccionado para mostrar su control INLINE en el panel
+  // derecho ('tv' | 'jbl' | null). La tablet no tiene swipe-back, así que el
+  // control va en el panel (se vuelve tocando "Toda la casa" o una sala).
+  String? _selectedDevice;
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -292,38 +296,59 @@ class _CasaSplitState extends State<_CasaSplit> {
           _selectedRoomId = null;
         }
 
+        // Panel derecho: si hay un device dedicado seleccionado, su control
+        // INLINE; si no, la sala (RoomPanel) o "Toda la casa".
+        Widget panel;
+        if (_selectedDevice == 'tv') {
+          panel = TvScreen(service: widget.tv);
+        } else if (_selectedDevice == 'jbl') {
+          panel = SoundbarScreen(service: widget.jbl);
+        } else if (room == null) {
+          panel = _buildAllHouse();
+        } else {
+          panel = RoomPanel(
+            service: widget.devices,
+            ui: widget.ui,
+            room: room,
+            tileSize: widget.ui.tileSize,
+            onCycleTileSize: widget.ui.cycle,
+            onRefresh: widget.devices.refresh,
+            neo: true,
+          );
+        }
+
         return Row(
           children: [
             SizedBox(
               width: 320,
               // Logo arriba + lista con "Toda la casa" primero y las cards de
               // TV/JBL integradas COMO PARTE de la lista (deviceCards), como en
-              // la mobile app. Tocarlas abre su control.
+              // la mobile app. En tablet, tocarlas muestra el control en el
+              // panel derecho (onOpen), NO una pantalla pusheada full-screen.
               child: RoomsSidebar(
                 service: widget.devices,
-                selectedRoomId: _selectedRoomId,
-                onSelect: (id) => setState(() => _selectedRoomId = id),
+                selectedRoomId: _selectedDevice == null ? _selectedRoomId : '',
+                onSelect: (id) => setState(() {
+                  _selectedRoomId = id;
+                  _selectedDevice = null; // volver desde un control
+                }),
                 neo: true,
                 deviceCards: [
-                  TvHomeCard(service: widget.tv, neo: true),
-                  SoundbarHomeCard(service: widget.jbl, neo: true),
+                  TvHomeCard(
+                    service: widget.tv,
+                    neo: true,
+                    onOpen: () => setState(() => _selectedDevice = 'tv'),
+                  ),
+                  SoundbarHomeCard(
+                    service: widget.jbl,
+                    neo: true,
+                    onOpen: () => setState(() => _selectedDevice = 'jbl'),
+                  ),
                 ],
               ),
             ),
             const VerticalDivider(),
-            Expanded(
-              child: room == null
-                  ? _buildAllHouse()
-                  : RoomPanel(
-                      service: widget.devices,
-                      ui: widget.ui,
-                      room: room,
-                      tileSize: widget.ui.tileSize,
-                      onCycleTileSize: widget.ui.cycle,
-                      onRefresh: widget.devices.refresh,
-                      neo: true,
-                    ),
-            ),
+            Expanded(child: panel),
           ],
         );
       },

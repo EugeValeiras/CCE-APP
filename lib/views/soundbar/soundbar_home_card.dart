@@ -17,7 +17,16 @@ class SoundbarHomeCard extends StatefulWidget {
   /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
   /// idéntico al actual.
   final bool neo;
-  const SoundbarHomeCard({super.key, required this.service, this.neo = false});
+
+  /// Si se provee, al tocar la card se llama esto EN VEZ de pushear la pantalla
+  /// (en tablet el control se muestra inline en el panel derecho).
+  final VoidCallback? onOpen;
+  const SoundbarHomeCard({
+    super.key,
+    required this.service,
+    this.neo = false,
+    this.onOpen,
+  });
 
   @override
   State<SoundbarHomeCard> createState() => _SoundbarHomeCardState();
@@ -58,9 +67,13 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
         return CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => SoundbarScreen(service: jbl),
-            ));
+            if (widget.onOpen != null) {
+              widget.onOpen!();
+            } else {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => SoundbarScreen(service: jbl),
+              ));
+            }
           },
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           color: neo ? CceColors.neoBase : null,

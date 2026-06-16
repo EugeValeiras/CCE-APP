@@ -18,7 +18,17 @@ class TvHomeCard extends StatefulWidget {
   /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
   /// idéntico al plano.
   final bool neo;
-  const TvHomeCard({super.key, required this.service, this.neo = false});
+
+  /// Si se provee, al tocar la card se llama esto EN VEZ de pushear la pantalla
+  /// (en tablet el control se muestra inline en el panel derecho, no full-screen
+  /// — la tablet no tiene swipe-back para volver).
+  final VoidCallback? onOpen;
+  const TvHomeCard({
+    super.key,
+    required this.service,
+    this.neo = false,
+    this.onOpen,
+  });
 
   @override
   State<TvHomeCard> createState() => _TvHomeCardState();
@@ -68,9 +78,13 @@ class _TvHomeCardState extends State<TvHomeCard> {
         return CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => TvScreen(service: tv),
-            ));
+            if (widget.onOpen != null) {
+              widget.onOpen!();
+            } else {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => TvScreen(service: tv),
+              ));
+            }
           },
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           color: neo ? CceColors.neoBase : null,
