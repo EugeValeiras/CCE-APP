@@ -51,21 +51,12 @@ class _TvScreenState extends State<TvScreen> {
     final service = widget.service;
     return Scaffold(
       backgroundColor: CceColors.neoBase,
-      appBar: AppBar(
-        backgroundColor: CceColors.neoBase,
-        toolbarHeight: 64,
-        title: Text(service.displayName, style: CceText.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh, color: CceColors.textSecondary),
-            tooltip: 'Actualizar',
-            onPressed: service.refresh,
-          ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: service,
-        builder: (context, _) => _buildBody(context, service),
+      // Sin AppBar: control full-screen. Se vuelve con el swipe iOS.
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: service,
+          builder: (context, _) => _buildBody(context, service),
+        ),
       ),
     );
   }

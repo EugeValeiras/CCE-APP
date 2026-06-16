@@ -47,29 +47,13 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
     final service = widget.service;
     return Scaffold(
       backgroundColor: CceColors.neoBase,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: CceColors.neoBase,
-        toolbarHeight: 64,
-        // Wordmark JBL: logo, no glyph de UI -> sin relieve neumorfico.
-        title: const CceIcon(CceIcons.jbl,
-            size: 38, color: CceColors.textPrimary, emboss: false),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.tune, color: CceColors.textSecondary),
-            tooltip: 'Configurar IP',
-            onPressed: () => showIpDialog(context, service),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: CceColors.textSecondary),
-            tooltip: 'Actualizar',
-            onPressed: service.refresh,
-          ),
-        ],
-      ),
-      body: AnimatedBuilder(
-        animation: service,
-        builder: (context, _) => _buildBody(context, service),
+      // Sin AppBar: control full-screen. Se vuelve con el swipe iOS; el config de
+      // IP sigue disponible desde la card de offline/error cuando hace falta.
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: service,
+          builder: (context, _) => _buildBody(context, service),
+        ),
       ),
     );
   }
