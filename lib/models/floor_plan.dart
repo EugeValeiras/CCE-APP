@@ -37,5 +37,19 @@ class FloorPlansData {
   /// positions[planId][deviceId] => LightPosition
   final Map<String, Map<String, LightPosition>> positions;
 
-  FloorPlansData({required this.plans, required this.activePlanId, required this.positions});
+  /// Posición ÚNICA por plano del JBL soundbar: jblPositions[planId] => pos.
+  /// (GET /config/jbl-positions devuelve {planId: {x, y}}.)
+  final Map<String, LightPosition> jblPositions;
+
+  /// Posición ÚNICA por plano del Samsung TV: tvPositions[planId] => pos.
+  /// (GET /config/samsung-tv-positions devuelve {planId: {x, y}}.)
+  final Map<String, LightPosition> tvPositions;
+
+  FloorPlansData({
+    required this.plans,
+    required this.activePlanId,
+    required this.positions,
+    this.jblPositions = const {},
+    this.tvPositions = const {},
+  });
 }

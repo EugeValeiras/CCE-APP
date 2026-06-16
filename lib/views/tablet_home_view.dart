@@ -103,8 +103,6 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           HistoryScreen(config: widget.config, devices: _devices, neo: true),
           ChatScreen(config: widget.config),
           AlarmView(initialConfig: widget.config, neo: true),
-          SoundbarScreen(service: _jbl),
-          TvScreen(service: _tv),
         ];
 
         return Scaffold(
@@ -150,8 +148,6 @@ class _HueBottomNav extends StatelessWidget {
     (CceIcons.history, 'Historial'),
     (CceIcons.agent, 'Agente'),
     (CceIcons.alarmShield, 'Alarma'),
-    (CceIcons.speaker, 'Sonido'),
-    (CceIcons.tv, 'TV'),
     (CceIcons.settings, 'Ajustes'),
   ];
 
@@ -423,6 +419,14 @@ class _CasaSplitState extends State<_CasaSplit> {
                     ui: widget.ui,
                     dotSize: tileSize.floorPlanDotSize,
                     neo: true,
+                    // Markers de TV / JBL en el plano (item 4): el color sigue
+                    // el status (online/power) vía AnimatedBuilder sobre los
+                    // services. Tap → abre el control inline en el panel
+                    // derecho (item 5), mismo destino que las cards.
+                    tv: widget.tv,
+                    jbl: widget.jbl,
+                    onOpenTv: () => setState(() => _selectedDevice = 'tv'),
+                    onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
                   )
                 : _AllHouseLights(
                     service: widget.devices,

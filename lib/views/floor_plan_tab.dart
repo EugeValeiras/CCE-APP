@@ -5,7 +5,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
 import '../services/devices_service.dart';
+import '../services/jbl_service.dart';
+import '../services/tv_service.dart';
 import '../services/ui_settings_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_segmented.dart';
@@ -13,6 +16,7 @@ import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 import '../utils/plan_svg_theme.dart';
 import '../widgets/light_detail_sheet.dart';
+import 'light_color_screen.dart';
 
 /// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
 /// Si [planId] != null fuerza ese plano y oculta el selector (modo "Plano"
@@ -29,6 +33,18 @@ class FloorPlanPanel extends StatefulWidget {
   /// Opt-in neumórfico (solo el TABLET lo activa). Default `false` deja el
   /// render actual intacto (phone / room_detail montan flat).
   final bool neo;
+
+  /// Servicios de los dispositivos dedicados, opcionales. Cuando vienen, el
+  /// canvas dibuja un marker de TV / JBL si hay posición para el plano activo
+  /// (item 4) y el color del marker sigue su status.online/power (vía listen).
+  final TvService? tv;
+  final JblService? jbl;
+
+  /// Callbacks de apertura del control dedicado (tablet): tap en el marker de
+  /// TV / JBL del plano. En el tablet los setea _CasaSplit (_selectedDevice).
+  final VoidCallback? onOpenTv;
+  final VoidCallback? onOpenJbl;
+
   const FloorPlanPanel({
     super.key,
     required this.service,
@@ -37,6 +53,10 @@ class FloorPlanPanel extends StatefulWidget {
     this.dotSize = 56,
     this.showPlanChips = true,
     this.neo = false,
+    this.tv,
+    this.jbl,
+    this.onOpenTv,
+    this.onOpenJbl,
   });
 
   @override
@@ -153,6 +173,9 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
         );
         final positions =
             fp.positions[plan.id] ?? const <String, LightPosition>{};
+        // Posición única (por plano) de los dispositivos dedicados.
+        final tvPos = fp.tvPositions[plan.id];
+        final jblPos = fp.jblPositions[plan.id];
         final showChips =
             widget.showPlanChips && widget.planId == null && fp.plans.length > 1;
 
@@ -186,6 +209,14 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                 service: widget.service,
                 dotSize: widget.dotSize,
                 neo: widget.neo,
+                // En el tablet (neo) el tap abre el control en vez de toggle.
+                openOnTap: widget.neo,
+                tv: widget.tv,
+                jbl: widget.jbl,
+                tvPos: tvPos,
+                jblPos: jblPos,
+                onOpenTv: widget.onOpenTv,
+                onOpenJbl: widget.onOpenJbl,
               ),
             ),
           ],
@@ -202,12 +233,32 @@ class _PlanCanvas extends StatelessWidget {
   final double dotSize;
   final bool neo;
 
+  /// Tablet: el tap en un dot de luz ABRE su control (LightColorScreen) en vez
+  /// de hacer toggle. En phone (`false`) se mantiene tap = toggle.
+  final bool openOnTap;
+
+  /// Dispositivos dedicados + su posición única en el plano activo (o null si
+  /// no hay posición / no se pasaron los services).
+  final TvService? tv;
+  final JblService? jbl;
+  final LightPosition? tvPos;
+  final LightPosition? jblPos;
+  final VoidCallback? onOpenTv;
+  final VoidCallback? onOpenJbl;
+
   const _PlanCanvas({
     required this.plan,
     required this.positions,
     required this.service,
     required this.dotSize,
     this.neo = false,
+    this.openOnTap = false,
+    this.tv,
+    this.jbl,
+    this.tvPos,
+    this.jblPos,
+    this.onOpenTv,
+    this.onOpenJbl,
   });
 
   /// Parser completo del viewBox: comillas simples o dobles, captura los 4
@@ -357,10 +408,48 @@ class _PlanCanvas extends StatelessWidget {
                             device: device,
                             service: service,
                             size: dotSize,
+                            openOnTap: openOnTap,
                           ),
                         ),
                       );
                     }),
+                    // Markers de dispositivos dedicados (TV / JBL): misma
+                    // fórmula de proyección que las luces; sólo si hay posición
+                    // para el plano activo y el service correspondiente vino.
+                    if (tv != null && tvPos != null)
+                      Positioned(
+                        left: clampCenter((tvPos!.x - vb.minX) * scale, w),
+                        top: clampCenter((tvPos!.y - vb.minY) * scale, h),
+                        child: FractionalTranslation(
+                          translation: const Offset(-0.5, -0.5),
+                          child: _DeviceMarker(
+                            listenable: tv!,
+                            icon: CceIcons.tv,
+                            onColor: const Color(0xFF1428A0),
+                            isOnline: () => tv!.online,
+                            isOn: () => tv!.isOn,
+                            size: dotSize,
+                            onTap: onOpenTv,
+                          ),
+                        ),
+                      ),
+                    if (jbl != null && jblPos != null)
+                      Positioned(
+                        left: clampCenter((jblPos!.x - vb.minX) * scale, w),
+                        top: clampCenter((jblPos!.y - vb.minY) * scale, h),
+                        child: FractionalTranslation(
+                          translation: const Offset(-0.5, -0.5),
+                          child: _DeviceMarker(
+                            listenable: jbl!,
+                            icon: CceIcons.speaker,
+                            onColor: const Color(0xFF3A6BC5),
+                            isOnline: () => jbl!.online,
+                            isOn: () => jbl!.isOn,
+                            size: dotSize,
+                            onTap: onOpenJbl,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -377,10 +466,14 @@ class _DeviceDot extends StatefulWidget {
   final DevicesService service;
   final double size;
 
+  /// Tablet: tap ABRE el control (LightColorScreen) en vez de togglear.
+  final bool openOnTap;
+
   const _DeviceDot({
     required this.device,
     required this.service,
     required this.size,
+    this.openOnTap = false,
   });
 
   @override
@@ -530,7 +623,21 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
                 ? () {
                     HapticFeedback.selectionClick();
                     _tapCtrl.forward(from: 0);
-                    widget.service.toggleLight(device);
+                    if (widget.openOnTap) {
+                      // Tablet: abrir el control de la luz (LightColorScreen).
+                      // Su top bar tiene cerrar + "Listo" (Navigator.pop), así
+                      // que el back funciona (item 6).
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => LightColorScreen(
+                            device: device,
+                            service: widget.service,
+                          ),
+                        ),
+                      );
+                    } else {
+                      widget.service.toggleLight(device);
+                    }
                   }
                 : null,
             onLongPress: isLight
@@ -670,5 +777,93 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     if (t < 25) return CceColors.warm;
     if (t < 30) return const Color(0xFFFF8A5C);
     return CceColors.danger;
+  }
+}
+
+/// Marker de un dispositivo dedicado (TV / JBL) en el plano. Mismo tamaño /
+/// estilo de círculo que [_DeviceDot] para coherencia visual: dot pleno con
+/// glow cuando el equipo está online && encendido (con su [onColor] de marca),
+/// ghost gris cuando no. Escucha el [listenable] (el propio service) para
+/// recolorear con el status. Tap → [onTap] (abre el control dedicado).
+class _DeviceMarker extends StatelessWidget {
+  final Listenable listenable;
+  final String icon;
+  final Color onColor;
+  final bool Function() isOnline;
+  final bool Function() isOn;
+  final double size;
+  final VoidCallback? onTap;
+
+  static const Color _offColor = Color(0xFF9E9E9E);
+
+  const _DeviceMarker({
+    required this.listenable,
+    required this.icon,
+    required this.onColor,
+    required this.isOnline,
+    required this.isOn,
+    required this.size,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: listenable,
+      builder: (context, _) {
+        final active = isOnline() && isOn();
+        final accent = active ? onColor : _offColor;
+        final body = active
+            ? Container(
+                width: size,
+                height: size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent,
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.45),
+                      blurRadius: 18,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: CceIcon(
+                  icon,
+                  size: size * 0.52,
+                  color: CceTint.textOn(accent),
+                  emboss: false,
+                ),
+              )
+            : Container(
+                width: size,
+                height: size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: CceColors.surfaceHigh.withValues(alpha: 0.80),
+                  border: Border.all(color: CceColors.stroke),
+                ),
+                child: CceIcon(
+                  icon,
+                  size: size * 0.52,
+                  color: Colors.white.withValues(alpha: 0.38),
+                  emboss: false,
+                ),
+              );
+
+        return GestureDetector(
+          onTap: onTap == null
+              ? null
+              : () {
+                  HapticFeedback.selectionClick();
+                  onTap!();
+                },
+          behavior: HitTestBehavior.opaque,
+          child: body,
+        );
+      },
+    );
   }
 }

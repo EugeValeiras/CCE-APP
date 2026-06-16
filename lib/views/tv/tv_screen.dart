@@ -225,11 +225,10 @@ class _RemoteBody extends StatelessWidget {
                           label: 'VOL',
                           topIcon: Icons.add_rounded,
                           bottomIcon: Icons.remove_rounded,
-                          // Centro: mute (igual que el control físico).
-                          centerSvg: service.muted
-                              ? CceIcons.volumeX
-                              : CceIcons.volume2,
-                          centerActive: service.muted,
+                          // Centro: mute SIN ESTADO (solo dispara el toggle; el
+                          // backend no reporta muteado). Ícono fijo, nunca activo.
+                          centerSvg: CceIcons.volume2,
+                          centerActive: false,
                           enabled: online,
                           onTop: () {
                             HapticFeedback.selectionClick();
