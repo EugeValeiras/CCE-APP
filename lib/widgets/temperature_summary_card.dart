@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 
@@ -50,8 +50,12 @@ class TemperatureSummaryCard extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: compact ? 0 : 8),
       child: CceCard(
+        // En neo iguala el radio de las RoomCard (hueCard 24) para que la placa
+        // se lea de un solo material; en plano conserva el default (28).
+        radius: neo ? CceRadii.hueCard : CceRadii.card,
         padding: EdgeInsets.symmetric(
             horizontal: 22, vertical: compact ? 12 : 16),
+        // border ya es false en neo (CceCard no lo dibuja); solo en plano.
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,
         neo: neo,
@@ -61,30 +65,34 @@ class TemperatureSummaryCard extends StatelessWidget {
             if (primaryTemp != null)
               Expanded(
                 child: _HeroReading(
-                  icon: MdiIcons.thermometer,
+                  icon: CceIcons.thermometer,
                   value: primaryTemp.toStringAsFixed(1),
                   unit: '°C',
                   label: 'Temperatura',
                   color: _desaturate(_colorForTemp(primaryTemp)),
                   compact: compact,
+                  neo: neo,
                 ),
               ),
             if (primaryTemp != null && primaryHum != null)
               Container(
                 width: 1,
                 height: compact ? 40 : 56,
-                color: CceColors.stroke,
+                // En neo, línea GRABADA en la goma (neoDark 1px) en vez del
+                // hairline claro; en plano conserva el stroke histórico.
+                color: neo ? CceColors.neoDark : CceColors.stroke,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
               ),
             if (primaryHum != null)
               Expanded(
                 child: _HeroReading(
-                  icon: MdiIcons.waterPercent,
+                  icon: _dropletSvg,
                   value: primaryHum.toStringAsFixed(0),
                   unit: '%',
                   label: 'Humedad',
                   color: CceColors.info,
                   compact: compact,
+                  neo: neo,
                 ),
               ),
           ],
@@ -92,6 +100,11 @@ class TemperatureSummaryCard extends StatelessWidget {
       ),
     );
   }
+
+  // lucide:droplet (icons0.dev) — humedad, vendoreado inline (este archivo no
+  // puede tocar cce_icons.dart; el resto de glyphs salen de CceIcons).
+  static const String _dropletSvg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7"/></svg>';
 
   /// Desatura el color de la escala térmica (60% de la saturación original).
   static Color _desaturate(Color c) {
@@ -114,12 +127,17 @@ class TemperatureSummaryCard extends StatelessWidget {
 }
 
 class _HeroReading extends StatelessWidget {
-  final IconData icon;
+  /// SVG inline del glyph (CceIcons.* o vendoreado local).
+  final String icon;
   final String value;
   final String unit;
   final String label;
   final Color color;
   final bool compact;
+
+  /// En neo el ícono se extruye como goma (EmbossedGlyph + par fijo CceEmboss,
+  /// color tenue del valor); en plano queda el SVG plano tintado.
+  final bool neo;
   const _HeroReading({
     required this.icon,
     required this.value,
@@ -127,16 +145,30 @@ class _HeroReading extends StatelessWidget {
     required this.label,
     required this.color,
     this.compact = false,
+    this.neo = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Color del glyph: en neo lo bajamos a una chispa tenue del acento (igual
+    // lenguaje que glyph/dot del resto), sobre la goma oscura; en plano el
+    // color pleno histórico.
+    final glyphColor = neo ? color.withValues(alpha: 0.85) : color;
+    final Widget glyph = neo
+        ? EmbossedGlyph(
+            size: 20,
+            color: glyphColor,
+            highlight: CceEmboss.highlight.color,
+            shadow: CceEmboss.shadow.color,
+            child: CceIcon(icon, size: 20),
+          )
+        : CceIcon(icon, size: 20, color: glyphColor, emboss: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(icon, color: color, size: 20),
+            glyph,
             const SizedBox(width: 6),
             Flexible(
               child: Text(

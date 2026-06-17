@@ -106,6 +106,45 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
     }
   }
 
+  /// Encabezado de sección (CceText.section, UPPERCASE): separa grupos del
+  /// header sin meter cajas, idéntico a la home del teléfono. Padding-left chico
+  /// para alinearlo ópticamente con el contenido de las cards (que tienen su
+  /// propio padding interno).
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(text.toUpperCase(), style: CceText.section),
+    );
+  }
+
+  /// RoomCard de una sala con su PulseOnUpdate (halo al recibir un evento) y
+  /// todos los handlers intactos: selección, toggle optimista y commit de brillo
+  /// (el slider embebido es exclusivo del sidebar tablet).
+  Widget _buildRoomCard(DevicesService service, RoomRef room) {
+    final stats = service.statsFor(room);
+    return PulseOnUpdate(
+      triggerAt: stats.latestEventAt,
+      borderRadius: CceRadii.card,
+      child: RoomCard(
+        title: room.name,
+        icon: _roomIcon(room),
+        lightsOn: stats.lightsOn,
+        lightsTotal: stats.lightsTotal,
+        anyOn: stats.anyOn,
+        tint: stats.tint,
+        tintColors: stats.tintColors,
+        brightness: stats.avgBrightness,
+        selected: widget.selectedRoomId == room.id,
+        motion: stats.anyMotion,
+        contactOpen: stats.anyContactOpen,
+        neo: widget.neo,
+        onTap: () => widget.onSelect(room.id),
+        onToggle: (v) => _toggleRoom(room, v),
+        onBrightnessCommitted: (v) => service.setRoomBrightness(room, v),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -123,66 +162,62 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Logo de la app arriba de todo (igual que en mobile), en vez del
-            // texto "CCE".
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 22, 20, 14),
-              child: CceLogo(height: 22, color: CceColors.neoText),
+            // Logo de la app arriba de todo (igual que en la home del teléfono),
+            // en vez del texto "CCE". Tinte titleInk (gris-claro de "material"):
+            // iguala la tinta de todos los títulos embossed del appbar/home, en
+            // vez del casi-blanco anterior que brillaba de más.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 22, 20, 14),
+              child: CceLogo(height: 22, color: CceText.titleInk),
             ),
             Expanded(
-              child: ListView.separated(
+              // Misma jerarquía por AIRE que la home del teléfono (no por cajas):
+              // "Toda la casa" (hero) → [gap 20] → label DESTACADOS → cards de
+              // dispositivos (TV/JBL, gap 12 entre sí) → [gap 20] → label
+              // HABITACIONES → grilla de salas (gap 12). Gaps mayores ENTRE
+              // grupos (20) que DENTRO de un grupo (12) crean la jerarquía sin
+              // bordes. Toda la funcionalidad (selección/toggle/onTap/brillo) se
+              // conserva intacta.
+              child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                // Toda la casa (1) + cards de dispositivos + salas.
-                itemCount: 1 + widget.deviceCards.length + rooms.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, i) {
-                  // Cards de dispositivos (TV/JBL) justo después de Toda la casa.
-                  if (i >= 1 && i <= widget.deviceCards.length) {
-                    return widget.deviceCards[i - 1];
-                  }
-                  if (i == 0) {
-                    // Entrada fija: vista general de la casa.
-                    return RoomCard(
-                      title: 'Toda la casa',
-                      icon: const CceIcon(CceIcons.allHouse),
-                      lightsOn: allOnCount,
-                      lightsTotal: allLights.length,
-                      anyOn: allOnCount > 0,
-                      brightness: null,
-                      selected: widget.selectedRoomId == null,
-                      subtitleOverride: allSubtitle,
-                      toggleEnabled: !_allHouseBusy,
-                      neo: widget.neo,
-                      onTap: () => widget.onSelect(null),
-                      onToggle: _toggleAllHouse,
-                    );
-                  }
-
-                  final room = rooms[i - 1 - widget.deviceCards.length];
-                  final stats = service.statsFor(room);
-                  return PulseOnUpdate(
-                    triggerAt: stats.latestEventAt,
-                    borderRadius: CceRadii.card,
-                    child: RoomCard(
-                      title: room.name,
-                      icon: _roomIcon(room),
-                      lightsOn: stats.lightsOn,
-                      lightsTotal: stats.lightsTotal,
-                      anyOn: stats.anyOn,
-                      tint: stats.tint,
-                      tintColors: stats.tintColors,
-                      brightness: stats.avgBrightness,
-                      selected: widget.selectedRoomId == room.id,
-                      motion: stats.anyMotion,
-                      contactOpen: stats.anyContactOpen,
-                      neo: widget.neo,
-                      onTap: () => widget.onSelect(room.id),
-                      onToggle: (v) => _toggleRoom(room, v),
-                      onBrightnessCommitted: (v) =>
-                          service.setRoomBrightness(room, v),
-                    ),
-                  );
-                },
+                children: [
+                  // HERO: vista general de toda la casa.
+                  RoomCard(
+                    title: 'Toda la casa',
+                    icon: const CceIcon(CceIcons.allHouse),
+                    lightsOn: allOnCount,
+                    lightsTotal: allLights.length,
+                    anyOn: allOnCount > 0,
+                    brightness: null,
+                    selected: widget.selectedRoomId == null,
+                    subtitleOverride: allSubtitle,
+                    toggleEnabled: !_allHouseBusy,
+                    neo: widget.neo,
+                    onTap: () => widget.onSelect(null),
+                    onToggle: _toggleAllHouse,
+                  ),
+                  // Grupo "destacados" (dispositivos dedicados): solo se muestra
+                  // el encabezado si hay al menos una card de dispositivo.
+                  if (widget.deviceCards.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _sectionLabel('Destacados'),
+                    const SizedBox(height: 10),
+                    for (var j = 0; j < widget.deviceCards.length; j++) ...[
+                      if (j > 0) const SizedBox(height: 12),
+                      widget.deviceCards[j],
+                    ],
+                  ],
+                  // Grupo "habitaciones": encabezado de la grilla de salas.
+                  if (rooms.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _sectionLabel('Habitaciones'),
+                    const SizedBox(height: 10),
+                    for (var j = 0; j < rooms.length; j++) ...[
+                      if (j > 0) const SizedBox(height: 12),
+                      _buildRoomCard(service, rooms[j]),
+                    ],
+                  ],
+                ],
               ),
             ),
           ],

@@ -130,51 +130,40 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           backgroundColor: CceColors.neoBase,
           appBar: AppBar(
             toolbarHeight: 64,
+            // Placa continua: el appbar comparte neoBase con el body y NO
+            // proyecta sombra/línea de Material al hacer scroll (elevation +
+            // scrolledUnderElevation 0; surfaceTint transparente). Esto mantiene
+            // la lectura de "una sola superficie de goma".
+            backgroundColor: CceColors.neoBase,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
             // Logo de CCE (edificio del splash) extruido neumórfico, en vez del
             // texto plano "CCE". FittedBox lo achica si la pantalla es angosta
-            // (no recorta nunca contra los actions).
+            // (no recorta nunca contra los actions). Tinte titleInk (gris-claro
+            // de "material"): iguala la tinta de todos los títulos embossed, en
+            // vez del casi-blanco anterior que brillaba de más.
             title: const FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: CceLogo(height: 18, color: Color(0xFFECEEF2)),
+              child: CceLogo(height: 18, color: CceText.titleInk),
             ),
             actions: [
-              // Íconos "goma" neumórficos (mismo relieve que el Historial): el
-              // glyph sobresale del fondo, sin botón circular.
-              if (widget.onOpenHistory != null)
-                IconButton(
-                  tooltip: 'Historial',
-                  // CceIcon ya embossa solo (size 22 >= 18) -> sin wrapper.
-                  icon: const CceIcon(
-                    CceIcons.history,
-                    size: 22,
-                    color: CceColors.textSecondary,
-                  ),
-                  onPressed: () => widget.onOpenHistory!(context),
+              // Riel de acciones embutido en la goma: en vez de 3 glyphs sueltos
+              // flotando, un único contenedor HUNDIDO (neoSunken + neoInset +
+              // radius pill) que aloja los 3 IconButton en fila. Agrupa 3
+              // elementos en 1 bloque (menos ruido) y se lee como control del
+              // mismo material que el JBL/TV. Cada handler se conserva intacto.
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _ActionRail(
+                  onOpenHistory: widget.onOpenHistory,
+                  onOpenAgent: widget.onOpenAgent,
+                  onOpenAlarm: widget.onOpenAlarm,
+                  alarmArmed: service.alarmArmed,
+                  hostContext: context,
                 ),
-              if (widget.onOpenAgent != null)
-                IconButton(
-                  tooltip: 'Agente',
-                  icon: const CceIcon(
-                    CceIcons.agent,
-                    size: 22,
-                    color: CceColors.textSecondary,
-                  ),
-                  onPressed: () => widget.onOpenAgent!(context),
-                ),
-              if (widget.onOpenAlarm != null)
-                IconButton(
-                  tooltip: 'Alarma',
-                  // Rojo cuando la alarma está armada (estado en vivo del service).
-                  icon: CceIcon(
-                    CceIcons.alarmShield,
-                    size: 22,
-                    color: service.alarmArmed
-                        ? CceColors.danger
-                        : CceColors.textSecondary,
-                  ),
-                  onPressed: () => widget.onOpenAlarm!(context),
-                ),
+              ),
             ],
           ),
           body: ordered.isEmpty
@@ -186,8 +175,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: service.refresh,
-                  color: CceColors.textPrimary,
-                  backgroundColor: CceColors.surfaceHigh,
+                  // Colores de la placa neo (no la paleta vieja surfaceHigh, que
+                  // mete un gris ajeno): spinner textSecondary sobre neoSunken.
+                  color: CceColors.textSecondary,
+                  backgroundColor: CceColors.neoSunken,
                   child: ReorderableListView.builder(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -195,30 +186,46 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     // ReorderableDelayedDragStartListener); sin handle a la
                     // derecha.
                     buildDefaultDragHandles: false,
-                    // Lead cards (clima + TV + JBL) fijas en el header NO
-                    // arrastrable. Cada una en su RepaintBoundary para preservar
-                    // el aislamiento de repintado de las sombras neumórficas. El
-                    // TV va PRIMERO de los dispositivos dedicados (antes del JBL).
+                    // Header NO arrastrable, jerarquizado por AIRE (gaps), no por
+                    // cajas: clima (hero) → [gap 20] → label DESTACADOS → TV y
+                    // JBL (gap 12 entre sí) → [gap 20] → label HABITACIONES →
+                    // grilla arrastrable. Gaps mayores ENTRE grupos (20) que
+                    // DENTRO de un grupo (12) crean la jerarquía sin bordes. Cada
+                    // lead card en su RepaintBoundary para aislar el repintado de
+                    // las sombras neumórficas. El TV va PRIMERO de los
+                    // dispositivos dedicados (antes del JBL).
                     header: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // HERO único: resumen de clima de toda la casa.
                         RepaintBoundary(
                           child: TemperatureSummaryCard(
                               service: service, neo: true),
                         ),
-                        if (widget.tv != null) ...[
-                          const SizedBox(height: 12),
-                          RepaintBoundary(
-                            child: TvHomeCard(service: widget.tv!, neo: true),
-                          ),
+                        // Grupo "destacados" (dispositivos dedicados): solo se
+                        // muestra el encabezado si hay al menos un dispositivo.
+                        if (widget.tv != null || widget.jbl != null) ...[
+                          const SizedBox(height: 20),
+                          _sectionLabel('Destacados'),
+                          const SizedBox(height: 10),
+                          if (widget.tv != null)
+                            RepaintBoundary(
+                              child:
+                                  TvHomeCard(service: widget.tv!, neo: true),
+                            ),
+                          if (widget.tv != null && widget.jbl != null)
+                            const SizedBox(height: 12),
+                          if (widget.jbl != null)
+                            RepaintBoundary(
+                              child: SoundbarHomeCard(
+                                  service: widget.jbl!, neo: true),
+                            ),
                         ],
-                        if (widget.jbl != null) ...[
-                          const SizedBox(height: 12),
-                          RepaintBoundary(
-                            child: SoundbarHomeCard(
-                                service: widget.jbl!, neo: true),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
+                        // Grupo "habitaciones": encabezado de la grilla
+                        // arrastrable.
+                        const SizedBox(height: 20),
+                        _sectionLabel('Habitaciones'),
+                        const SizedBox(height: 10),
                       ],
                     ),
                     onReorderStart: (_) => HapticFeedback.mediumImpact(),
@@ -286,6 +293,16 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     );
   }
 
+  /// Encabezado de sección (CceText.section, UPPERCASE): separa grupos del
+  /// header sin meter cajas. Padding-left chico para alinearlo ópticamente con
+  /// el contenido de las cards (que tienen su propio padding interno).
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(text.toUpperCase(), style: CceText.section),
+    );
+  }
+
   Widget _buildRoomCard(BuildContext context, RoomRef room) {
     final service = widget.service;
     final stats = service.statsFor(room);
@@ -320,6 +337,88 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         onToggle: (v) => service.setRoomOn(room, v),
         neo: true,
       ),
+    );
+  }
+}
+
+/// Riel de acciones del appbar (Historial / Agente / Alarma) embutido en la
+/// goma: un canal HUNDIDO (neoSunken + neoInset + radius pill) que aloja los
+/// glyphs en fila. Agrupa los controles sueltos en un solo bloque y los lee
+/// como riel embutido (mismo lenguaje que los controles del JBL/TV). Conserva
+/// los handlers exactos; solo se montan los que existen.
+class _ActionRail extends StatelessWidget {
+  final void Function(BuildContext)? onOpenHistory;
+  final void Function(BuildContext)? onOpenAgent;
+  final void Function(BuildContext)? onOpenAlarm;
+  final bool alarmArmed;
+
+  /// Contexto del call-site original (el que usaban los IconButton sueltos):
+  /// los handlers de navegación esperan el context de la pantalla, no el del
+  /// riel. Se pasa explícito para preservar el comportamiento exacto.
+  final BuildContext hostContext;
+  const _ActionRail({
+    required this.onOpenHistory,
+    required this.onOpenAgent,
+    required this.onOpenAlarm,
+    required this.alarmArmed,
+    required this.hostContext,
+  });
+
+  /// Glyph "goma" tenue (neoTextSub) dentro del riel; sin botón circular. El
+  /// área táctil se mantiene cómoda con un padding fijo. [color] permite que la
+  /// alarma armada conmute a danger.
+  Widget _slot({
+    required String svg,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color color = CceColors.neoTextSub,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 24,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          child: CceIcon(svg, size: 22, color: color),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final slots = <Widget>[
+      if (onOpenHistory != null)
+        _slot(
+          svg: CceIcons.history,
+          tooltip: 'Historial',
+          onTap: () => onOpenHistory!(hostContext),
+        ),
+      if (onOpenAgent != null)
+        _slot(
+          svg: CceIcons.agent,
+          tooltip: 'Agente',
+          onTap: () => onOpenAgent!(hostContext),
+        ),
+      if (onOpenAlarm != null)
+        _slot(
+          svg: CceIcons.alarmShield,
+          tooltip: 'Alarma',
+          // Rojo cuando la alarma está armada (estado en vivo del service).
+          color: alarmArmed ? CceColors.danger : CceColors.neoTextSub,
+          onTap: () => onOpenAlarm!(hostContext),
+        ),
+    ];
+    if (slots.isEmpty) return const SizedBox.shrink();
+    return Container(
+      decoration: BoxDecoration(
+        color: CceColors.neoSunken,
+        borderRadius: BorderRadius.circular(CceRadii.pill),
+        boxShadow: CceShadows.neoInset(),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(mainAxisSize: MainAxisSize.min, children: slots),
     );
   }
 }

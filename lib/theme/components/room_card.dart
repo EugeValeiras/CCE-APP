@@ -10,11 +10,13 @@ import 'cce_card.dart';
 import 'cce_switch.dart';
 import 'status_dot.dart';
 
-/// Card de habitacion (sidebar tablet y lista phone), estilo Hue:
-/// gradiente pastel del tint real de las luces si hay encendidas (foreground
-/// por luminancia del pastel), SOLO el nombre como Hue (sin subtítulo), dots
-/// de estado inline a la derecha del título, switch a la derecha y slider de
-/// brillo FINO embebido al pie (solo tablet, [brightness] != null).
+/// Card de habitacion (sidebar tablet y lista phone), lenguaje NEOMÓRDICO:
+/// SIEMPRE la MISMA almohada de [CceColors.neoBase] (relieve cardFloat +
+/// gradiente sutil + bevel), tanto apagada como encendida. El estado ENCENDIDO
+/// NO se pinta con un fill de color: se comunica con (a) un GLOW de acento que
+/// se filtra por debajo de la almohada, (b) un anillo de acento de baja opacidad
+/// en el borde, (c) el ícono teñido del color real de las luces y (d) un
+/// StatusDot. La tipografía y la superficie nunca se tiñen.
 ///
 /// Layout congelado (anti-overflow):
 ///  - compact == true (phone): altura FIJA 76, NUNCA renderiza slider.
@@ -73,11 +75,10 @@ class RoomCard extends StatefulWidget {
   final ValueChanged<bool> onToggle; // switch a la derecha
   final ValueChanged<double>? onBrightnessCommitted; // commit al soltar, 0..1
 
-  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
-  /// idéntico al actual (el sidebar del tablet no lo pasa, queda intacto).
-  /// OFF ⇒ extrusión gris [CceShadows.neo]; ON ⇒ solo el glow de color
-  /// [CceShadows.glowOn] (no se ensucia el halo). Badge y switch hundidos
-  /// vía [CceShadows.neoInset].
+  /// OPT-IN: relieve neumórfico (home teléfono y sidebar tablet). Default false
+  /// ⇒ render plano legacy. Con neo:true la card es SIEMPRE la almohada raised
+  /// de neoBase (mismo material apagada/encendida); el ON sólo suma glow +
+  /// anillo + ícono/dot de acento, sin fill de color.
   final bool neo;
 
   @override
@@ -133,50 +134,30 @@ class _RoomCardState extends State<RoomCard> {
     final showSlider = !widget.compact && widget.brightness != null;
     final height = widget.compact ? 76.0 : (showSlider ? 104.0 : 76.0);
 
-    // Gradiente multicolor estilo Hue: una parada por cada luz ON con color.
-    // Con 0/1 colores cae al tint dominante (o ámbar) — comportamiento previo.
+    // Colores de las luces ON (una parada por luz con color); 0/1 ⇒ tint
+    // dominante o ámbar. Ya NO se pintan como fill: sólo derivan el ACENTO
+    // (glow + anillo + ícono + dot) cuando hay alguna encendida.
     final colors = widget.tintColors.isNotEmpty
         ? widget.tintColors
         : [widget.tint ?? CceColors.warm];
 
-    final gradient = widget.anyOn ? CceGradients.huePastel(colors) : null;
-    // Foreground por LUMINANCIA del pastel medio (promedio de las paradas):
-    // pasteles oscuros → texto blanco, claros → casi-negro.
-    final mid = CceTint.pastel(_avgColor(colors));
-    final fg = widget.anyOn ? CceTint.textOn(mid) : CceColors.textPrimary;
-    final fgSub =
-        widget.anyOn ? CceTint.subTextOn(mid) : CceColors.textSecondary;
+    // Acento de la card encendida = color real de las luces NORMALIZADO (clamp
+    // de sat/luz en HSL, conservando hue). Es la chispa permitida: tiñe glow,
+    // anillo, ícono y dot — nunca la superficie ni la tipografía. El glow usa el
+    // mismo `mid` desaturado para que el halo no grite.
+    final Color accent = CceTint.normalize(_avgColor(colors));
+    final Color mid = CceTint.pastel(_avgColor(colors));
 
-    // ÍCONO GRANDE EXTRUIDO (sin círculo): el glyph sale de la superficie de la
-    // card como un relieve. El icono sigue siendo widget.icon (no cambia QUÉ se
-    // muestra); sólo cambia su PRESENTACIÓN.
-    //
-    // Color del glyph: se calcula contra la superficie REAL bajo el icono — en
-    // ON eso es el GRADIENTE PASTEL de la card (`mid`/`fg`, ya computados arriba
-    // por luminancia), NO el `badgeTint` saturado del viejo círculo; en OFF, fg
-    // cae a textPrimary sobre neoBase. (Conservamos la lógica de tint/contraste
-    // y los branches null: "Toda la casa" sin tint usa `mid` warm igual.)
+    // ÍCONO GRANDE EXTRUIDO (sin círculo): SIEMPRE sobre la goma oscura neoBase,
+    // así que usa el par FIJO de CceEmboss (calibrado para oscuro, misma fuente
+    // de verdad que el IconTheme global). En ON el glyph se tiñe del `accent`
+    // (chispa de color); en OFF cae a neoTextSub (la almohada apagada "duerme",
+    // reservando el blanco/acento para el estado activo).
     const double iconSize = 32;
     final Color glyphColor =
-        widget.anyOn ? fg : (widget.neo ? CceColors.neoText : fg);
-
-    // Highlight/shadow del relieve derivados de la SUPERFICIE bajo el icono:
-    //  - OFF (neoBase, oscuro): par fijo de CceEmboss (calibrado para oscuro,
-    //    misma fuente de verdad que el IconTheme global → el icono de la card se
-    //    ve igual que el resto de los iconos goma de la app).
-    //  - ON (pastel `mid`, claro): luz = tono más claro del color + sombra =
-    //    tono más oscuro del color (EmbossedGlyph.surfaceEmboss), para que el
-    //    relieve sea "moldeado" del material de color y NO ensucie con
-    //    blanco/negro puros sobre ámbar/rosa.
-    final Color embHi, embSh;
-    if (widget.anyOn) {
-      final (h, s) = EmbossedGlyph.surfaceEmboss(mid);
-      embHi = h;
-      embSh = s;
-    } else {
-      embHi = CceEmboss.highlight.color;
-      embSh = CceEmboss.shadow.color;
-    }
+        widget.anyOn ? accent : CceColors.neoTextSub;
+    final Color embHi = CceEmboss.highlight.color;
+    final Color embSh = CceEmboss.shadow.color;
 
     // Subtítulo de estado (como la card del JBL): override > conteo > apagado.
     final lo = widget.lightsOn, lt = widget.lightsTotal;
@@ -216,28 +197,15 @@ class _RoomCardState extends State<RoomCard> {
                 widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                // Nombre con relieve neumórfico (como el título de la card JBL).
-                // OFF (fondo oscuro): tinta titleInk + el relieve fuerte de
-                // CceText.embossShadows (idéntico a la JBL). ON (pastel claro):
-                // tinta de contraste fg + relieve MOLDEADO del color de la card
-                // (mismo par highlight/shadow que el ícono: embHi/embSh).
-                style: TextStyle(
+                // Nombre con relieve neumórfico (como el título de la card JBL),
+                // IGUAL apagada o encendida: tinta titleInk + CceText.embossShadows.
+                // El texto NUNCA se tiñe — la superficie es siempre la misma goma.
+                style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w600,
                   letterSpacing: -0.2,
-                  color: widget.anyOn ? fg : CceText.titleInk,
-                  shadows: widget.anyOn
-                      ? [
-                          Shadow(
-                              color: embSh,
-                              offset: const Offset(1.1, 1.6),
-                              blurRadius: 2.4),
-                          Shadow(
-                              color: embHi,
-                              offset: const Offset(-1.0, -1.3),
-                              blurRadius: 1.4),
-                        ]
-                      : CceText.embossShadows,
+                  color: CceText.titleInk,
+                  shadows: CceText.embossShadows,
                 ),
               ),
               const SizedBox(height: 2),
@@ -259,12 +227,24 @@ class _RoomCardState extends State<RoomCard> {
                     ),
                     const SizedBox(width: 6),
                   ],
+                  // Punto de estado "encendido": redunda el acento del ícono
+                  // (chispa de color del estado activo), sin pulso. Sólo cuando
+                  // no hay ya un dot de sensor (motion/contact) ocupando el lugar.
+                  if (widget.anyOn && !widget.motion && !widget.contactOpen) ...[
+                    StatusDot(
+                      accent,
+                      semanticLabel: 'Encendido',
+                    ),
+                    const SizedBox(width: 6),
+                  ],
                   Flexible(
                     child: Text(
                       subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: CceText.caption.copyWith(color: fgSub),
+                      style: CceText.caption.copyWith(
+                        color: CceColors.textSecondary,
+                      ),
                     ),
                   ),
                 ],
@@ -285,19 +265,14 @@ class _RoomCardState extends State<RoomCard> {
     );
 
     final card = CceCard(
-      gradient: gradient,
-      // neo solo en APAGADO: dispara la superficie "almohada" (raisedDecoration:
-      // gradiente + cardFloat + bevel) en CceCard. En ENCENDIDO va neo:false
-      // para conservar exacto el fill pastel + el glowOn del contenedor externo
-      // (sin sumar el relieve simétrico de CceCard).
-      neo: widget.neo && !widget.anyOn,
-      color: widget.anyOn
-          ? null
-          : (widget.neo
-              ? CceColors.neoBase
-              : (widget.selected
-                  ? CceColors.surfaceHigh
-                  : CceColors.cardOff)),
+      // SIEMPRE la almohada raised de neoBase (raisedDecoration: gradiente sutil
+      // + cardFloat + bevel), apagada O encendida: misma goma continua. El ON no
+      // cambia la superficie — sólo el glow/anillo/ícono/dot de acento (fuera de
+      // CceCard). En legacy (neo:false) se conserva el render plano histórico.
+      neo: widget.neo,
+      color: widget.neo
+          ? CceColors.neoBase
+          : (widget.selected ? CceColors.surfaceHigh : CceColors.cardOff),
       radius: CceRadii.hueCard,
       padding: EdgeInsets.fromLTRB(16, showSlider ? 10 : 8, 14, 8),
       onTap: () {
@@ -317,8 +292,11 @@ class _RoomCardState extends State<RoomCard> {
                     value: (_dragValue ?? widget.brightness!)
                         .clamp(0.0, 1.0)
                         .toDouble(),
-                    activeColor: Colors.white,
-                    thinTrackColor: fg.withValues(alpha: 0.15),
+                    // Riel hundido en la goma (canal oscuro) + relleno con el
+                    // ACENTO real de la sala (coherente con glyph/dot), en vez
+                    // de blanco sobre un track derivado del viejo fill pastel.
+                    activeColor: accent,
+                    thinTrackColor: CceColors.neoDark,
                     onChanged: _onSliderChanged,
                     onChangeEnd: _onSliderEnd,
                   ),
@@ -339,15 +317,30 @@ class _RoomCardState extends State<RoomCard> {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(CceRadii.hueCard),
-              // OFF + neo: la flotación (cardFloat) + gradiente almohada + bevel
-              // los aporta CceCard via raisedDecoration (DecoratedBox externo);
-              // aquí NO se duplica la sombra. ON conserva glowOn (fade animado).
-              boxShadow: widget.anyOn ? CceShadows.glowOn(mid) : const [],
+              // La flotación (cardFloat) + gradiente almohada + bevel los aporta
+              // CceCard via raisedDecoration (DecoratedBox externo); aquí NO se
+              // duplica. ON suma el GLOW de acento como SEÑAL PRIMARIA de
+              // "encendido" (ahora que no hay fill): se filtra bajo la almohada.
+              // Más peso que el glowOn por defecto (alpha 0.45 / spread -2) con
+              // el `mid` desaturado para que el halo no grite.
+              boxShadow: widget.anyOn
+                  ? [
+                      BoxShadow(
+                        color: mid.withValues(alpha: 0.45),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                        spreadRadius: -2,
+                      ),
+                    ]
+                  : const [],
             ),
             child: card,
           ),
-          // Selección: hairline blanco sutil (el accent violeta chocaba
-          // contra el ámbar).
+          // Borde superpuesto. PRIORIDAD:
+          //  1) selección (tablet) → hairline blanco 0.80, width 1.4 (gana).
+          //  2) encendido sin selección → ANILLO de acento sutil 0.22, width 1.2:
+          //     el "rim" de color que insinúa el estado sin rellenar nada.
+          //  3) resto → transparente.
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedContainer(
@@ -358,8 +351,10 @@ class _RoomCardState extends State<RoomCard> {
                   border: Border.all(
                     color: widget.selected
                         ? Colors.white.withValues(alpha: 0.80)
-                        : Colors.transparent,
-                    width: 1.4,
+                        : (widget.anyOn
+                            ? accent.withValues(alpha: 0.22)
+                            : Colors.transparent),
+                    width: widget.selected ? 1.4 : 1.2,
                   ),
                 ),
               ),

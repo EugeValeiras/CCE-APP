@@ -71,7 +71,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
         final dotColor = !online
             ? CceColors.textTertiary
             : (on ? _tvAccent : CceColors.textTertiary);
-        return CceCard(
+        final card = CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
             if (widget.onOpen != null) {
@@ -82,6 +82,9 @@ class _TvHomeCardState extends State<TvHomeCard> {
               ));
             }
           },
+          // En neo iguala el radio de las RoomCard (hueCard 24); en plano el
+          // default histórico (28).
+          radius: neo ? CceRadii.hueCard : CceRadii.card,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           color: neo ? CceColors.neoBase : null,
           neo: neo,
@@ -97,7 +100,9 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 height: 48,
                 child: Center(
                   child: EmbossedGlyph(
-                    size: 32,
+                    // Tile destacado compacto (fila TV|JBL): glyph 28 para
+                    // homogeneizar con la jerarquía del header (vs 32 full).
+                    size: neo ? 28 : 32,
                     // Color del glyph: accent ON / neoTextSub en espera-offline
                     // (neo); accent histórico en plano.
                     color: neo
@@ -121,7 +126,8 @@ class _TvHomeCardState extends State<TvHomeCard> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: neo
-                          ? CceText.title.copyWith(fontSize: 17)
+                          // Tile compacto de la fila destacada: 15 (vs 17 full).
+                          ? CceText.title.copyWith(fontSize: 15)
                           : const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w600,
@@ -171,6 +177,39 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
             ],
           ),
+        );
+
+        // En plano: card tal cual. En neo: glow de acento MUY sutil bajo el
+        // tile cuando está vivo (online && on) — habla el mismo idioma
+        // "encendido = glow" que las RoomCard, pero más tenue (alpha 0.25) por
+        // ser un dispositivo secundario. La almohada (cardFloat) la aporta
+        // CceCard; aquí solo se suma el halo detrás.
+        if (!neo) return card;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutCubic,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(CceRadii.hueCard),
+                    boxShadow: (online && on)
+                        ? [
+                            BoxShadow(
+                              color: _tvAccent.withValues(alpha: 0.25),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                              spreadRadius: -2,
+                            ),
+                          ]
+                        : const [],
+                  ),
+                ),
+              ),
+            ),
+            card,
+          ],
         );
       },
     );
