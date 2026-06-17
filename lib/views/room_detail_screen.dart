@@ -10,6 +10,7 @@ import '../theme/components/cce_neo_button.dart';
 import '../theme/components/cce_switch.dart';
 import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
+import '../widgets/lock_tile.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_header_card.dart';
@@ -388,7 +389,47 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                     (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
                 .toList(),
             _sensorOrder);
+        // Cerraduras del room → sección propia (no reordenable, fija al final).
+        final locks = devices.where((d) => d.isLock).toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
         final onCount = lights.where((l) => l.state.on).length;
+
+        // Sección "Cerraduras": fija después de las secciones reordenables.
+        final lockSlivers = <Widget>[
+          if (locks.isNotEmpty) ...[
+            const SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(
+                child: SectionHeader(title: 'Cerraduras'),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: TileSize.medium.maxTileExtent,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: TileSize.medium.sensorTileHeight,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => ListenableBuilder(
+                    listenable: service,
+                    builder: (ctx, _) {
+                      final d = service.byId(locks[i].id) ?? locks[i];
+                      return LockTile(
+                          device: d,
+                          service: service,
+                          size: TileSize.medium,
+                          neo: true);
+                    },
+                  ),
+                  childCount: locks.length,
+                ),
+              ),
+            ),
+          ],
+        ];
 
         // Slivers por sección, renderizados según _order.
         final sectionSlivers = <String, List<Widget>>{
@@ -535,6 +576,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                     ),
                   ),
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
+                ...lockSlivers,
                 if (devices.isEmpty)
                   const SliverFillRemaining(
                     hasScrollBody: false,

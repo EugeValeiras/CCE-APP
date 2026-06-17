@@ -17,9 +17,13 @@ part of 'soundbar_screen.dart';
 /// Todos los comandos pasan por [_handle] para reportar 502/fallos vía
 /// SnackBar sin asumir éxito (los comandos del service devuelven bool).
 
-/// Fondo del "drawer"/pantalla, MÁS OSCURO que la carcasa (neoBase) para que el
-/// control flote sobre él. Réplica del `#16181D` del dashboard.
-const Color _kDrawerBg = Color(0xFF16181D);
+/// Fondo de la pantalla: el fondo NORMAL de la app ([CceColors.neoBase],
+/// #1C1E24) — mismo canvas que el home de teléfono/tablet (tablet_home_view,
+/// rooms_list_screen). NO usamos el casi-negro del drawer (#16181D) porque al
+/// usuario le resultaba demasiado negro. La carcasa (también neoBase) flota
+/// igual gracias a su sombra externa exagerada (28px / negra 0.45), idéntico al
+/// patrón neumórfico del dashboard: misma superficie, relieve por sombra.
+const Color _kDrawerBg = CceColors.neoBase;
 
 /// Sombra externa ESTÁNDAR de los controles convexos del dashboard
 /// (3/3/8 negra abajo-der + -3/-3/8 luz arriba-izq). Es el relieve "sobresale"

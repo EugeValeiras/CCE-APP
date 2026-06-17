@@ -76,8 +76,9 @@ class DevicesService extends ChangeNotifier {
   List<Device> get lights =>
       all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat).toList();
   List<Device> get sensors =>
-      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat).toList();
+      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock).toList();
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
+  List<Device> get locks => all.where((d) => d.isLock).toList();
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;

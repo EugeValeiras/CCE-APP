@@ -12,10 +12,11 @@ import '../../theme/components/cce_neo_button.dart';
 import '../../theme/components/cce_segmented.dart';
 import '../../theme/components/section_header.dart';
 import '../../widgets/light_tile.dart';
+import '../../widgets/lock_tile.dart';
 import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
 import '../../widgets/temperature_summary_card.dart';
-import '../../widgets/thermostat_tile.dart';
+import '../../widgets/thermostat_header_card.dart';
 import '../floor_plan_tab.dart';
 
 /// Panel derecho de la tab Casa cuando hay una habitacion seleccionada:
@@ -220,10 +221,17 @@ class RoomPanel extends StatelessWidget {
     final lights = devices
         .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
         .toList();
-    final thermostats = devices.where((d) => d.isThermostat).toList();
+    // Termostato del room → header fijo arriba del contenido (igual que el
+    // teléfono en room_detail_screen.dart): NO es una sección "Clima". Tomamos
+    // el primario (alfabético) si hay varios.
+    final thermostats = devices.where((d) => d.isThermostat).toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final primaryThermostat =
+        thermostats.isNotEmpty ? thermostats.first : null;
     final sensors = devices
         .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
         .toList();
+    final locks = devices.where((d) => d.isLock).toList();
 
     if (devices.isEmpty) {
       return const Center(
@@ -233,8 +241,28 @@ class RoomPanel extends StatelessWidget {
     }
 
     return CustomScrollView(
-      // Orden: Escenas → Luces → Sensores.
+      // Orden: Termostato (header) → Escenas → Luces → Sensores → Cerraduras.
       slivers: [
+        // Termostato del room: header fijo arriba del contenido (espejo del
+        // teléfono), junto al lector de temperatura (no es sección "Clima").
+        if (primaryThermostat != null)
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverToBoxAdapter(
+              child: ListenableBuilder(
+                listenable: service,
+                builder: (context, _) {
+                  final d = service.byId(primaryThermostat.id) ??
+                      primaryThermostat;
+                  return ThermostatHeaderCard(
+                    device: d,
+                    service: service,
+                    neo: neo,
+                  );
+                },
+              ),
+            ),
+          ),
         SliverPadding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           sliver: SliverToBoxAdapter(
@@ -275,40 +303,6 @@ class RoomPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (thermostats.isNotEmpty) ...[
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            sliver: const SliverToBoxAdapter(
-              child: SectionHeader(title: 'Clima'),
-            ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: tileSize.maxTileExtent,
-                mainAxisExtent: tileSize.sensorTileHeight,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => ListenableBuilder(
-                  listenable: service,
-                  builder: (context, _) {
-                    final d = service.byId(thermostats[i].id) ?? thermostats[i];
-                    return ThermostatTile(
-                      device: d,
-                      service: service,
-                      size: tileSize,
-                      neo: neo,
-                    );
-                  },
-                ),
-                childCount: thermostats.length,
-              ),
-            ),
-          ),
-        ],
         if (sensors.isNotEmpty) ...[
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -339,6 +333,40 @@ class RoomPanel extends StatelessWidget {
                   },
                 ),
                 childCount: sensors.length,
+              ),
+            ),
+          ),
+        ],
+        if (locks.isNotEmpty) ...[
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: const SliverToBoxAdapter(
+              child: SectionHeader(title: 'Cerraduras'),
+            ),
+          ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: tileSize.maxTileExtent,
+                mainAxisExtent: tileSize.sensorTileHeight,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => ListenableBuilder(
+                  listenable: service,
+                  builder: (context, _) {
+                    final d = service.byId(locks[i].id) ?? locks[i];
+                    return LockTile(
+                      device: d,
+                      service: service,
+                      size: tileSize,
+                      neo: neo,
+                    );
+                  },
+                ),
+                childCount: locks.length,
               ),
             ),
           ),

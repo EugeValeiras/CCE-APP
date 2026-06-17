@@ -115,7 +115,7 @@ class ThermostatHeaderCard extends StatelessWidget {
             ),
             // Setpoint + botones - / +.
             _StepButton(
-              icon: Icons.remove,
+              icon: CceIcons.minus,
               onTap: canDown ? () => _step(-0.5) : null,
             ),
             Container(
@@ -142,7 +142,7 @@ class ThermostatHeaderCard extends StatelessWidget {
               ),
             ),
             _StepButton(
-              icon: Icons.add,
+              icon: CceIcons.plus,
               onTap: canUp ? () => _step(0.5) : null,
             ),
           ],
@@ -152,8 +152,14 @@ class ThermostatHeaderCard extends StatelessWidget {
   }
 }
 
+/// Botón de paso de temperatura: SOLO el glifo − / + en RELIEVE (embossed,
+/// como goma que sobresale de la pantalla), SIN círculo/contenedor de fondo ni
+/// borde. El glifo flota; el área táctil (≥40px) se mantiene con padding y un
+/// HitTestBehavior.opaque que captura el tap en todo el cuadro. Deshabilitado =
+/// glifo atenuado.
 class _StepButton extends StatelessWidget {
-  final IconData icon;
+  /// SVG del glifo ([CceIcons.minus] / [CceIcons.plus]).
+  final String icon;
   final VoidCallback? onTap;
   const _StepButton({required this.icon, this.onTap});
 
@@ -163,18 +169,14 @@ class _StepButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: CceColors.surfaceHigh,
-          shape: BoxShape.circle,
-          border: Border.all(color: CceColors.stroke),
-        ),
-        child: Icon(
+      // Padding → área táctil ≥40px (glifo 22 + 9*2) sin fondo visible.
+      child: Padding(
+        padding: const EdgeInsets.all(9),
+        child: CceIcon(
           icon,
-          size: 20,
+          size: 22,
           color: enabled ? CceColors.textPrimary : CceColors.textTertiary,
+          // Relieve embossed (default true): el glifo sobresale de la pantalla.
         ),
       ),
     );

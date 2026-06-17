@@ -406,9 +406,13 @@ class _LockScreenState extends State<LockScreen> {
                 children: [
                   _StatusDot(online: _online),
                   const SizedBox(width: 6),
-                  Text(
-                    _online ? 'En línea' : 'Sin conexión',
-                    style: CceText.caption.copyWith(fontSize: 12.5),
+                  Flexible(
+                    child: Text(
+                      _online ? 'En línea' : 'Sin conexión',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.caption.copyWith(fontSize: 12.5),
+                    ),
                   ),
                 ],
               ),
@@ -486,52 +490,75 @@ class _LockScreenState extends State<LockScreen> {
     final accent = _isLocked ? _locked : _unlocked;
     final glyph = _isLocked ? CceIcons.lockLocked : CceIcons.lockUnlocked;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(28),
-        // El bloque SOBRESALE de la carcasa (par de sombras externas marcado:
-        // 6/6/16 negra + -6/-6/16 luz, como el `.lock-state` del dashboard).
-        boxShadow: CceShadows.neo(blur: 16, offset: 6),
-      ),
-      child: Column(
-        children: [
-          // Disco PLATO CÓNCAVO con el candado encendido + glow.
-          Container(
-            width: 132,
-            height: 132,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: CceGradients.concave(CceColors.neoBase),
-              // PLATO: relieve externo (sobresale) + cara hundida (inset suave).
-              boxShadow: CceShadows.plato(blur: 15, offset: 6),
-            ),
-            // El candado "enciende" con el color de estado + glow neón
-            // (drop-shadow del dashboard ≈ glowDot).
-            child: _GlowGlyph(
-              svg: glyph,
-              size: 56,
-              color: accent,
-            ),
+    // El disco era de ancho FIJO (132). En la carcasa de un teléfono angosto el
+    // disco + su padding lateral podían exceder el ancho disponible; lo hacemos
+    // RELATIVO al ancho real del bloque (tope 132 como en el dashboard) para que
+    // nunca desborde y conserve la proporción del plato en cualquier pantalla.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Ancho útil dentro del padding horizontal (18*2) de este bloque.
+        final double inner = (constraints.maxWidth.isFinite
+                ? constraints.maxWidth
+                : 280.0) -
+            36.0;
+        final disk = inner.clamp(0.0, 132.0).toDouble();
+        final glyphSize = disk * (56 / 132); // misma proporción que el original.
+
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
+          decoration: BoxDecoration(
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(28),
+            // El bloque SOBRESALE de la carcasa (par de sombras externas marcado:
+            // 6/6/16 negra + -6/-6/16 luz, como el `.lock-state` del dashboard).
+            boxShadow: CceShadows.neo(blur: 16, offset: 6),
           ),
-          const SizedBox(height: 16),
-          // Label en el color de estado, con text-shadow (glow) como la web.
-          Text(
-            _isLocked ? 'Trabada' : 'Destrabada',
-            style: TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-              color: accent,
-              shadows: [
-                Shadow(color: accent.withValues(alpha: 0.65), blurRadius: 12),
-              ],
-            ),
+          child: Column(
+            children: [
+              // Disco PLATO CÓNCAVO con el candado encendido + glow.
+              Container(
+                width: disk,
+                height: disk,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: CceGradients.concave(CceColors.neoBase),
+                  // PLATO: relieve externo (sobresale) + cara hundida (inset).
+                  boxShadow: CceShadows.plato(blur: 15, offset: 6),
+                ),
+                // El candado "enciende" con el color de estado + glow neón
+                // (drop-shadow del dashboard ≈ glowDot).
+                child: _GlowGlyph(
+                  svg: glyph,
+                  size: glyphSize,
+                  color: accent,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Label en el color de estado, con text-shadow (glow) como la web.
+              // FittedBox para que "Destrabada" no desborde en anchos chicos.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _isLocked ? 'Trabada' : 'Destrabada',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: accent,
+                    shadows: [
+                      Shadow(
+                          color: accent.withValues(alpha: 0.65),
+                          blurRadius: 12),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -539,36 +566,47 @@ class _LockScreenState extends State<LockScreen> {
   /// Tres huecos HUNDIDOS (inset puro) fundidos en la carcasa: batería ·
   /// conexión · último evento.
   Widget _buildMetrics() {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: _Metric(
-            svg: _kBatteryFull,
-            iconColor: _batteryColor(),
-            value: _batteryLabel,
-            label: 'Batería',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _Metric(
-            svg: _online ? _kWifi : _kWifiOff,
-            iconColor: _online ? _locked : CceColors.textTertiary,
-            value: _online ? 'OK' : '—',
-            label: 'Conexión',
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _Metric(
-            svg: CceIcons.history,
-            iconColor: CceColors.textSecondary,
-            value: _lastEventLabel,
-            label: 'Último evento',
-          ),
-        ),
-      ],
+    // El gap fijo de 12 entre las 3 métricas comía demasiado ancho en teléfonos
+    // angostos (≈85px por slot), dejando los valores apretados/recortados. Lo
+    // hacemos relativo: 8px en pantallas chicas (espejo del breakpoint <480px
+    // del dashboard), 12px en tablet. Cada métrica vive en un Expanded (1fr) y
+    // su contenido se auto-escala (FittedBox) para no desbordar nunca.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 360;
+        final gap = narrow ? 8.0 : 12.0;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _Metric(
+                svg: _kBatteryFull,
+                iconColor: _batteryColor(),
+                value: _batteryLabel,
+                label: 'Batería',
+              ),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              child: _Metric(
+                svg: _online ? _kWifi : _kWifiOff,
+                iconColor: _online ? _locked : CceColors.textTertiary,
+                value: _online ? 'OK' : '—',
+                label: 'Conexión',
+              ),
+            ),
+            SizedBox(width: gap),
+            Expanded(
+              child: _Metric(
+                svg: CceIcons.history,
+                iconColor: CceColors.textSecondary,
+                value: _lastEventLabel,
+                label: 'Último evento',
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -597,16 +635,23 @@ class _LockScreenState extends State<LockScreen> {
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 CceIcon(CceIcons.lockLocked,
                     size: 20, color: CceColors.textTertiary, emboss: false),
                 const SizedBox(width: 8),
-                const Text(
-                  'No soportado por el modelo',
-                  style: TextStyle(
-                    color: CceColors.textTertiary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
+                // Flexible para que la leyenda no desborde el botón en pantallas
+                // angostas (cae a "…" antes que tirar un RenderFlex overflow).
+                const Flexible(
+                  child: Text(
+                    'No soportado por el modelo',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: CceColors.textTertiary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -911,7 +956,10 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+      // padding horizontal mínimo (4) para no robar ancho al contenido en
+      // teléfonos angostos (espejo del `.metric { padding: 12px 4px }` <480px
+      // del dashboard).
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
       decoration: BoxDecoration(
         color: CceColors.neoBase,
         borderRadius: BorderRadius.circular(16),
@@ -922,15 +970,20 @@ class _Metric extends StatelessWidget {
         children: [
           CceIcon(svg, size: 22, color: iconColor, emboss: false),
           const SizedBox(height: 6),
-          Text(
-            value,
-            style: CceText.body.copyWith(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
+          // El valor (p.ej. "hace 5 min", "100%") se AUTO-ESCALA al ancho del
+          // slot en vez de recortarse feo con "…": en tablet se ve a tamaño
+          // pleno, en teléfono encoge lo justo para entrar.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: CceText.body.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+              maxLines: 1,
+              textAlign: TextAlign.center,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 2),
           Text(
@@ -1193,7 +1246,16 @@ class _UnlockBody extends StatelessWidget {
                 ),
               ),
             ),
-            Positioned.fill(child: Center(child: label)),
+            // El label se centra y se auto-escala si no entra (teléfonos muy
+            // angostos): nunca desborda el botón.
+            Positioned.fill(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: FittedBox(fit: BoxFit.scaleDown, child: label),
+                ),
+              ),
+            ),
           ],
         ),
       ),

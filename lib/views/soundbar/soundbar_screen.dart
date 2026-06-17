@@ -46,9 +46,10 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
   Widget build(BuildContext context) {
     final service = widget.service;
     return Scaffold(
-      // Fondo del "drawer" MÁS OSCURO que la carcasa (#16181D) para que el
-      // control flote sobre él (igual que el dashboard: el panel neoBase
-      // sobresale del fondo más oscuro con su sombra externa exagerada).
+      // Fondo NORMAL de la app (CceColors.neoBase, #1C1E24) — mismo canvas que
+      // el home de teléfono/tablet. Ya NO usamos el casi-negro #16181D del
+      // drawer (se veía demasiado negro). La carcasa neoBase flota igual con su
+      // sombra externa exagerada, como el panel del dashboard sobre su página.
       backgroundColor: _kDrawerBg,
       // Sin AppBar: control full-screen. Se vuelve con el swipe iOS; el config de
       // IP sigue disponible desde la card de offline/error cuando hace falta.
