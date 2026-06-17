@@ -179,9 +179,10 @@ class _RemoteBody extends StatelessWidget {
               ),
               const SizedBox(height: 22),
 
-              // ── Fila de utilidades (5 en una línea): Guía · Apps · Home ·
-              //    Back · Ajustes. El mute NO va acá (vive al centro del rocker
-              //    VOL); el teclado 123 se abre desde el centro del rocker CH.
+              // ── Fila de utilidades (4 en una línea): Guía · Home · Back ·
+              //    Ajustes. El mute NO va acá (vive al centro del rocker VOL);
+              //    el teclado 123 se abre desde el centro del rocker CH. Apps
+              //    salió de este anillo y ahora es el botón ancho de abajo.
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -190,13 +191,6 @@ class _RemoteBody extends StatelessWidget {
                     icon: Icons.subscriptions_outlined,
                     semantic: 'Guía / Fuentes',
                     onTap: () => _openSourcesSheet(context, service),
-                  ),
-                  // Apps → grilla de apps instaladas (sheet). NO gatea por
-                  // online: lanzar una app despierta el TV desde standby.
-                  _RoundKey(
-                    icon: Icons.apps_rounded,
-                    semantic: 'Apps instaladas',
-                    onTap: () => _openAppsSheet(context, service),
                   ),
                   // Home: NO gatea por online (despierta el TV).
                   _RoundKey(
@@ -283,6 +277,15 @@ class _RemoteBody extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 18),
+
+              // ── Botón ANCHO de aplicaciones (estilo dashboard) ────────────
+              //    Reemplaza al viejo botón redondo del anillo de utilidades.
+              //    NO gatea por online: lanzar una app despierta el TV desde
+              //    standby (mismo comportamiento que tenía el redondo).
+              _AppsWideButton(
+                onTap: () => _openAppsSheet(context, service),
               ),
               const SizedBox(height: 16),
 
@@ -669,6 +672,56 @@ class _RoundKey extends StatelessWidget {
             boxShadow: enabled ? _lerp(raised, inset, t) : const [],
           ),
           child: content,
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón ANCHO de "Aplicaciones" (clon del `.apps-btn` del dashboard): único
+/// control de ancho completo del remote, va entre los rockers y el wordmark.
+/// Reposo extruido (neo) → hundido (neoInset) al presionar, vía [_PressFx]+[_lerp].
+/// NO gatea por online: lanzar una app despierta el TV desde standby.
+class _AppsWideButton extends StatelessWidget {
+  const _AppsWideButton({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final raised = CceShadows.neo(blur: 8, offset: 3);
+    final inset = CceShadows.neoInset(blur: 6, offset: 2);
+
+    return _PressFx(
+      onTap: onTap,
+      builder: (t) => Semantics(
+        button: true,
+        label: 'Aplicaciones',
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(CceRadii.control),
+            boxShadow: _lerp(raised, inset, t),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CceIcon(CceIcons.appsGrid, size: 20, color: CceColors.neoText),
+              const SizedBox(width: 10),
+              const Text(
+                'Aplicaciones',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                  color: CceColors.neoText,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
