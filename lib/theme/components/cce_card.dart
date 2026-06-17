@@ -45,14 +45,16 @@ class CceCard extends StatelessWidget {
   static BoxDecoration raisedDecoration({
     required Color base,
     required double radius,
-    bool bevel = true,
+    bool bevel = false,
   }) {
     final br = BorderRadius.circular(radius);
     return BoxDecoration(
       gradient: CceGradients.cardSurface(base),
       borderRadius: br,
+      // Sin borde por default (más neomórfico, como el botón "Aplicaciones"):
+      // el relieve lo da SOLO la sombra neo (convexo), no un contorno.
       border: bevel ? Border.all(color: CceColors.cardBevel) : null,
-      boxShadow: CceShadows.cardFloat(),
+      boxShadow: CceShadows.neo(blur: 12, offset: 4),
     );
   }
 
