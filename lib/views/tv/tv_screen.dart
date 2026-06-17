@@ -52,7 +52,9 @@ class _TvScreenState extends State<TvScreen> {
   Widget build(BuildContext context) {
     final service = widget.service;
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      // Fondo del drawer MÁS OSCURO que la carcasa (manual dashboard: #16181D)
+      // para que el control neumórfico FLOTE sobre la pantalla.
+      backgroundColor: const Color(0xFF16181D),
       // Sin AppBar: control full-screen. Se vuelve con el swipe iOS.
       body: SafeArea(
         child: AnimatedBuilder(
@@ -134,13 +136,27 @@ class _RemoteBody extends StatelessWidget {
     // ANCHO COMPLETO: la carcasa ocupa todo el ancho dado por el SizedBox del
     // _buildBody (el FittedBox cuida el alto). Ya no se limita a 340 px.
     return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+          // CARCASA (manual dashboard): radius 40, bg neoBase PLANO, padding 22,
+          // gap 22, sombra externa EXAGERADA (10/10/28 negra abajo-der + -6/-6/20
+          // luz arriba-izq) para que el cuerpo flote sobre el fondo del drawer.
+          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
-            // Carcasa negra mate: gradiente sutil + relieve flotante de card.
-            gradient: CceGradients.cardSurface(CceColors.neoBase),
-            borderRadius: BorderRadius.circular(54),
-            border: Border.all(color: CceColors.cardBevel, width: 1),
-            boxShadow: CceShadows.cardFloat(),
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(40),
+            boxShadow: const [
+              // 10px 10px 28px rgba(0,0,0,0.45) — caída abajo-derecha.
+              BoxShadow(
+                color: Color(0x73000000),
+                blurRadius: 28,
+                offset: Offset(10, 10),
+              ),
+              // -6px -6px 20px rgba(42,45,55,0.25) — luz arriba-izquierda.
+              BoxShadow(
+                color: Color(0x402A2D37),
+                blurRadius: 20,
+                offset: Offset(-6, -6),
+              ),
+            ],
           ),
           child: Column(
             children: [
@@ -166,7 +182,7 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 22),
 
               // ── D-PAD GRANDE + OK central (elemento dominante) ────────────
               _DPad(
@@ -214,7 +230,7 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 22),
 
               // ── Rockers píldora: VOLUMEN (con mute al centro) · CANAL ──────
               Row(
@@ -278,7 +294,7 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 22),
 
               // ── Botón ANCHO de aplicaciones (estilo dashboard) ────────────
               //    Reemplaza al viejo botón redondo del anillo de utilidades.
@@ -287,7 +303,7 @@ class _RemoteBody extends StatelessWidget {
               _AppsWideButton(
                 onTap: () => _openAppsSheet(context, service),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 22),
 
               // ── Wordmark SAMSUNG ──────────────────────────────────────────
               Text(
@@ -362,14 +378,17 @@ class _DPad extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Anillo hundido (pista del dpad).
+          // PLATO cóncavo del d-pad (manual dashboard): la pista SOBRESALE del
+          // fondo (relieve externo) pero la cara está HUNDIDA (inset suave),
+          // sobre un gradiente cóncavo 145° oscuro→claro. Antes era solo inset
+          // (puro hundido); ahora es plato = neo + neoInset, como en la web.
           Container(
             width: diameter,
             height: diameter,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: CceColors.neoBase,
-              boxShadow: CceShadows.neoInset(blur: 14, offset: 5),
+              gradient: CceGradients.concave(CceColors.neoBase),
+              boxShadow: CceShadows.plato(blur: 18, offset: 7),
             ),
           ),
           // Flechas direccionales (zonas táctiles a los 4 lados).
@@ -416,9 +435,12 @@ class _DPad extends StatelessWidget {
               width: okSize,
               height: okSize,
               alignment: Alignment.center,
+              // OK central CONVEXO (manual dashboard): sobresale (gradiente
+              // convexo claro→oscuro + SOLO sombras externas); al presionar
+              // pasa a inset. Antes usaba cardSurface; ahora convex puro.
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                gradient: CceGradients.cardSurface(CceColors.neoBase),
+                gradient: CceGradients.convex(CceColors.neoBase),
                 boxShadow: enabled
                     ? _lerp(
                         CceShadows.neo(blur: 12, offset: 5),
@@ -528,12 +550,13 @@ class _Rocker extends StatelessWidget {
     return Column(
       children: [
         Container(
-          // Píldora hundida con gradiente sutil + bisel: más profundidad.
+          // Píldora CONVEXA RAISED (manual dashboard): el rocker SOBRESALE
+          // (gradiente convexo + sombra externa estándar), no hundida. Réplica
+          // del `.rocker` de la web (neoBase + 3/3/8 + -3/-3/8).
           decoration: BoxDecoration(
-            gradient: CceGradients.cardSurface(CceColors.neoBase),
+            gradient: CceGradients.convex(CceColors.neoBase),
             borderRadius: BorderRadius.circular(CceRadii.pill),
-            boxShadow: CceShadows.neoInset(blur: 12, offset: 5),
-            border: Border.all(color: CceColors.cardBevel, width: 1),
+            boxShadow: CceShadows.neo(blur: 8, offset: 3),
           ),
           child: Column(
             children: [
@@ -678,11 +701,12 @@ class _AppsWideButton extends StatelessWidget {
         label: 'Aplicaciones',
         child: Container(
           width: double.infinity,
-          height: 50,
+          // Manual dashboard `.apps-btn`: height 48, radius 14, raised → inset.
+          height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: CceColors.neoBase,
-            borderRadius: BorderRadius.circular(CceRadii.control),
+            borderRadius: BorderRadius.circular(14),
             boxShadow: _lerp(raised, inset, t),
           ),
           child: Row(

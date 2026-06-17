@@ -166,6 +166,16 @@ abstract final class CceShadows {
         ),
       ];
 
+  /// PLATO (dashboard): relieve cóncavo que SOBRESALE pero hunde la cara.
+  /// Combina relieve EXTERNO [neo] (el cuerpo sale del fondo) con sombras
+  /// INSET suaves [neoInset] (la cara se mete hacia adentro). Pareja con
+  /// [CceGradients.concave]. Es el look de D-pad, dials y el estado grande de
+  /// la cerradura. La cara hundida usa la mitad de blur/offset que el relieve.
+  static List<BoxShadow> plato({double blur = 15, double offset = 6}) => [
+        ...neo(blur: blur, offset: offset),
+        ...neoInset(blur: blur * 0.5, offset: offset * 0.5),
+      ];
+
   /// Elevación "almohada flotante": drop difuso hacia ABAJO + rim-light tenue
   /// arriba. Reemplaza el look simétrico de neo() para CARDS (no para botones).
   /// Barato (2 BoxShadow, sin blur de capa). [intensity] escala opacidad.
@@ -250,6 +260,44 @@ abstract final class CceText {
 
 /// Gradientes compartidos.
 abstract final class CceGradients {
+  /// CÓNCAVO (dashboard): plato que sobresale pero hunde la cara. Gradiente
+  /// 145° (topLeft→bottomRight) OSCURO→CLARO: la luz canónica arriba-izquierda
+  /// pega en la pared lejana, dejando el borde sup-izq en sombra. Para neoBase
+  /// reproduce ≈ #16181d→#22252e. darker = base L-0.03, lighter = base L+0.03.
+  /// Es la cara de D-pad, dials y el estado grande de la cerradura.
+  static LinearGradient concave(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final darker = hsl
+        .withLightness((hsl.lightness - 0.03).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    final lighter = hsl
+        .withLightness((hsl.lightness + 0.03).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [darker, lighter],
+    );
+  }
+
+  /// CONVEXO (dashboard): superficie que sobresale (almohada). Mismo eje 145°
+  /// que [concave] pero CLARO→OSCURO: el canto sup-izq atrapa la luz y el
+  /// inf-der cae en sombra. Para OK, chips y los +/- steppers.
+  static LinearGradient convex(Color base) {
+    final hsl = HSLColor.fromColor(base);
+    final darker = hsl
+        .withLightness((hsl.lightness - 0.03).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    final lighter = hsl
+        .withLightness((hsl.lightness + 0.03).clamp(0.0, 1.0).toDouble())
+        .toColor();
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [lighter, darker],
+    );
+  }
+
   /// Superficie de card raised: gradiente vertical SUTIL claro-arriba ->
   /// oscuro-abajo derivado de [base] (efecto convexo de almohada). Paramétrico
   /// por color base (sirve para neoBase, cardOff, neoSunken). NO usar sobre

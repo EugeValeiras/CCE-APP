@@ -17,6 +17,43 @@ part of 'soundbar_screen.dart';
 /// Todos los comandos pasan por [_handle] para reportar 502/fallos vía
 /// SnackBar sin asumir éxito (los comandos del service devuelven bool).
 
+/// Fondo del "drawer"/pantalla, MÁS OSCURO que la carcasa (neoBase) para que el
+/// control flote sobre él. Réplica del `#16181D` del dashboard.
+const Color _kDrawerBg = Color(0xFF16181D);
+
+/// Sombra externa ESTÁNDAR de los controles convexos del dashboard
+/// (3/3/8 negra abajo-der + -3/-3/8 luz arriba-izq). Es el relieve "sobresale"
+/// de los chips, botones de acceso, +/- y la píldora de mute en reposo.
+List<BoxShadow> _convexShadow() => const [
+      BoxShadow(
+        color: Color(0xB30C0D11), // rgba(12,13,17,0.70)
+        blurRadius: 8,
+        offset: Offset(3, 3),
+      ),
+      BoxShadow(
+        color: Color(0x8C2A2D37), // rgba(42,45,55,0.55)
+        blurRadius: 8,
+        offset: Offset(-3, -3),
+      ),
+    ];
+
+/// Sombra INSET de un control convexo presionado / activo "apagado" (no glow):
+/// inset 2/2/6 negra + inset -2/-2/6 luz. Réplica del `:active` del dashboard.
+List<BoxShadow> _convexInset() => const [
+      BoxShadow(
+        color: Color(0xD90C0D11), // rgba(12,13,17,0.85)
+        blurRadius: 6,
+        offset: Offset(2, 2),
+        blurStyle: BlurStyle.inner,
+      ),
+      BoxShadow(
+        color: Color(0x732A2D37), // rgba(42,45,55,0.45)
+        blurRadius: 6,
+        offset: Offset(-2, -2),
+        blurStyle: BlurStyle.inner,
+      ),
+    ];
+
 /// Ejecuta un comando y muestra un SnackBar si devolvió false (falló/ignorado).
 Future<void> _handle(Future<bool> action, BuildContext context) async {
   final ok = await action;
@@ -36,11 +73,16 @@ Future<void> _handle(Future<bool> action, BuildContext context) async {
 
 // ── Helper neumórfico reutilizable ──────────────────────────────────────────
 
-/// Superficie accionable con feedback de presión (RAISED en reposo → INSET al
-/// presionar) + estado ACTIVO (INSET permanente). Centraliza el
-/// `HapticFeedback.selectionClick` del tap. El color de fondo (neoBase /
-/// neoSunken) es OPACO SIEMPRE: requisito de `BlurStyle.inner` del inner-shadow
-/// — un color con alpha rompe el well silenciosamente (se ve plano).
+/// CHIP / BOTÓN CONVEXO del dashboard: superficie que SOBRESALE (gradiente
+/// convexo claro→oscuro + sombra externa estándar). Al presionar pasa a INSET
+/// (sombra interna) — réplica del `:active` del `.chip`/`.quick`. El estado
+/// ACTIVO ("encendido") NO usa inset ni borde: lo comunica el call-site
+/// encendiendo ícono+label con glow (color de marca + text-shadow + drop-shadow
+/// del ícono), exactamente como el dashboard (`.chip.active`).
+///
+/// El color de fondo se mantiene SIEMPRE en neoBase OPACO (requisito de
+/// `BlurStyle.inner` para que el inset al presionar no se vea plano); el
+/// gradiente convexo se pinta encima.
 ///
 /// Lo usan [_SourceChip], [_QuickButton] y la píldora de mute del volumen.
 class _NeoPressable extends StatelessWidget {
@@ -57,10 +99,10 @@ class _NeoPressable extends StatelessWidget {
 
   final Widget child;
   final VoidCallback? onTap; // null o enabled:false => deshabilitado
-  final bool active; // estado seleccionado (well permanente)
-  // Conservado por compatibilidad de call-sites: el "encendido" del estado
-  // activo (glow del ícono + shadows del label) lo aplica cada call-site con su
-  // propio color; _NeoPressable ya NO dibuja borde.
+  // ACTIVO = "encendido" con glow (lo aplica el call-site con su color). El
+  // convexo NO se hunde ni cambia material al estar activo (igual que el
+  // dashboard): la superficie sigue sobresaliendo, solo se prende la luz.
+  final bool active;
   // ignore: unused_field
   final Color? activeColor;
   final double radius;
@@ -72,14 +114,8 @@ class _NeoPressable extends StatelessWidget {
   Widget build(BuildContext context) {
     final on = enabled && onTap != null;
     final br = BorderRadius.circular(radius);
-    // Reposo: inset si está activo (well permanente), si no extruido. Al apretar
-    // interpola raised→inset por `t` y la ESCALA la aporta CceNeoPress (feedback
-    // animado y consistente con el resto de la app, en vez del cambio de golpe).
-    final rest = active
-        ? CceShadows.neoInset(blur: 7, offset: 3)
-        : CceShadows.neo(blur: 8, offset: 3);
-    final pressed = CceShadows.neoInset(blur: 7, offset: 3);
-    final restBg = active ? CceColors.neoSunken : CceColors.neoBase;
+    final rest = _convexShadow(); // sobresale (relieve externo)
+    final pressed = _convexInset(); // se hunde al apretar
 
     Widget surface(double t) {
       final shadow = !on
@@ -88,16 +124,13 @@ class _NeoPressable extends StatelessWidget {
               for (var i = 0; i < rest.length; i++)
                 BoxShadow.lerp(rest[i], pressed[i], t)!,
             ];
-      // Fondo opaco SIEMPRE (BlurStyle.inner del inset lo exige): interpola al
-      // pozo (neoSunken) a medida que se hunde.
-      final bg = Color.lerp(restBg, CceColors.neoSunken, on ? t : 0.0)!;
-      // ACTIVO = "luz interna encendida": SIN borde (lo da el call-site
-      // encendiendo ícono+label con glow). El well permanente (restBg neoSunken
-      // + sombras inset) ya comunica el estado apretado.
       final box = Container(
         padding: padding,
         decoration: BoxDecoration(
-          color: bg,
+          // Fondo opaco SIEMPRE (para el inset al presionar) + gradiente convexo
+          // claro→oscuro encima: la superficie "sobresale" como el dashboard.
+          color: CceColors.neoBase,
+          gradient: CceGradients.convex(CceColors.neoBase),
           borderRadius: br,
           boxShadow: shadow,
         ),
@@ -199,98 +232,115 @@ class _NeoWell extends StatelessWidget {
   }
 }
 
-// ── Header ──────────────────────────────────────────────────────────────────
+// ── Power ─────────────────────────────────────────────────────────────────
 
 /// Etiqueta amigable para la fuente actual. La barra reporta ids crudos
 /// (p.ej. "RADIO-NETWORK"); acá los acortamos para mostrarlos en la UI.
+/// Conservado para call-sites externos que muestren la fuente (la home card).
+// ignore: unused_element
 String _sourceLabel(String src) {
   final s = src.toLowerCase();
   if (s.contains('radio') || s.contains('network')) return 'RADIO';
   return src;
 }
 
-/// Card de cabecera (RAISED almohada): avatar del parlante en WELL hundido,
-/// nombre, estado de encendido y la fuente actual (si la hay), con el power al
-/// costado (raised→inset al presionar via CceNeoSvgIconButton).
-class _SoundbarHeaderCard extends StatelessWidget {
-  const _SoundbarHeaderCard({required this.service});
+/// Botón de POWER redondo 52px, alineado arriba-IZQUIERDA de la carcasa (réplica
+/// del `.neo-btn.round.power` del dashboard): base neoBase plana + sombra
+/// EXTERNA estándar (4/4/10) → al presionar se hunde (inset). El ícono va
+/// neoTextSub apagado y jbl-orange cuando la barra está encendida. Wake-friendly:
+/// el toggle de power funciona también en standby.
+class _PowerButton extends StatelessWidget {
+  const _PowerButton({required this.service});
 
   final JblService service;
 
   @override
   Widget build(BuildContext context) {
-    final String powerLabel;
-    final Color dotColor;
-    switch (service.status?.power) {
-      case 'on':
-        powerLabel = 'Encendido';
-        dotColor = CceColors.ok;
-        break;
-      case 'off':
-        powerLabel = 'En espera';
-        dotColor = CceColors.textTertiary;
-        break;
-      default:
-        powerLabel = 'Desconocido';
-        dotColor = CceColors.textTertiary;
-    }
-    // [CRÍTICA-13] capturar en local: null-promotion no aplica a getters.
-    final src = service.source;
+    final on = service.isOn;
+    final raised = const [
+      BoxShadow(
+        color: Color(0xB30C0D11), // rgba(12,13,17,0.70)
+        blurRadius: 10,
+        offset: Offset(4, 4),
+      ),
+      BoxShadow(
+        color: Color(0x8C2A2D37), // rgba(42,45,55,0.55)
+        blurRadius: 10,
+        offset: Offset(-4, -4),
+      ),
+    ];
+    final inset = const [
+      BoxShadow(
+        color: Color(0xD90C0D11),
+        blurRadius: 7,
+        offset: Offset(3, 3),
+        blurStyle: BlurStyle.inner,
+      ),
+      BoxShadow(
+        color: Color(0x732A2D37),
+        blurRadius: 7,
+        offset: Offset(-3, -3),
+        blurStyle: BlurStyle.inner,
+      ),
+    ];
 
-    // Contenido del header (sin card propia: va dentro del panel del control).
-    return Row(
-        children: [
-          // Avatar del speaker: WELL hundido (neoSunken + neoInset opaco). El
-          // ícono pasa a accent cuando isOn / neoTextSub cuando no.
-          _NeoWell(
-            size: 54,
-            radius: CceRadii.control,
-            child: CceIcon(
-              CceIcons.jbl,
-              size: 28,
-              color: service.isOn ? CceColors.jblOrange : CceColors.neoTextSub,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  service.displayName,
-                  style: CceText.title,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    StatusDot(
-                      dotColor,
-                      pulse: service.isOn,
-                      semanticLabel: powerLabel,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(powerLabel, style: CceText.caption),
-                    if (src != null) ...[
-                      const SizedBox(width: 8),
-                      Flexible(child: StatusPill(label: _sourceLabel(src))),
-                    ],
-                  ],
-                ),
+    // Alineado a la izquierda (no estira): la fila lo deja flush-left.
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Tooltip(
+        message: on ? 'Apagar' : 'Encender',
+        child: CceNeoPress(
+          onTap: () => _handle(service.togglePower(), context),
+          builder: (ctx, t) => Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CceColors.neoBase,
+              boxShadow: [
+                for (var i = 0; i < raised.length; i++)
+                  BoxShadow.lerp(raised[i], inset[i], t)!,
               ],
             ),
+            child: CceIcon(
+              CceIcons.power,
+              size: 24,
+              emboss: false,
+              color: on ? CceColors.jblOrange : CceColors.neoTextSub,
+            ),
           ),
-          const SizedBox(width: 12),
-          // Power al header: raised→inset al presionar (lo da el componente),
-          // accent cuando ON. tooltip dinámico.
-          CceNeoSvgIconButton(
-            svg: CceIcons.power,
-            tooltip: service.isOn ? 'Apagar' : 'Encender',
-            iconColor: service.isOn ? CceColors.jblOrange : CceColors.neoTextSub,
-            size: 48,
-            onPressed: () => _handle(service.togglePower(), context),
-          ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wordmark JBL abajo del control (réplica del `.wordmark` del dashboard): logo
+/// en jbl-orange (currentColor) con un drop-shadow suave que lo "moldea".
+class _JblWordmark extends StatelessWidget {
+  const _JblWordmark();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Color(0xCC05060A), // sombra de contacto (moldea el logo)
+              offset: Offset(0.8, 1.2),
+              blurRadius: 1,
+            ),
+          ],
+        ),
+        child: CceIcon(
+          CceIcons.jbl,
+          size: 44,
+          emboss: false,
+          color: CceColors.jblOrange,
+        ),
+      ),
     );
   }
 }
@@ -340,14 +390,14 @@ class _VolumeDialCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CceNeoSvgIconButton(
+              _Stepper(
                 svg: CceIcons.minus,
                 tooltip: 'Bajar volumen',
-                size: 56,
-                onPressed: hasVolume
+                onTap: hasVolume
                     ? () => _handle(service.nudgeVolume(-1), context)
                     : null,
               ),
+              const SizedBox(width: 14),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -370,16 +420,21 @@ class _VolumeDialCard extends StatelessWidget {
                             child: Stack(
                               alignment: Alignment.center,
                               children: [
-                                // WELL físico del dial: hueco circular hundido
-                                // (color OPACO neoSunken para BlurStyle.inner).
+                                // PLATO del dial (dashboard `.dial`): SOBRESALE
+                                // pero hunde la cara. Gradiente CÓNCAVO (oscuro
+                                // arriba-izq → claro abajo-der) + sombras de
+                                // PLATO (relieve externo + inset suave). Color
+                                // opaco neoBase para que el inset no se aplane.
                                 Container(
                                   width: dim,
                                   height: dim,
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: CceColors.neoSunken,
+                                    color: CceColors.neoBase,
+                                    gradient:
+                                        CceGradients.concave(CceColors.neoBase),
                                     boxShadow:
-                                        CceShadows.neoInset(blur: 12, offset: 5),
+                                        CceShadows.plato(blur: 15, offset: 6),
                                   ),
                                 ),
                                 // Track inset pintado a mano + arco de valor +
@@ -414,54 +469,142 @@ class _VolumeDialCard extends StatelessWidget {
                   },
                 ),
               ),
-              CceNeoSvgIconButton(
+              const SizedBox(width: 14),
+              _Stepper(
                 svg: CceIcons.plus,
                 tooltip: 'Subir volumen',
-                size: 56,
-                onPressed: hasVolume
+                onTap: hasVolume
                     ? () => _handle(service.nudgeVolume(1), context)
                     : null,
               ),
             ],
           ),
-          // Mute como píldora neumórfica con press: RAISED en reposo → INSET al
-          // presionar; muted = INSET permanente con contenido/borde danger.
-          const SizedBox(height: 12),
+          // Mute como PÍLDORA (dashboard `.mute-pill`): base neoBase PLANA +
+          // sombra externa estándar en reposo → al presionar se hunde; muted =
+          // INSET permanente con ícono/label danger (NO glow — el dashboard usa
+          // inset + color para el mute, distinto de los chips).
+          const SizedBox(height: 14),
           Center(
-            child: _NeoPressable(
+            child: _MutePill(
+              muted: muted,
               enabled: hasVolume,
-              active: muted,
-              activeColor: CceColors.danger,
-              radius: CceRadii.control,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               onTap: hasVolume
                   ? () => _handle(service.toggleMute(), context)
                   : null,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Muted = "luz interna" encendida (glow danger), no borde.
-                  _GlowIcon(
-                    svg: muted ? CceIcons.volumeX : CceIcons.volume2,
-                    on: muted,
-                    color: CceColors.danger,
-                    offColor: CceColors.neoTextSub,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    muted ? 'Silenciado' : 'Silenciar',
-                    style: CceText.caption.copyWith(
-                      color: muted ? CceColors.danger : CceColors.neoTextSub,
-                      shadows: muted ? _glowTextShadows(CceColors.danger) : null,
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ],
       );
+  }
+}
+
+/// Stepper +/- del volumen (dashboard `.vol-row .neo-btn.round`): botón redondo
+/// 52px CONVEXO (gradiente convexo + sombra externa) que se hunde al apretar.
+/// `flex-shrink: 0` ⇒ acá va con tamaño fijo (no se deforma a óvalo en la fila).
+class _Stepper extends StatelessWidget {
+  const _Stepper({required this.svg, required this.tooltip, required this.onTap});
+
+  final String svg;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = onTap != null;
+    final rest = _convexShadow();
+    final pressed = _convexInset();
+
+    final button = CceNeoPress(
+      onTap: onTap,
+      builder: (ctx, t) {
+        final box = Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: CceColors.neoBase,
+            gradient: CceGradients.convex(CceColors.neoBase),
+            boxShadow: on
+                ? [
+                    for (var i = 0; i < rest.length; i++)
+                      BoxShadow.lerp(rest[i], pressed[i], t)!,
+                  ]
+                : const <BoxShadow>[],
+          ),
+          child: CceIcon(
+            svg,
+            size: 22,
+            emboss: false,
+            color: on ? CceColors.neoText : CceColors.neoTextSub,
+          ),
+        );
+        return on ? box : Opacity(opacity: 0.45, child: box);
+      },
+    );
+    return Tooltip(message: tooltip, child: button);
+  }
+}
+
+/// Píldora de MUTE (dashboard `.mute-pill`): base neoBase PLANA + sombra externa
+/// estándar; al presionar se hunde (inset). muted = INSET permanente con
+/// ícono/label en danger (NO glow — distinto de los chips convexos).
+class _MutePill extends StatelessWidget {
+  const _MutePill({
+    required this.muted,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final bool muted;
+  final bool enabled;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final on = enabled && onTap != null;
+    final rest = muted ? _convexInset() : _convexShadow();
+    final pressed = _convexInset();
+    final color = muted ? CceColors.danger : CceColors.neoTextSub;
+
+    final pill = CceNeoPress(
+      onTap: on ? onTap : null,
+      builder: (ctx, t) {
+        final box = Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          decoration: BoxDecoration(
+            // Base PLANA neoBase (sin gradiente convexo: la píldora no sobresale
+            // como los chips, es chata como en el dashboard).
+            color: CceColors.neoBase,
+            borderRadius: BorderRadius.circular(CceRadii.pill),
+            boxShadow: on
+                ? [
+                    for (var i = 0; i < rest.length; i++)
+                      BoxShadow.lerp(rest[i], pressed[i], t)!,
+                  ]
+                : const <BoxShadow>[],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CceIcon(
+                muted ? CceIcons.volumeX : CceIcons.volume2,
+                size: 18,
+                emboss: false,
+                color: color,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                muted ? 'Silenciado' : 'Silenciar',
+                style: CceText.caption.copyWith(color: color),
+              ),
+            ],
+          ),
+        );
+        return on ? box : Opacity(opacity: 0.45, child: box);
+      },
+    );
+    return pill;
   }
 }
 
@@ -545,8 +688,8 @@ class _VolumeArcPainter extends CustomPainter {
       ).createShader(rect);
     canvas.drawArc(rect, _kVolStart, sweep, false, progress);
 
-    // (4) KNOB-joya en la punta del arco: halo accent + disco blanco + punto
-    // interior info.
+    // (4) KNOB de la punta del arco (dashboard `.knob`): disco BLANCO sólido,
+    // con un halo accent suave para que "flote" sobre el arco.
     final tipAngle = _kVolStart + sweep;
     final tip = Offset(
       center.dx + radius * math.cos(tipAngle),
@@ -554,11 +697,10 @@ class _VolumeArcPainter extends CustomPainter {
     );
     canvas.drawCircle(
       tip,
-      stroke * 0.9,
-      Paint()..color = CceColors.jblOrange.withValues(alpha: 0.30),
+      stroke * 0.7,
+      Paint()..color = CceColors.jblOrange.withValues(alpha: 0.25),
     );
-    canvas.drawCircle(tip, stroke / 2 + 2, Paint()..color = Colors.white);
-    canvas.drawCircle(tip, stroke / 2 - 2, Paint()..color = CceColors.info);
+    canvas.drawCircle(tip, stroke / 2, Paint()..color = Colors.white);
   }
 
   @override
