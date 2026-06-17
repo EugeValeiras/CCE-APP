@@ -517,32 +517,13 @@ class _Rocker extends StatelessWidget {
     final Color centerColor =
         centerActive ? CceColors.info : CceColors.neoTextSub;
 
-    // Separador fino entre zonas (da el look "rocker segmentado").
-    Widget divider() => Container(
-          height: 1,
-          margin: const EdgeInsets.symmetric(horizontal: 22),
-          color: CceColors.cardBevel,
-        );
-
-    // Botón central en RELIEVE (mute en VOL / lista en CH): destaca sobre la
-    // píldora hundida; se tiñe de info cuando está activo (muteado).
-    final Widget center = Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: CceGradients.cardSurface(
-          centerActive ? CceColors.info.withValues(alpha: 0.18) : CceColors.neoBase,
-        ),
-        boxShadow: CceShadows.neo(blur: 8, offset: 3),
-      ),
-      child: Center(
-        child: centerSvg != null
-            ? CceIcon(centerSvg!, size: 20, color: centerColor)
-            : Icon(centerIcon ?? Icons.circle_outlined,
-                size: 20, color: centerColor),
-      ),
-    );
+    // Glyph central PLANO (mute en VOL / lista en CH): mismo tratamiento que
+    // las flechas (sin disco en relieve), al ras de la píldora; se tiñe de info
+    // cuando está activo (muteado).
+    final Widget center = centerSvg != null
+        ? CceIcon(centerSvg!, size: 28, color: centerColor)
+        : Icon(centerIcon ?? Icons.circle_outlined,
+            size: 28, color: centerColor);
 
     return Column(
       children: [
@@ -561,13 +542,11 @@ class _Rocker extends StatelessWidget {
                 onTap: enabled ? onTop : null,
                 child: Icon(topIcon, size: 28, color: glyph),
               ),
-              divider(),
               _RockerZone(
                 height: 54,
                 onTap: onCenter,
                 child: center,
               ),
-              divider(),
               _RockerZone(
                 height: 52,
                 onTap: enabled ? onBottom : null,
@@ -1282,7 +1261,7 @@ class _AppsSheetState extends State<_AppsSheet> {
         crossAxisCount: 3,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.4,
+        childAspectRatio: 1.2,
       ),
       itemCount: _apps.length,
       itemBuilder: (context, i) {
@@ -1315,7 +1294,11 @@ class _AppGridTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final raised = CceShadows.neo(blur: 8, offset: 3);
     final inset = CceShadows.neoInset(blur: 6, offset: 2);
-    final brand = _parseBrand(app.brand);
+    // Apple TV trae un brand casi negro (#111111) que no se ve sobre la base
+    // neumórfica: forzamos blanco solo para ese appId.
+    final brand = app.appId == '3201807016597'
+        ? const Color(0xFFFFFFFF)
+        : _parseBrand(app.brand);
     return _PressFx(
       onTap: onTap,
       builder: (t) => Container(
@@ -1370,7 +1353,7 @@ class _AppGridTile extends StatelessWidget {
 
 /// Logo de una app del TV: el SVG oficial vendoreado ([TvAppLogos]) teñido con
 /// el color de marca, o —si no tenemos logo para ese `appId`— un lettermark con
-/// la inicial sobre un disco del color de marca. Tamaño fijo 26 para alinear
+/// la inicial sobre un disco del color de marca. Tamaño fijo 36 para alinear
 /// con el resto de la grilla.
 class _AppLogo extends StatelessWidget {
   const _AppLogo({
@@ -1388,12 +1371,12 @@ class _AppLogo extends StatelessWidget {
     final svg = TvAppLogos.forAppId(appId);
     if (svg != null) {
       return SizedBox(
-        width: 26,
-        height: 26,
+        width: 36,
+        height: 36,
         child: SvgPicture.string(
           svg,
-          width: 26,
-          height: 26,
+          width: 36,
+          height: 36,
           colorFilter: ColorFilter.mode(brand, BlendMode.srcIn),
         ),
       );
@@ -1401,8 +1384,8 @@ class _AppLogo extends StatelessWidget {
     // Fallback (sin logo conocido): disco de marca con la inicial.
     final initial = label.isNotEmpty ? label.substring(0, 1).toUpperCase() : '?';
     return Container(
-      width: 26,
-      height: 26,
+      width: 36,
+      height: 36,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,

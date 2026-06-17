@@ -67,12 +67,44 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
     );
   }
 
+  /// Superficie pasiva UNIFICADA del panel: el MISMO material continuo para
+  /// TODAS las ramas (online / offline / error). Mismo par color+gradiente
+  /// (neoBase + CceGradients.cardSurface), mismo bevel y mismo cardFloat que la
+  /// rama online — así el panel se ve de un solo material, sin saltos planos.
+  /// Los wells (_NeoWell, dial) NO se aplanan: viven dentro de esta superficie.
+  Widget _panel({required Widget child}) {
+    return SingleChildScrollView(
+      // Sin padding inferior: el panel llega hasta abajo así no se corta la
+      // última fila de accesos en el teléfono (antes el bottom 16 + 18 del panel
+      // empujaban la grilla fuera de pantalla).
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+        decoration: BoxDecoration(
+          gradient: CceGradients.cardSurface(CceColors.neoBase),
+          borderRadius: BorderRadius.circular(36),
+          border: Border.all(color: CceColors.cardBevel),
+          boxShadow: CceShadows.cardFloat(),
+        ),
+        child: child,
+      ),
+    );
+  }
+
   Widget _buildBody(BuildContext context, JblService service) {
+    // Hairline separador entre secciones dentro del panel unificado.
+    Widget divider() => Container(
+          margin: const EdgeInsets.symmetric(vertical: 14),
+          height: 1,
+          color: Colors.white.withValues(alpha: 0.05),
+        );
+
     // [CRÍTICA-10] Rama 1: fallo real de red/servidor (sin estado conocido).
+    // Mismo material continuo que online: el contenido de error va DENTRO del
+    // panel unificado (no como card suelta sobre el scaffold plano).
     if (service.error != null && service.status == null) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [_ServerErrorCard(service: service)],
+      return _panel(
+        child: _ServerErrorPanel(service: service),
       );
     }
 
@@ -87,54 +119,19 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
     // inalcanzable a nivel UPnP). El remote SÍ se monta: varias teclas
     // (tv/hdmi/bluetooth/playpause) despiertan la barra desde standby
     // (sendRemoteKey no gatea por online). Las radios funcionan server-side.
+    // MISMO material/panel que online (sin volumen, que requiere UPnP vivo).
     if (!service.online) {
-      return ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: [
-          _OfflineCard(
-            service: service,
-            onConfigureIp: () => showIpDialog(context, service),
-          ),
-          const SizedBox(height: 24),
-          // Sin volumen en standby (UPnP caído): solo fuentes/accesos (varias
-          // teclas despiertan la barra) + sintonización.
-          const _SectionLabel('FUENTES'),
-          _SourcesRow(service: service),
-          const SizedBox(height: 24),
-          const _SectionLabel('ACCESOS RÁPIDOS'),
-          _QuickAccessGrid(service: service),
-        ],
-      );
-    }
-
-    // Rama 4: online — TODO el control en UN solo panel neumórfico (estilo
-    // "control remoto", como la pantalla de la TV): header + dial + fuentes +
-    // accesos viven dentro de la misma superficie, separados por hairlines.
-    Widget divider() => Container(
-          margin: const EdgeInsets.symmetric(vertical: 14),
-          height: 1,
-          color: Colors.white.withValues(alpha: 0.05),
-        );
-    return SingleChildScrollView(
-      // Sin padding inferior: el panel llega hasta abajo así no se corta la
-      // última fila de accesos en el teléfono (antes el bottom 16 + 18 del panel
-      // empujaban la grilla fuera de pantalla).
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-        decoration: BoxDecoration(
-          gradient: CceGradients.cardSurface(CceColors.neoBase),
-          borderRadius: BorderRadius.circular(36),
-          border: Border.all(color: CceColors.cardBevel),
-          boxShadow: CceShadows.cardFloat(),
-        ),
+      return _panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _SoundbarHeaderCard(service: service),
+            _OfflinePanel(
+              service: service,
+              onConfigureIp: () => showIpDialog(context, service),
+            ),
             divider(),
-            _VolumeDialCard(service: service),
-            divider(),
+            // Sin volumen en standby (UPnP caído): solo fuentes/accesos (varias
+            // teclas despiertan la barra) + sintonización.
             const _SectionLabel('FUENTES'),
             const SizedBox(height: 10),
             _SourcesRow(service: service),
@@ -144,6 +141,28 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
             _QuickAccessGrid(service: service),
           ],
         ),
+      );
+    }
+
+    // Rama 4: online — TODO el control en UN solo panel neumórfico (estilo
+    // "control remoto", como la pantalla de la TV): header + dial + fuentes +
+    // accesos viven dentro de la misma superficie, separados por hairlines.
+    return _panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SoundbarHeaderCard(service: service),
+          divider(),
+          _VolumeDialCard(service: service),
+          divider(),
+          const _SectionLabel('FUENTES'),
+          const SizedBox(height: 10),
+          _SourcesRow(service: service),
+          const SizedBox(height: 18),
+          const _SectionLabel('ACCESOS RÁPIDOS'),
+          const SizedBox(height: 10),
+          _QuickAccessGrid(service: service),
+        ],
       ),
     );
   }

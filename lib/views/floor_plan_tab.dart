@@ -18,7 +18,9 @@ import '../utils/plan_svg_theme.dart';
 import '../widgets/light_detail_sheet.dart';
 import 'dial_switch_screen.dart';
 import 'light_color_screen.dart';
+import 'lock_screen.dart';
 import 'switch_detail_screen.dart';
+import 'thermostat_screen.dart';
 
 /// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
 /// Si [planId] != null fuerza ese plano y oculta el selector (modo "Plano"
@@ -557,7 +559,14 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final device = widget.device;
-    final isLight = device.isLight && !device.isSensorDevice;
+    // Termostato y cerradura cortan ANTES que los branches genéricos: tienen
+    // marker propio (badge de temperatura / candado) y nunca caen en el dot de
+    // luz/sensor. isLight ya los excluye (Device.isLight devuelve false), pero
+    // explicitamos el guard para que el orden de prioridad quede claro.
+    final isThermostat = device.isThermostat;
+    final isLock = device.isLock;
+    final isLight =
+        device.isLight && !device.isSensorDevice && !isThermostat && !isLock;
     final isContact = device.isContactSensor;
     final isMotion = device.isMotionSensor;
     final temp = device.sensor?.temperature;
@@ -567,10 +576,33 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     // Luz sin conexión: nunca activa, se pinta como ghost + badge wifi-off.
     final offline = isLight && !device.state.reachable;
 
+    // Cerradura: trabada (state.on) = verde / destrabada = ámbar / offline =
+    // gris. Espeja la convención del LockScreen (state.on == isLocked).
+    final lockLocked = device.state.on;
+    final lockOnline = device.state.reachable;
+    // Batería baja del sensor de la cerradura ("NN%" → int) <= 20%.
+    int? lockBatteryPct;
+    if (isLock) {
+      final raw = device.sensor?.battery;
+      if (raw != null) {
+        final m = RegExp(r'(\d+)').firstMatch(raw);
+        if (m != null) lockBatteryPct = int.tryParse(m.group(1)!);
+      }
+    }
+
     // active = el dot se pinta pleno con glow; inactive = ghost dark.
     bool active;
     Color accent;
-    if (isLight) {
+    if (isThermostat) {
+      // El termostato siempre "vive": glow tenue con el acento del modo.
+      active = device.state.on;
+      accent = _thermostatAccent(device.state);
+    } else if (isLock) {
+      active = lockOnline && lockLocked;
+      accent = !lockOnline
+          ? CceColors.textTertiary
+          : (lockLocked ? CceColors.ok : CceColors.contact);
+    } else if (isLight) {
       active = device.state.on && !offline;
       accent = active ? CceTint.normalize(_lightColor()) : CceColors.warm;
     } else if (isContact) {
@@ -616,14 +648,25 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
           shadows = const [];
         }
 
-        final body = hasReading
-            ? _readingBadge(accent, temp, hum, shadows)
-            : _circleDot(accent, active, isLight, shadows, offline);
+        final Widget body;
+        if (isThermostat) {
+          body = _thermostatBadge(accent, device.state, shadows);
+        } else if (isLock) {
+          body = _lockMarker(accent, lockLocked, lockOnline, lockBatteryPct,
+              shadows);
+        } else if (hasReading) {
+          body = _readingBadge(accent, temp, hum, shadows);
+        } else {
+          body = _circleDot(accent, active, isLight, shadows, offline);
+        }
 
         // Item 5: el botón/switch sólo es tocable en el tablet (openOnTap); en
         // el phone queda inerte (sin openOnTap) para no cambiar su conducta.
+        // Termostato y cerradura SIEMPRE abren su pantalla (este plano vive en
+        // el tablet); la luz siempre togglea (ver onTap).
         final isSwitch = device.isSwitch;
-        final tappable = isLight || (widget.openOnTap && isSwitch);
+        final tappable =
+            isLight || isThermostat || isLock || (widget.openOnTap && isSwitch);
 
         return Transform.scale(
           scale: _tapScale.value,
@@ -633,22 +676,37 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
                 : () {
                     HapticFeedback.selectionClick();
                     _tapCtrl.forward(from: 0);
-                    if (isLight) {
-                      if (widget.openOnTap) {
-                        // Tablet: abrir el control de la luz (LightColorScreen).
-                        // Su top bar tiene cerrar + "Listo" (Navigator.pop), así
-                        // que el back funciona (item 6).
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => LightColorScreen(
-                              device: device,
-                              service: widget.service,
-                            ),
+                    if (isThermostat) {
+                      // Termostato: abrir ThermostatScreen (setpoint, modo,
+                      // power). Nunca togglea desde el plano.
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ThermostatScreen(
+                            device: device,
+                            service: widget.service,
                           ),
-                        );
-                      } else {
-                        widget.service.toggleLight(device);
-                      }
+                        ),
+                      );
+                    } else if (isLock) {
+                      // Cerradura: abrir LockScreen. NUNCA togglear desde el
+                      // plano: la apertura es una acción de seguridad con
+                      // hold-to-confirm dentro de la pantalla dedicada.
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => LockScreen(
+                            device: device,
+                            service: widget.service,
+                          ),
+                        ),
+                      );
+                    } else if (isLight) {
+                      // El tap de una LUZ SIEMPRE togglea (prender/apagar),
+                      // incluso en el tablet (openOnTap), donde el resto de los
+                      // devices abre su control. Divergencia deliberada: el
+                      // gesto más rápido y frecuente sobre una luz es encender/
+                      // apagar, no recolorear; el selector de color se movió al
+                      // long-press (ver onLongPress).
+                      widget.service.toggleLight(device);
                     } else {
                       // Tablet + botón/switch: abrir su pantalla canónica (la
                       // misma que usa SensorTile): dial si es multi-botón.
@@ -670,15 +728,30 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
             onLongPress: isLight
                 ? () {
                     HapticFeedback.mediumImpact();
-                    showModalBottomSheet(
-                      context: context,
-                      backgroundColor: Colors.transparent,
-                      isScrollControlled: true,
-                      builder: (_) => LightDetailSheet(
-                        device: device,
-                        service: widget.service,
-                      ),
-                    );
+                    if (widget.openOnTap) {
+                      // Tablet: como el tap ahora togglea, el acceso al color
+                      // vive en el long-press → LightColorScreen (su top bar
+                      // tiene cerrar + "Listo", así que el back funciona).
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => LightColorScreen(
+                            device: device,
+                            service: widget.service,
+                          ),
+                        ),
+                      );
+                    } else {
+                      // Phone: se mantiene el sheet de detalle de la luz.
+                      showModalBottomSheet(
+                        context: context,
+                        backgroundColor: Colors.transparent,
+                        isScrollControlled: true,
+                        builder: (_) => LightDetailSheet(
+                          device: device,
+                          service: widget.service,
+                        ),
+                      );
+                    }
                   }
                 : null,
             behavior: HitTestBehavior.opaque,
@@ -795,6 +868,148 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
           ),
         ],
       ),
+    );
+  }
+
+  /// Acento del termostato por systemMode (frío → info, resto → cálido),
+  /// espejando ThermostatScreen._accentFor.
+  static Color _thermostatAccent(DeviceState s) {
+    final mode = (s.systemMode ?? '').toLowerCase();
+    if (mode.contains('cool') || mode.contains('frio') || mode.contains('frío')) {
+      return CceColors.info;
+    }
+    return CceColors.warm;
+  }
+
+  /// Glifo del termostato por systemMode (copo / llama), igual que la pantalla.
+  static String _thermostatIcon(DeviceState s) {
+    final mode = (s.systemMode ?? '').toLowerCase();
+    if (mode.contains('cool') || mode.contains('frio') || mode.contains('frío')) {
+      return CceIcons.snowflake;
+    }
+    return CceIcons.flame;
+  }
+
+  /// Badge del termostato: temperatura ambiente (currentTemp) GRANDE + setpoint
+  /// (targetTemp) chico debajo, con el glifo del modo. Reemplaza al dot
+  /// genérico para que el plano muestre de un vistazo cuánto hace y a cuánto va.
+  Widget _thermostatBadge(
+      Color accent, DeviceState s, List<BoxShadow> shadows) {
+    final size = widget.size;
+    final current = s.currentTemp;
+    final target = s.targetTemp;
+    final currentLabel =
+        current != null ? '${current.toStringAsFixed(1)}°' : '—';
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: size * 0.20,
+        vertical: size * 0.12,
+      ),
+      decoration: BoxDecoration(
+        color: CceColors.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(size * 0.32),
+        border: Border.all(color: accent, width: 2.5),
+        boxShadow: shadows,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CceIcon(_thermostatIcon(s), size: size * 0.42, color: accent),
+          SizedBox(width: size * 0.12),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                currentLabel,
+                style: TextStyle(
+                  color: accent,
+                  fontSize: size * 0.36,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  height: 1.0,
+                ),
+              ),
+              if (target != null)
+                Text(
+                  '→ ${target.toStringAsFixed(1)}°',
+                  style: TextStyle(
+                    color: CceColors.textSecondary,
+                    fontSize: size * 0.22,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                    height: 1.1,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Marker dedicado de la cerradura: círculo con el candado (trabado/destrabado
+  /// según [locked]), tinte del estado ([accent]: verde / ámbar / gris offline)
+  /// y badge de batería baja en la esquina si [batteryPct] <= 20%.
+  Widget _lockMarker(Color accent, bool locked, bool online, int? batteryPct,
+      List<BoxShadow> shadows) {
+    final size = widget.size;
+    final glyph = locked ? CceIcons.lockLocked : CceIcons.lockUnlocked;
+    final marker = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        // Trabada/online: fill pleno (lectura inmediata "todo cerrado");
+        // destrabada u offline: ghost con borde de color.
+        color: (online && locked)
+            ? accent
+            : CceColors.surfaceHigh.withValues(alpha: 0.80),
+        border: Border.all(
+          color: accent.withValues(alpha: online ? 0.85 : 0.55),
+          width: 2,
+        ),
+        boxShadow: shadows,
+      ),
+      child: IconTheme.merge(
+        data: const IconThemeData(shadows: <Shadow>[]),
+        child: CceIcon(
+          glyph,
+          size: size * 0.50,
+          color: (online && locked) ? CceTint.textOn(accent) : accent,
+          emboss: !(online && locked),
+        ),
+      ),
+    );
+    final lowBattery = batteryPct != null && batteryPct <= 20;
+    if (!lowBattery) return marker;
+    // Badge batería baja en la esquina inferior derecha.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        marker,
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            width: size * 0.40,
+            height: size * 0.40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CceColors.surface,
+              border: Border.all(color: CceColors.danger, width: 1.5),
+            ),
+            child: CceIcon(
+              CceIcons.batteryWarning,
+              size: size * 0.24,
+              color: CceColors.danger,
+              emboss: false,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -12,7 +12,7 @@ import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
-import '../widgets/thermostat_tile.dart';
+import '../widgets/thermostat_header_card.dart';
 
 class RoomDetailScreen extends StatefulWidget {
   final String title;
@@ -35,7 +35,7 @@ class RoomDetailScreen extends StatefulWidget {
 class _RoomDetailScreenState extends State<RoomDetailScreen> {
   // Orden de las secciones, persistido localmente. Reordenable desde el menú.
   static const _orderKey = 'room.sectionOrder';
-  static const _defaultOrder = ['scenes', 'lights', 'thermostats', 'sensors'];
+  static const _defaultOrder = ['scenes', 'lights', 'sensors'];
   List<String> _order = List.of(_defaultOrder);
 
   // Orden de los elementos (deviceIds) por sección, persistido por habitación.
@@ -251,7 +251,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     final sensorIds = _applyOrder(
             devices
                 .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
                 .toList(),
             _sensorOrder)
         .map((d) => d.id)
@@ -375,13 +375,17 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
                 .toList(),
             _lightOrder);
+        // Termostato del room → header fijo arriba del contenido (no es una
+        // sección reordenable). Tomamos el primario (alfabético) si hay varios.
         final thermostats =
             devices.where((d) => d.isThermostat).toList()
               ..sort((a, b) => a.name.compareTo(b.name));
+        final primaryThermostat =
+            thermostats.isNotEmpty ? thermostats.first : null;
         final sensors = _applyOrder(
             devices
                 .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
                 .toList(),
             _sensorOrder);
         final onCount = lights.where((l) => l.state.on).length;
@@ -432,42 +436,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                           },
                         ),
                         childCount: lights.length,
-                      ),
-                    ),
-                  ),
-                ]
-              : const [],
-          'thermostats': thermostats.isNotEmpty
-              ? [
-                  const SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverToBoxAdapter(
-                      child: SectionHeader(title: 'Clima'),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        mainAxisExtent: TileSize.medium.sensorTileHeight,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (context, i) => ListenableBuilder(
-                          listenable: service,
-                          builder: (ctx, _) {
-                            final d =
-                                service.byId(thermostats[i].id) ?? thermostats[i];
-                            return ThermostatTile(
-                                device: d,
-                                service: service,
-                                size: TileSize.medium,
-                                neo: true);
-                          },
-                        ),
-                        childCount: thermostats.length,
                       ),
                     ),
                   ),
@@ -549,6 +517,23 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
+                // Termostato del room: header fijo arriba del contenido,
+                // junto al lector de temperatura (no es sección reordenable).
+                if (primaryThermostat != null)
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+                    sliver: SliverToBoxAdapter(
+                      child: ListenableBuilder(
+                        listenable: service,
+                        builder: (ctx, _) {
+                          final d = service.byId(primaryThermostat.id) ??
+                              primaryThermostat;
+                          return ThermostatHeaderCard(
+                              device: d, service: service, neo: true);
+                        },
+                      ),
+                    ),
+                  ),
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 if (devices.isEmpty)
                   const SliverFillRemaining(

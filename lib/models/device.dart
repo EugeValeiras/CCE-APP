@@ -199,9 +199,23 @@ class Device {
       type.toLowerCase().contains('thermostat') ||
       state.targetTemp != null;
 
+  /// Cerradura: capability 'lock' en el descriptor (fuente canónica) o tipo
+  /// que la mencione. Espejo de isLockDevice del dashboard.
+  bool get isLock =>
+      capabilities.contains('lock') || type.toLowerCase().contains('lock');
+
+  /// Serial EZVIZ para la API /ezviz/devices/:serial: el bindingId con prefijo
+  /// 'ezviz_' (devuelve el serial sin ese prefijo); null si no hay binding EZVIZ.
+  String? get ezvizSerial {
+    for (final bid in bindingIds) {
+      if (bid.startsWith('ezviz_')) return bid.substring('ezviz_'.length);
+    }
+    return null;
+  }
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
-    if (isThermostat) return false;
+    if (isThermostat || isLock) return false;
     final t = type.toLowerCase();
     return t.contains('light') ||
         t.contains('bulb') ||

@@ -5,6 +5,7 @@ import '../models/server_config.dart';
 import '../models/device.dart';
 import '../models/jbl_status.dart';
 import '../models/tv_status.dart';
+import '../models/ezviz_lock.dart';
 import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
@@ -815,5 +816,90 @@ class ApiService {
     return data is Map<String, dynamic>
         ? data
         : Map<String, dynamic>.from(data as Map);
+  }
+
+  // ── Cerradura EZVIZ ──────────────────────────────────────────────────────
+  // Provider ezviz (API privada; user/pass en el .env del backend). El serial
+  // crudo es el deviceSerial (Device.ezvizSerial lo deriva del bindingId
+  // `ezviz_<serial>`), que es lo que esperan las rutas /ezviz/devices/:serial.
+  // Mismo estilo que JBL/TV: status por polling/one-shot al abrir la pantalla.
+  //
+  //   GET  /ezviz/devices/:serial/status -> EzvizLockStatus
+  //   GET  /ezviz/devices/:serial/events -> EzvizLockEvent[]
+  //   POST /ezviz/devices/:serial/unlock -> EzvizUnlockResponse  (body {confirm:true})
+  //
+  // unlock() es SECURITY-SENSITIVE: siempre POST, nunca idempotente, requiere
+  // {confirm:true}; el backend loguea cada apertura. Si el modelo no admite
+  // apertura remota el controller responde 501 → lo mapeamos a supported:false
+  // (en vez de tirar), espejo del catchError(501) del dashboard.
+
+  /// Estado vivo de la cerradura (online/battery/locked). Tira ante status != 200
+  /// (la pantalla cae al estado del merged device / muestra el error).
+  Future<EzvizLockStatus> getLockStatus(String serial) async {
+    final resp = await http
+        .get(Uri.parse(
+            '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/status'))
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    return EzvizLockStatus.fromJson(
+        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+  }
+
+  /// Historial de eventos (aperturas, timbre, intentos). Defensivo como
+  /// getInstalledTvApps: ante cualquier fallo devuelve [] para que la lista caiga
+  /// al estado vacío sin romper la pantalla.
+  Future<List<EzvizLockEvent>> getLockEvents(String serial, {int pageSize = 20}) async {
+    try {
+      final uri = Uri.parse(
+              '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/events')
+          .replace(queryParameters: {'pageSize': pageSize.toString()});
+      final resp = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body);
+      // Contrato: List cruda; toleramos también { events: [...] } por las dudas.
+      final list = data is List ? data : (data is Map ? data['events'] : null);
+      if (list is! List) return const [];
+      return list
+          .whereType<Map>()
+          .map((e) => EzvizLockEvent.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Abre la cerradura remotamente (POST /unlock {confirm:true}). Acepta 200/201.
+  /// 501 (modelo sin apertura remota) NO tira: devuelve supported:false con el
+  /// motivo del backend. Cualquier otro fallo parsea el {error} semántico y tira
+  /// (igual que _jblOk / _tvOk).
+  Future<EzvizUnlockResponse> unlock(String serial) async {
+    final resp = await http
+        .post(
+          Uri.parse(
+              '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/unlock'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'confirm': true}),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode == 501) {
+      String reason = 'No soportado por el modelo de cerradura';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) reason = data['error'].toString();
+      } catch (_) {}
+      return EzvizUnlockResponse(success: false, supported: false, reason: reason);
+    }
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      String msg = 'Error ${resp.statusCode}';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) msg = data['error'].toString();
+      } catch (_) {}
+      throw Exception(msg);
+    }
+    final data = jsonDecode(resp.body);
+    return EzvizUnlockResponse.fromJson(
+        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
   }
 }

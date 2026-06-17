@@ -222,7 +222,7 @@ class RoomPanel extends StatelessWidget {
         .toList();
     final thermostats = devices.where((d) => d.isThermostat).toList();
     final sensors = devices
-        .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat)
+        .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
         .toList();
 
     if (devices.isEmpty) {

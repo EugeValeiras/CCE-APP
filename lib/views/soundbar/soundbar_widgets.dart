@@ -58,7 +58,11 @@ class _NeoPressable extends StatelessWidget {
   final Widget child;
   final VoidCallback? onTap; // null o enabled:false => deshabilitado
   final bool active; // estado seleccionado (well permanente)
-  final Color? activeColor; // tinte del borde sutil cuando active
+  // Conservado por compatibilidad de call-sites: el "encendido" del estado
+  // activo (glow del ícono + shadows del label) lo aplica cada call-site con su
+  // propio color; _NeoPressable ya NO dibuja borde.
+  // ignore: unused_field
+  final Color? activeColor;
   final double radius;
   final EdgeInsetsGeometry padding;
   final bool haptic;
@@ -76,7 +80,6 @@ class _NeoPressable extends StatelessWidget {
         : CceShadows.neo(blur: 8, offset: 3);
     final pressed = CceShadows.neoInset(blur: 7, offset: 3);
     final restBg = active ? CceColors.neoSunken : CceColors.neoBase;
-    final Color? borderColor = active ? activeColor : null;
 
     Widget surface(double t) {
       final shadow = !on
@@ -88,18 +91,15 @@ class _NeoPressable extends StatelessWidget {
       // Fondo opaco SIEMPRE (BlurStyle.inner del inset lo exige): interpola al
       // pozo (neoSunken) a medida que se hunde.
       final bg = Color.lerp(restBg, CceColors.neoSunken, on ? t : 0.0)!;
+      // ACTIVO = "luz interna encendida": SIN borde (lo da el call-site
+      // encendiendo ícono+label con glow). El well permanente (restBg neoSunken
+      // + sombras inset) ya comunica el estado apretado.
       final box = Container(
         padding: padding,
         decoration: BoxDecoration(
           color: bg,
           borderRadius: br,
           boxShadow: shadow,
-          border: borderColor != null
-              ? Border.all(
-                  color: borderColor.withValues(alpha: 0.55),
-                  width: 1.2,
-                )
-              : null,
         ),
         child: child,
       );
@@ -113,6 +113,54 @@ class _NeoPressable extends StatelessWidget {
     );
   }
 }
+
+/// Ícono que "se enciende" como luz interna cuando [on]: un glow suave del
+/// [color] (BoxShadow difuso, blur ~14) detrás del [CceIcon], que pasa a tinte
+/// [color]. Apagado: ícono en [offColor] sin glow. Reemplaza al borde del
+/// estado activo de [_NeoPressable] (los chips/botones se "prenden" en vez de
+/// enmarcarse).
+class _GlowIcon extends StatelessWidget {
+  const _GlowIcon({
+    required this.svg,
+    required this.on,
+    required this.color,
+    required this.offColor,
+    this.size = 22,
+  });
+
+  final String svg;
+  final bool on;
+  final Color color;
+  final Color offColor;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = CceIcon(svg, size: size, color: on ? color : offColor);
+    if (!on) return icon;
+    // Glow difuso del color accent detrás del ícono (la "luz" encendida).
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.55),
+            blurRadius: 14,
+            spreadRadius: -2,
+          ),
+        ],
+      ),
+      child: icon,
+    );
+  }
+}
+
+/// Shadows "encendidas" para un label activo: halo del [color] alrededor del
+/// texto (glow suave), para que la etiqueta también "prenda" junto al ícono.
+List<Shadow> _glowTextShadows(Color color) => [
+      Shadow(color: color.withValues(alpha: 0.55), blurRadius: 12),
+      Shadow(color: color.withValues(alpha: 0.35), blurRadius: 4),
+    ];
 
 /// Well hundido reutilizable para badges/avatares: contenedor con fill OPACO
 /// [CceColors.neoSunken] + inner-shadow [CceShadows.neoInset]. El color opaco es
@@ -392,16 +440,20 @@ class _VolumeDialCard extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CceIcon(
-                    muted ? CceIcons.volumeX : CceIcons.volume2,
+                  // Muted = "luz interna" encendida (glow danger), no borde.
+                  _GlowIcon(
+                    svg: muted ? CceIcons.volumeX : CceIcons.volume2,
+                    on: muted,
+                    color: CceColors.danger,
+                    offColor: CceColors.neoTextSub,
                     size: 18,
-                    color: muted ? CceColors.danger : CceColors.neoTextSub,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     muted ? 'Silenciado' : 'Silenciar',
                     style: CceText.caption.copyWith(
                       color: muted ? CceColors.danger : CceColors.neoTextSub,
+                      shadows: muted ? _glowTextShadows(CceColors.danger) : null,
                     ),
                   ),
                 ],
@@ -604,7 +656,6 @@ class _SourceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = active ? CceColors.jblOrange : CceColors.neoText;
     return _NeoPressable(
       onTap: onTap,
       active: active,
@@ -614,7 +665,14 @@ class _SourceChip extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CceIcon(svg, size: 22, color: fg),
+          // Activo = "luz interna" encendida (glow accent), no borde.
+          _GlowIcon(
+            svg: svg,
+            on: active,
+            color: CceColors.jblOrange,
+            offColor: CceColors.neoText,
+            size: 22,
+          ),
           const SizedBox(height: 8),
           Text(
             label,
@@ -623,6 +681,7 @@ class _SourceChip extends StatelessWidget {
             textAlign: TextAlign.center,
             style: CceText.caption.copyWith(
               color: active ? CceColors.jblOrange : CceColors.neoTextSub,
+              shadows: active ? _glowTextShadows(CceColors.jblOrange) : null,
             ),
           ),
         ],
@@ -727,7 +786,6 @@ class _QuickButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = activeColor ?? CceColors.jblOrange;
-    final fg = active ? accent : CceColors.neoText;
     return _NeoPressable(
       onTap: onTap,
       active: active,
@@ -737,7 +795,14 @@ class _QuickButton extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CceIcon(svg, size: 24, color: fg),
+          // Activo (p.ej. Night) = "luz interna" encendida (glow accent), no borde.
+          _GlowIcon(
+            svg: svg,
+            on: active,
+            color: accent,
+            offColor: CceColors.neoText,
+            size: 24,
+          ),
           const SizedBox(height: 8),
           Text(
             label,
@@ -746,6 +811,7 @@ class _QuickButton extends StatelessWidget {
             textAlign: TextAlign.center,
             style: CceText.caption.copyWith(
               color: active ? accent : CceColors.neoTextSub,
+              shadows: active ? _glowTextShadows(accent) : null,
             ),
           ),
         ],
@@ -963,90 +1029,87 @@ class _RadioTile extends StatelessWidget {
 // ── Estados de error / offline ──────────────────────────────────────────────
 
 /// [CRÍTICA-10] Fallo real de red/servidor: el API CCE no respondió. NO se
-/// muestran radios ni IP (no hay backend). Card RAISED con acento danger:
-/// ícono en WELL danger + botón "Reintentar" pill neo.
-class _ServerErrorCard extends StatelessWidget {
-  const _ServerErrorCard({required this.service});
+/// muestran radios ni IP (no hay backend). CONTENIDO PURO (sin card propia): va
+/// DENTRO del panel unificado del control, fusionado al mismo material; el
+/// relieve lo aportan los wells internos (ícono en WELL danger) + pill neo.
+class _ServerErrorPanel extends StatelessWidget {
+  const _ServerErrorPanel({required this.service});
 
   final JblService service;
 
   @override
   Widget build(BuildContext context) {
-    return CceCard(
-      neo: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _NeoWell(
-            size: 56,
-            radius: CceRadii.control,
-            child: CceIcon(CceIcons.jbl, size: 32, color: CceColors.danger),
-          ),
-          const SizedBox(height: 12),
-          const Text('No se pudo conectar al servidor', style: CceText.title),
-          const SizedBox(height: 8),
-          Text('Revisá la conexión con el API de CCE.', style: CceText.caption),
-          const SizedBox(height: 16),
-          // [CONTRATO] referencia directa a service.refresh (sin _handle).
-          CceNeoActionButton(
-            label: 'Reintentar',
-            onPressed: service.refresh,
-          ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _NeoWell(
+          size: 56,
+          radius: CceRadii.control,
+          child: CceIcon(CceIcons.jbl, size: 32, color: CceColors.danger),
+        ),
+        const SizedBox(height: 12),
+        const Text('No se pudo conectar al servidor', style: CceText.title),
+        const SizedBox(height: 8),
+        Text('Revisá la conexión con el API de CCE.', style: CceText.caption),
+        const SizedBox(height: 16),
+        // [CONTRATO] referencia directa a service.refresh (sin _handle).
+        CceNeoActionButton(
+          label: 'Reintentar',
+          onPressed: service.refresh,
+        ),
+      ],
     );
   }
 }
 
 /// [CRÍTICA-10] La barra respondió pero está en standby/inalcanzable a nivel
-/// UPnP. Distinto de un fallo de servidor: las radios SÍ se muestran abajo.
-/// Card RAISED tono neutro: ícono en WELL neutro + dos pills neo.
-class _OfflineCard extends StatelessWidget {
-  const _OfflineCard({required this.service, required this.onConfigureIp});
+/// UPnP. Distinto de un fallo de servidor: las fuentes/accesos SÍ se muestran
+/// abajo. CONTENIDO PURO (sin card propia): va DENTRO del panel unificado,
+/// fusionado al mismo material; el relieve lo aportan el WELL neutro del ícono +
+/// los pills neo.
+class _OfflinePanel extends StatelessWidget {
+  const _OfflinePanel({required this.service, required this.onConfigureIp});
 
   final JblService service;
   final VoidCallback onConfigureIp;
 
   @override
   Widget build(BuildContext context) {
-    return CceCard(
-      neo: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _NeoWell(
-            size: 56,
-            radius: CceRadii.control,
-            child: CceIcon(
-              CceIcons.jbl,
-              size: 32,
-              color: CceColors.textTertiary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _NeoWell(
+          size: 56,
+          radius: CceRadii.control,
+          child: CceIcon(
+            CceIcons.jbl,
+            size: 32,
+            color: CceColors.textTertiary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text('Soundbar fuera de línea', style: CceText.title),
+        const SizedBox(height: 8),
+        Text(
+          'No se encontró el JBL en la red. Verificá que esté encendido '
+          'o configurá su IP.',
+          style: CceText.caption,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            CceNeoActionButton(
+              label: 'Reintentar',
+              onPressed: service.refresh,
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text('Soundbar fuera de línea', style: CceText.title),
-          const SizedBox(height: 8),
-          Text(
-            'No se encontró el JBL en la red. Verificá que esté encendido '
-            'o configurá su IP.',
-            style: CceText.caption,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              CceNeoActionButton(
-                label: 'Reintentar',
-                onPressed: service.refresh,
-              ),
-              const SizedBox(width: 8),
-              CceNeoActionButton(
-                label: 'Configurar IP',
-                onPressed: onConfigureIp,
-              ),
-            ],
-          ),
-        ],
-      ),
+            const SizedBox(width: 8),
+            CceNeoActionButton(
+              label: 'Configurar IP',
+              onPressed: onConfigureIp,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

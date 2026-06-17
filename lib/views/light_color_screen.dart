@@ -74,6 +74,18 @@ class _LightColorScreenState extends State<LightColorScreen>
     _initMarkers();
     // La luz abierta arranca en foco (pin); el resto del ambiente, como dots.
     _focus = _groupOf[widget.device.id] ?? -1;
+    // Brillo inicial = el de la(s) luz(es) en foco (no sólo el del device abierto).
+    final ids = _membersOf(_focus);
+    if (ids.isNotEmpty) {
+      var sum = 0, n = 0;
+      for (final id in ids) {
+        final d = widget.service.byId(id);
+        if (d == null) continue;
+        sum += d.state.bri;
+        n++;
+      }
+      if (n > 0) _bri = (sum / n).clamp(0, 254).toDouble();
+    }
     _hopController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 620),
@@ -224,6 +236,7 @@ class _LightColorScreenState extends State<LightColorScreen>
       _groupOf[id] = _nextGroup++;
       _focus = _groupOf[id]!;
     });
+    _syncBriFromFocus();
     _hop();
   }
 
@@ -316,6 +329,7 @@ class _LightColorScreenState extends State<LightColorScreen>
       // Agarrar una pin (mover ese grupo); pasa a foco. Si hay una luz marcada
       // para salir (tap en la lista) y no es de este grupo, se descarta.
       setState(() => _focus = pinGroup!);
+      _syncBriFromFocus();
       _dragMembers = pinMembers!;
       if (_soloOnMove != null && !pinMembers.contains(_soloOnMove)) {
         _soloOnMove = null;
@@ -408,6 +422,7 @@ class _LightColorScreenState extends State<LightColorScreen>
       _focus = _groupOf[d.id] ?? -1;
       _soloOnMove = _membersOf(_focus).length > 1 ? d.id : null;
     });
+    _syncBriFromFocus();
     _hop();
   }
 
@@ -418,6 +433,25 @@ class _LightColorScreenState extends State<LightColorScreen>
       final d = widget.service.byId(id);
       if (d != null) widget.service.setBrightness(d, _bri.round());
     }
+  }
+
+  /// Sincroniza `_bri` con el brillo REAL de la(s) luz(es) en foco, para que el
+  /// control de la derecha refleje siempre el estado de lo seleccionado.
+  /// - 1 luz: su `state.bri`.
+  /// - varias: el PROMEDIO de las que reportan brillo (representa al grupo).
+  /// Si no hay foco/luces, se deja el valor actual.
+  void _syncBriFromFocus() {
+    final ids = _membersOf(_focus);
+    if (ids.isEmpty) return;
+    var sum = 0, n = 0;
+    for (final id in ids) {
+      final d = widget.service.byId(id);
+      if (d == null) continue;
+      sum += d.state.bri;
+      n++;
+    }
+    if (n == 0) return;
+    setState(() => _bri = (sum / n).clamp(0, 254).toDouble());
   }
 
   void _setMode(_Mode m) {
@@ -707,6 +741,7 @@ class _LightColorScreenState extends State<LightColorScreen>
           if (anyBri)
             _BrightnessPill(
               value: _bri,
+              count: focus.length,
               onChanged: _onBrightness,
               onEnd: _commitBrightness,
             ),
@@ -1129,44 +1164,102 @@ class _ModeToggle extends StatelessWidget {
   }
 }
 
+/// Control de brillo VERTICAL para la(s) luz(es) en foco: track alto con relleno
+/// proporcional, % grande arriba e ícono de sol. Arrastrar (o tap) sobre la pista
+/// fija el brillo; `onEnd` commitea vía el servicio. Con varias luces en foco
+/// ([count] > 1) muestra "N luces" debajo para dejar claro que afecta al grupo.
 class _BrightnessPill extends StatelessWidget {
   final double value; // 0..254
+  final int count; // cantidad de luces en foco (para el caso multi-luz)
   final ValueChanged<double> onChanged;
   final VoidCallback onEnd;
   const _BrightnessPill({
     required this.value,
+    required this.count,
     required this.onChanged,
     required this.onEnd,
   });
 
+  static const double _trackH = 168;
+  static const double _trackW = 58;
+
+  // Brillo a partir de la posición Y local (0 arriba = 100%, _trackH abajo = 0%).
+  double _briForDy(double dy) =>
+      ((1 - (dy / _trackH)) * 254).clamp(0, 254).toDouble();
+
   @override
   Widget build(BuildContext context) {
     final pct = (value / 254 * 100).round();
+    final t = (value / 254).clamp(0.0, 1.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // % grande y legible.
         Text('$pct%',
             style: const TextStyle(
                 color: CceColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700)),
-        const SizedBox(height: 6),
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
+                height: 1.0)),
+        if (count > 1) ...[
+          const SizedBox(height: 2),
+          Text('$count luces',
+              style: const TextStyle(
+                  color: CceColors.textTertiary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3)),
+        ],
+        const SizedBox(height: 10),
+        // Track vertical (pista neumórfica hundida + relleno cálido proporcional).
         GestureDetector(
-          onVerticalDragUpdate: (d) {
-            onChanged((value - d.delta.dy * (254 / 160)).clamp(0, 254));
-          },
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: (d) =>
+              onChanged(_briForDy(d.localPosition.dy)),
           onVerticalDragEnd: (_) => onEnd(),
+          onTapDown: (d) => onChanged(_briForDy(d.localPosition.dy)),
+          onTapUp: (_) => onEnd(),
           child: Container(
-            width: 64,
-            height: 64,
+            width: _trackW,
+            height: _trackH,
             decoration: BoxDecoration(
               color: CceColors.neoBase,
-              shape: BoxShape.circle,
-              boxShadow: CceShadows.neo(blur: 12, offset: 5, intensity: 0.9),
+              borderRadius: BorderRadius.circular(_trackW / 2),
+              boxShadow: CceShadows.neoInset(blur: 8, offset: 3, intensity: 0.9),
             ),
-            child: const Center(
-              child: CceIcon(CceIcons.sun,
-                  size: 26, color: CceColors.textPrimary, emboss: false),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              alignment: Alignment.bottomCenter,
+              children: [
+                // Relleno proporcional (de abajo hacia arriba), gradiente cálido.
+                FractionallySizedBox(
+                  heightFactor: t == 0 ? 0.0001 : t,
+                  widthFactor: 1,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [Color(0xFFFFB46B), Color(0xFFFFD9A0)],
+                      ),
+                    ),
+                  ),
+                ),
+                // Ícono de sol arriba (icons0.dev / lucide), contraste sobre la
+                // pista; tinta oscura cuando el relleno llega arriba.
+                Positioned(
+                  top: 12,
+                  child: CceIcon(
+                    CceIcons.sun,
+                    size: 24,
+                    color: t > 0.86
+                        ? CceTint.textOn(const Color(0xFFFFB46B))
+                        : CceColors.textPrimary,
+                    emboss: false,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -1201,23 +1294,30 @@ class _DeviceMiniCard extends StatelessWidget {
     final fgSub = on ? CceTint.subTextOn(mid) : CceColors.textTertiary;
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
         width: 124,
         decoration: BoxDecoration(
           color: on ? null : CceColors.surface,
           gradient: on ? CceGradients.huePastel([tint]) : null,
           borderRadius: BorderRadius.circular(CceRadii.hueCard),
-          // Selección con el propio tinte de la luz (dorado para cálido).
+          // Selección NOTORIA: borde más grueso con el tinte de la luz + glow.
           border: Border.all(
             color: selected
                 ? mid
                 : (on
                     ? Colors.white.withValues(alpha: 0.12)
                     : CceColors.stroke),
-            width: selected ? 2 : 1,
+            width: selected ? 3 : 1,
           ),
+          // Glow reforzado al seleccionar: halo del tinte + un poco de flote.
           boxShadow: selected
-              ? CceShadows.glowOn(mid)
+              ? [
+                  ...CceShadows.glowOn(mid),
+                  ...CceShadows.glowDot(mid),
+                ]
               : (on ? CceShadows.cardFloat(intensity: 0.6) : null),
         ),
         clipBehavior: Clip.antiAlias,
@@ -1281,6 +1381,33 @@ class _DeviceMiniCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+          // Badge de selección (check icons0.dev / lucide) en la esquina sup-der:
+          // confirma de un vistazo qué luz/grupo está seleccionado.
+          if (selected)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: mid,
+                  border: Border.all(color: CceColors.bg, width: 2),
+                  boxShadow: CceShadows.glowDot(mid),
+                ),
+                child: Center(
+                  child: CceIcon(
+                    CceIcons.check,
+                    size: 15,
+                    color: CceTint.textOn(mid),
+                    emboss: false,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

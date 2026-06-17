@@ -193,6 +193,20 @@ abstract final class CceIcons {
   // lucide:snowflake (modo frío)
   static const String snowflake =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="m10 20l-1.25-2.5L6 18m4-14L8.75 6.5L6 6m8 14l1.25-2.5L18 18M14 4l1.25 2.5L18 6"/><path d="m17 21l-3-6h-4m7-12l-3 6l1.5 3M2 12h6.5L10 9m10 1l-1.5 2l1.5 2"/><path d="M22 12h-6.5L14 15M4 10l1.5 2L4 14m3 7l3-6l-1.5-3M7 3l3 6h4"/></g></svg>';
+
+  // ── Cerradura (icons0.dev / CoreUI Free) ───────────────────────────────────
+
+  // cil:lock-locked (cerrada)
+  static const String lockLocked =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512"><path fill="currentColor" d="M384 200v-56a128 128 0 0 0-256 0v56H88v128c0 92.635 75.364 168 168 168s168-75.365 168-168V200Zm-224-56a96 96 0 0 1 192 0v56H160Zm232 184c0 74.99-61.01 136-136 136s-136-61.01-136-136v-96h272Z"/></svg>';
+
+  // cil:lock-unlocked (abierta)
+  static const String lockUnlocked =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512"><path fill="currentColor" d="M384 200v-56a128 128 0 0 0-217.582-91.43l22.4 22.855A96 96 0 0 1 352 144v56H88v128c0 92.636 75.364 168 168 168s168-75.364 168-168V200Zm8 128c0 74.99-61.009 136-136 136s-136-61.01-136-136v-96h272Z"/></svg>';
+
+  // lucide:battery-warning (badge batería baja en el plano)
+  static const String batteryWarning =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 17h.01M10 7v6m4-7h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2m8-4v-4M6 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h2"/></svg>';
 }
 
 /// Tokens del relieve neumorfico ("hoja que sobresale"): luz arriba-izquierda
