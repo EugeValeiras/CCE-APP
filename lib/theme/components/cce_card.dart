@@ -54,7 +54,7 @@ class CceCard extends StatelessWidget {
       // Sin borde por default (más neomórfico, como el botón "Aplicaciones"):
       // el relieve lo da SOLO la sombra neo (convexo), no un contorno.
       border: bevel ? Border.all(color: CceColors.cardBevel) : null,
-      boxShadow: CceShadows.neo(blur: 12, offset: 4),
+      boxShadow: CceShadows.neo(blur: 14, offset: 5),
     );
   }
 

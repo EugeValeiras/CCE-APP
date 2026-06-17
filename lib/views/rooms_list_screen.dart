@@ -146,7 +146,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
             title: const FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: CceLogo(height: 18, color: CceText.titleInk),
+              child: const CceLogo(height: 22),
             ),
             actions: [
               // Riel de acciones embutido en la goma: en vez de 3 glyphs sueltos
