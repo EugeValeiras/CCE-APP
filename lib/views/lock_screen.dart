@@ -405,9 +405,9 @@ class _LockScreenState extends State<LockScreen> {
           _buildMetrics(),
           const SizedBox(height: 22),
 
-          // ── Botón abrir (convexo, hold-to-confirm) ──────────────────────
-          _buildUnlockSection(),
-          const SizedBox(height: 22),
+          // (Sin botón de apertura: el usuario no abre la casa desde el celular
+          // manteniendo presionado; esta pantalla es para VER estado + historial.
+          // Eso además elimina el preview de drag de iOS que aparecía al mantener.)
 
           // ── Historial ───────────────────────────────────────────────────
           _buildEventsSection(),
