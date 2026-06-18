@@ -453,6 +453,8 @@ class _CasaSplitState extends State<_CasaSplit> {
                 : _AllHouseLights(
                     service: widget.devices,
                     tileSize: tileSize,
+                    onOpenThermostat: (id) => setState(
+                        () => _selectedDevice = 'thermostat:$id'),
                   ),
           ),
         ],
@@ -464,10 +466,18 @@ class _CasaSplitState extends State<_CasaSplit> {
 /// Modo "Luces" de Toda la casa: escenas globales + grillas de todas las
 /// luces y sensores (mismo layout que RoomPanel pero sin filtrar por sala).
 class _AllHouseLights extends StatelessWidget {
-  const _AllHouseLights({required this.service, required this.tileSize});
+  const _AllHouseLights({
+    required this.service,
+    required this.tileSize,
+    this.onOpenThermostat,
+  });
 
   final DevicesService service;
   final TileSize tileSize;
+
+  /// TABLET: abre un termostato INLINE en el panel derecho (lo resuelve el State
+  /// padre). Recibe el id del device; null ⇒ el tile cae a su push de ruta.
+  final void Function(String id)? onOpenThermostat;
 
   @override
   Widget build(BuildContext context) {
@@ -533,9 +543,11 @@ class _AllHouseLights extends StatelessWidget {
                     service: service,
                     size: tileSize,
                     neo: true,
-                    // Tablet: abre el termostato inline (igual que TV/JBL).
-                    onOpen: () => setState(
-                        () => _selectedDevice = 'thermostat:${d.id}'),
+                    // Tablet: abre el termostato inline (igual que TV/JBL). El
+                    // State padre resuelve la selección vía onOpenThermostat.
+                    onOpen: onOpenThermostat == null
+                        ? null
+                        : () => onOpenThermostat!(d.id),
                   );
                 },
               ),
