@@ -353,124 +353,35 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // VERSIÓN DIAGNÓSTICA MINIMAL: SOLO TEXTO, sin NINGÚN ícono/SVG/glifo de
-    // candado, para descartar de raíz el "candado gigante". Si aun así aparece un
-    // candado gigante sobre esta pantalla, NO sale del lock screen (es externo).
-    // Banner de versión bien visible arriba para confirmar el build instalado.
-    const amber = Color(0xFFFF9F0A);
+    // SIN header externo (el swipe iOS vuelve atrás): el control llena la
+    // pantalla como el termostato. La carcasa neumórfica flota sobre el fondo.
+    // El historial puede ser largo → SingleChildScrollView dentro del SizedBox
+    // de alto fijo para scrollear sin desbordar.
     return Scaffold(
       backgroundColor: CceColors.bg,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: CceColors.info,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'BUILD v1.54.6+156',
-                style: TextStyle(
-                  color: Colors.black,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              widget.service.displayName(widget.device),
-              style: const TextStyle(
-                color: CceColors.neoText,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              _online ? 'En línea' : 'Sin conexión',
-              style:
-                  const TextStyle(color: CceColors.textSecondary, fontSize: 14),
-            ),
-            const SizedBox(height: 28),
-            Text(
-              _isLocked ? 'TRABADA' : 'DESTRABADA',
-              style: TextStyle(
-                color: _isLocked ? CceColors.ok : amber,
-                fontSize: 36,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 28),
-            Text('Batería: $_batteryLabel',
-                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
-            const SizedBox(height: 6),
-            Text('Conexión: ${_online ? 'OK' : '—'}',
-                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
-            const SizedBox(height: 6),
-            Text('Último evento: $_lastEventLabel',
-                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
-            const SizedBox(height: 28),
-            if (_unlockSupported)
-              Listener(
-                onPointerDown:
-                    (_online && !_unlocking) ? (_) => _startHold() : null,
-                onPointerUp: (_) => _cancelHold(),
-                onPointerCancel: (_) => _cancelHold(),
-                child: Container(
-                  height: 60,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
+          child: LayoutBuilder(
+            builder: (ctx, c) {
+              const double w = 360, minH = 600, maxH = 780;
+              final double target = c.maxHeight.clamp(minH, maxH).toDouble();
+              return Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: CceColors.neoBase,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: CceShadows.neo(blur: 8, offset: 3),
-                  ),
-                  child: Text(
-                    _unlocking
-                        ? 'Abriendo…'
-                        : _unlockDone
-                            ? 'Abierta'
-                            : _holding
-                                ? 'Mantené… ${(_holdPct * 100).round()}%'
-                                : 'Mantené para abrir',
-                    style: const TextStyle(
-                      color: amber,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                  child: SizedBox(
+                    width: w,
+                    height: target,
+                    child: SingleChildScrollView(
+                      physics: const ClampingScrollPhysics(),
+                      child: _buildCarcasa(),
                     ),
                   ),
                 ),
-              )
-            else
-              const Text('Apertura no soportada por el modelo',
-                  style: TextStyle(color: CceColors.textTertiary, fontSize: 14)),
-            if (_unlockError != null) ...[
-              const SizedBox(height: 10),
-              Text(_unlockError!,
-                  style: const TextStyle(color: CceColors.danger, fontSize: 13)),
-            ],
-            const SizedBox(height: 28),
-            Text('HISTORIAL', style: CceText.section),
-            const SizedBox(height: 10),
-            if (_events.isEmpty)
-              const Text('Sin eventos',
-                  style: TextStyle(color: CceColors.textTertiary, fontSize: 14))
-            else
-              for (final ev in _events)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    '${_fmtDateTime(ev.at)} · ${_eventLabel(ev)}',
-                    style:
-                        const TextStyle(color: CceColors.neoText, fontSize: 13),
-                  ),
-                ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
@@ -519,18 +430,8 @@ class _LockScreenState extends State<LockScreen> {
           // ── Historial ───────────────────────────────────────────────────
           _buildEventsSection(),
           const SizedBox(height: 18),
-          // Sello de versión (temporal): confirma en el dispositivo qué build
-          // corre, para destrabar el debug del "candado gigante".
-          const Center(
-            child: Text(
-              'v1.54.5+155',
-              style: TextStyle(
-                fontSize: 11,
-                color: CceColors.textTertiary,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
+          // Wordmark al pie (estilo termostato).
+          const _Wordmark('CCE SMARTLOCK'),
         ],
       ),
     );
@@ -544,75 +445,62 @@ class _LockScreenState extends State<LockScreen> {
     final accent = _isLocked ? _locked : _unlocked;
     final glyph = _isLocked ? CceIcons.lockLocked : CceIcons.lockUnlocked;
 
-    // El disco era de ancho FIJO (132). En la carcasa de un teléfono angosto el
-    // disco + su padding lateral podían exceder el ancho disponible; lo hacemos
-    // RELATIVO al ancho real del bloque (tope 132 como en el dashboard) para que
-    // nunca desborde y conserve la proporción del plato en cualquier pantalla.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Ancho útil dentro del padding horizontal (18*2) de este bloque.
-        final double inner = (constraints.maxWidth.isFinite
-                ? constraints.maxWidth
-                : 280.0) -
-            36.0;
-        final disk = inner.clamp(0.0, 132.0).toDouble();
-        final glyphSize = disk * (56 / 132); // misma proporción que el original.
-
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
-          decoration: BoxDecoration(
-            color: CceColors.neoBase,
-            borderRadius: BorderRadius.circular(28),
-            // El bloque SOBRESALE de la carcasa (par de sombras externas marcado:
-            // 6/6/16 negra + -6/-6/16 luz, como el `.lock-state` del dashboard).
-            boxShadow: CceShadows.neo(blur: 16, offset: 6),
+    // Disco PLATO de tamaño FIJO (132) y candado de tamaño FIJO (56). NADA de
+    // tamaños derivados: todo glifo queda acotado dentro de su SizedBox.square.
+    // El glow del candado sale EXCLUSIVAMENTE de BoxShadow (glowDot) y de los
+    // Text.shadows del label — NUNCA de blur/filtros de imagen.
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 18),
+      decoration: BoxDecoration(
+        color: CceColors.neoBase,
+        borderRadius: BorderRadius.circular(28),
+        // El bloque SOBRESALE de la carcasa (par de sombras externas marcado).
+        boxShadow: CceShadows.neo(blur: 16, offset: 6),
+      ),
+      child: Column(
+        children: [
+          // Disco PLATO CÓNCAVO con el candado encendido. Tamaño FIJO 132.
+          Container(
+            width: 132,
+            height: 132,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: CceGradients.concave(CceColors.neoBase),
+              // PLATO (relieve externo + cara hundida) + glow del color de
+              // estado, SOLO via BoxShadow.
+              boxShadow: [
+                ...CceShadows.plato(blur: 15, offset: 6),
+                ...CceShadows.glowDot(accent),
+              ],
+            ),
+            // Candado acotado: SizedBox.square fijo + CceIcon emboss:false.
+            child: SizedBox.square(
+              dimension: 56,
+              child: CceIcon(glyph, size: 56, color: accent, emboss: false),
+            ),
           ),
-          child: Column(
-            children: [
-              // Disco PLATO CÓNCAVO con el candado encendido + glow.
-              Container(
-                width: disk,
-                height: disk,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: CceGradients.concave(CceColors.neoBase),
-                  // PLATO: relieve externo (sobresale) + cara hundida (inset).
-                  boxShadow: CceShadows.plato(blur: 15, offset: 6),
-                ),
-                // El candado "enciende" con el color de estado + glow neón
-                // (drop-shadow del dashboard ≈ glowDot).
-                child: _GlowGlyph(
-                  svg: glyph,
-                  size: glyphSize,
-                  color: accent,
-                ),
+          const SizedBox(height: 16),
+          // Label en el color de estado, con text-shadow (glow).
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _isLocked ? 'Trabada' : 'Destrabada',
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: accent,
+                shadows: [
+                  Shadow(
+                      color: accent.withValues(alpha: 0.65), blurRadius: 12),
+                ],
               ),
-              const SizedBox(height: 16),
-              // Label en el color de estado, con text-shadow (glow) como la web.
-              // FittedBox para que "Destrabada" no desborde en anchos chicos.
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text(
-                  _isLocked ? 'Trabada' : 'Destrabada',
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                    color: accent,
-                    shadows: [
-                      Shadow(
-                          color: accent.withValues(alpha: 0.65),
-                          blurRadius: 12),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -854,7 +742,11 @@ class _LockScreenState extends State<LockScreen> {
               gradient: CceGradients.convex(CceColors.neoBase),
               boxShadow: CceShadows.neo(blur: 8, offset: 3),
             ),
-            child: _GlowGlyph(svg: _eventIconSvg(ev), size: 18, color: color),
+            child: SizedBox.square(
+              dimension: 18,
+              child: CceIcon(_eventIconSvg(ev),
+                  size: 18, color: color, emboss: false),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1066,29 +958,35 @@ class _EventsState extends StatelessWidget {
   }
 }
 
-/// Glyph SVG "encendido": el ícono tintado con su color + glow (drop-shadow),
-/// réplica del `filter: drop-shadow(0 0 N color)` del dashboard. Sin emboss
-/// (el glow reemplaza al relieve), con un par de copias desenfocadas detrás.
-class _GlowGlyph extends StatelessWidget {
-  const _GlowGlyph({
-    required this.svg,
-    required this.size,
-    required this.color,
-  });
-
-  final String svg;
-  final double size;
-  final Color color;
+/// Wordmark al pie del control (estilo termostato): texto grabado en la
+/// carcasa con doble sombra (luz arriba-izq + oscura abajo-der).
+class _Wordmark extends StatelessWidget {
+  const _Wordmark(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    // MÁXIMA SEGURIDAD: glifo PLANO, acotado por el SizedBox.square interno de
-    // CceIcon. Sin ImageFiltered (en Impeller pintaba a pantalla completa) y sin
-    // BoxShadow: imposible que el candado/ícono escale a tamaño pantalla. El
-    // SizedBox.square externo fija además el layout a size×size.
-    return SizedBox.square(
-      dimension: size,
-      child: CceIcon(svg, size: size, color: color, emboss: false),
+    return Center(
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 3,
+          color: CceColors.textTertiary,
+          shadows: [
+            Shadow(
+              color: Color(0x2EFFFFFF),
+              offset: Offset(-0.6, -0.8),
+            ),
+            Shadow(
+              color: Color(0xCC05060A),
+              offset: Offset(0.8, 1.2),
+              blurRadius: 1,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1155,7 +1053,11 @@ class _UnlockButton extends StatelessWidget {
       label = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _GlowGlyph(svg: CceIcons.check, size: 20, color: accent),
+          SizedBox.square(
+            dimension: 20,
+            child:
+                CceIcon(CceIcons.check, size: 20, color: accent, emboss: false),
+          ),
           const SizedBox(width: 8),
           Text('Abierta', style: labelStyle),
         ],
