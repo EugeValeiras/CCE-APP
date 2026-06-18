@@ -355,9 +355,9 @@ class _LockScreenState extends State<LockScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Fondo del drawer MÁS OSCURO que la carcasa (manual dashboard: #16181D)
-      // para que el control neumórfico FLOTE sobre la pantalla.
-      backgroundColor: const Color(0xFF16181D),
+      // Fondo de la app (#101014), MÁS oscuro que la carcasa (neoBase) para que
+      // el control FLOTE con claridad (igual que la home).
+      backgroundColor: CceColors.bg,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),

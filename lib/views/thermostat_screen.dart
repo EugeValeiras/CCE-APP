@@ -37,9 +37,10 @@ class ThermostatScreen extends StatelessWidget {
     required this.service,
   });
 
-  /// Fondo del "drawer"/pantalla, MÁS OSCURO que la carcasa (neoBase) para que el
-  /// control flote sobre él. Réplica del `#16181D` del dashboard.
-  static const Color _drawerBg = Color(0xFF16181D);
+  /// Fondo de la app (#101014), MÁS oscuro que la carcasa (neoBase) para que el
+  /// control FLOTE con claridad (igual que la home; #16181D quedaba casi igual
+  /// a neoBase en el OLED).
+  static const Color _drawerBg = CceColors.bg;
 
   /// ¿El sistema está calentando? (power + systemMode heat). Réplica de
   /// `isHeating` del dashboard.

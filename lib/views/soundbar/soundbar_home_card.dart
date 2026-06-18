@@ -172,38 +172,9 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
           ),
         );
 
-        // En plano: card tal cual. En neo: glow de acento MUY sutil bajo el
-        // tile cuando está vivo (online && on) — habla el mismo idioma
-        // "encendido = glow" que las RoomCard, pero más tenue (alpha 0.25) por
-        // ser un dispositivo secundario. La almohada (cardFloat) la aporta
-        // CceCard; aquí solo se suma el halo detrás.
-        if (!neo) return card;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(CceRadii.hueCard),
-                    boxShadow: (online && on)
-                        ? [
-                            BoxShadow(
-                              color: CceColors.jblOrange.withValues(alpha: 0.25),
-                              blurRadius: 24,
-                              offset: const Offset(0, 8),
-                              spreadRadius: -2,
-                            ),
-                          ]
-                        : const [],
-                  ),
-                ),
-              ),
-            ),
-            card,
-          ],
-        );
+        // Sin glow que se derrame: el relieve lo da CceCard (cardFloat) y el
+        // estado ON lo marca el switch + el ícono. No se suma halo detrás.
+        return card;
       },
     );
   }

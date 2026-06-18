@@ -52,9 +52,10 @@ class _TvScreenState extends State<TvScreen> {
   Widget build(BuildContext context) {
     final service = widget.service;
     return Scaffold(
-      // Fondo del drawer MÁS OSCURO que la carcasa (manual dashboard: #16181D)
-      // para que el control neumórfico FLOTE sobre la pantalla.
-      backgroundColor: const Color(0xFF16181D),
+      // Fondo de la app (#101014), MÁS oscuro que la carcasa (neoBase) para que
+      // el control FLOTE con claridad (igual que la home; #16181D quedaba casi
+      // idéntico a neoBase en el OLED y no se notaba la diferencia).
+      backgroundColor: CceColors.bg,
       // Sin AppBar: control full-screen. Se vuelve con el swipe iOS.
       body: SafeArea(
         child: AnimatedBuilder(
