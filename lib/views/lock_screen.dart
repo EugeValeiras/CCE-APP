@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -975,51 +974,26 @@ class _GlowGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final glow = color.withValues(alpha: 0.65);
-    // BLINDAJE: el Stack va envuelto en SizedBox.square(size) para fijar su
-    // tamano de LAYOUT a size x size. Asi el glyph NUNCA puede expandirse a
-    // tamano pantalla, aun bajo constraints infinitas. Se conserva
-    // clipBehavior: Clip.none para que el halo (blur = size * 0.16) siga
-    // pintandose fuera del cuadrado sin afectar el tamano de layout.
-    return SizedBox.square(
-      dimension: size,
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          // Halo: copia desenfocada del glyph teñida con el color (el
-          // "drop-shadow" neón). blur escala con el tamaño del glyph.
-          ImageFilteredGlyph(
-              svg: svg, size: size, color: glow, blur: size * 0.16),
-          // Glyph nítido al frente.
-          CceIcon(svg, size: size, color: color, emboss: false),
-        ],
+    // iOS-SAFE: SIN ImageFiltered. En Impeller (iOS) el blur de ImageFiltered se
+    // renderiza a PANTALLA COMPLETA — ESA era la causa del "candado gigante": los
+    // halos de los íconos de EVENTO (candado ámbar = destrabada, verde = trabada,
+    // azul = timbre) explotaban a tamaño pantalla encima del control. El glow
+    // ahora es un BoxShadow circular detrás del glyph nítido: mismo "drop-shadow"
+    // neón pero confiable en iOS y SIEMPRE acotado (blur finito, no full-screen).
+    return Center(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: 0.55),
+              blurRadius: size * 0.45,
+              spreadRadius: size * 0.02,
+            ),
+          ],
+        ),
+        child: CceIcon(svg, size: size, color: color, emboss: false),
       ),
-    );
-  }
-}
-
-/// Copia desenfocada de un [CceIcon] (sirve como halo/glow detrás del glyph
-/// real). Aislada en su propio widget para mantener el `build` legible.
-class ImageFilteredGlyph extends StatelessWidget {
-  const ImageFilteredGlyph({
-    super.key,
-    required this.svg,
-    required this.size,
-    required this.color,
-    required this.blur,
-  });
-
-  final String svg;
-  final double size;
-  final Color color;
-  final double blur;
-
-  @override
-  Widget build(BuildContext context) {
-    return ImageFiltered(
-      imageFilter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-      child: CceIcon(svg, size: size, color: color, emboss: false),
     );
   }
 }
