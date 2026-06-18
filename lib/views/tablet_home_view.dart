@@ -21,6 +21,7 @@ import 'automations/automations_view.dart';
 import 'floor_plan_tab.dart';
 import 'history_screen.dart';
 import 'settings_view.dart';
+import 'thermostat_screen.dart';
 import 'soundbar/soundbar_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
 import 'tv/tv_screen.dart';
@@ -296,10 +297,21 @@ class _CasaSplitState extends State<_CasaSplit> {
         // Panel derecho: si hay un device dedicado seleccionado, su control
         // INLINE; si no, la sala (RoomPanel) o "Toda la casa".
         Widget panel;
+        final String? thermostatId =
+            (_selectedDevice != null && _selectedDevice!.startsWith('thermostat:'))
+                ? _selectedDevice!.substring('thermostat:'.length)
+                : null;
         if (_selectedDevice == 'tv') {
           panel = TvScreen(service: widget.tv);
         } else if (_selectedDevice == 'jbl') {
           panel = SoundbarScreen(service: widget.jbl);
+        } else if (thermostatId != null) {
+          // Termostato INLINE en el panel derecho (igual que TV/JBL). Si el
+          // device ya no existe, cae a "Toda la casa".
+          final dev = widget.devices.byId(thermostatId);
+          panel = dev != null
+              ? ThermostatScreen(device: dev, service: widget.devices)
+              : _buildAllHouse();
         } else if (room == null) {
           panel = _buildAllHouse();
         } else {
@@ -318,6 +330,8 @@ class _CasaSplitState extends State<_CasaSplit> {
             jbl: widget.jbl,
             onOpenTv: () => setState(() => _selectedDevice = 'tv'),
             onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
+            onOpenThermostat: (d) =>
+                setState(() => _selectedDevice = 'thermostat:${d.id}'),
           );
         }
 
@@ -519,6 +533,9 @@ class _AllHouseLights extends StatelessWidget {
                     service: service,
                     size: tileSize,
                     neo: true,
+                    // Tablet: abre el termostato inline (igual que TV/JBL).
+                    onOpen: () => setState(
+                        () => _selectedDevice = 'thermostat:${d.id}'),
                   );
                 },
               ),

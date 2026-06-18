@@ -85,30 +85,28 @@ class ThermostatScreen extends StatelessWidget {
             final d = service.byId(device.id) ?? device;
             final s = d.state;
 
-            // Centrado a ancho de celular (≈360 como el JBL/dashboard): en iPad el
-            // control NO ocupa todo el ancho.
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 360),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // ── HEADER fuera del control (badge · título+dot · cerrar) ──
-                      _Header(
-                        title: service.displayName(d),
-                        online: s.reachable,
-                        heating: _isHeating(s),
-                        cooling: _isCooling(s),
-                        onClose: () => Navigator.of(context).pop(),
+            // SIN header (se vuelve con el swipe iOS): el control llena la
+            // pantalla como el Samsung. Se ALARGA al alto disponible (capeado a
+            // maxH=780; en tablet estira un poco) y, si la pantalla es más baja,
+            // FittedBox(scaleDown) lo achica para que nunca desborde.
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
+              child: LayoutBuilder(
+                builder: (ctx, c) {
+                  const double w = 360, minH = 600, maxH = 780;
+                  final double target = c.maxHeight.clamp(minH, maxH);
+                  return Center(
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: w,
+                        height: target,
+                        child: _panel(child: _buildControl(context, d, s)),
                       ),
-                      const SizedBox(height: 6),
-                      // ── CARCASA del control ──────────────────────────────
-                      _panel(child: _buildControl(context, d, s)),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               ),
             );
           },
@@ -157,6 +155,9 @@ class ThermostatScreen extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
+      // Distribuye las secciones para LLENAR el alto de la carcasa (control
+      // "alargado"), igual que el Samsung: gaps iguales entre bloques.
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         // Power redondo 52px arriba-IZQUIERDA del control.
         _PowerButton(
@@ -168,7 +169,6 @@ class ThermostatScreen extends StatelessWidget {
                 }
               : null,
         ),
-        const SizedBox(height: 22),
 
         // Control de temperatura: [−] dial [+] (deshabilitado/atenuado si off).
         Opacity(
@@ -227,33 +227,34 @@ class ThermostatScreen extends StatelessWidget {
         ),
 
         // Estado del sistema (heat / idle): chip hundido; "Encendido" con glow.
-        if (s.systemMode != null) ...[
-          const SizedBox(height: 22),
+        if (s.systemMode != null)
           _SystemStatus(
             label: _systemLabel(s),
             heating: heating,
             icon: _isCooling(s) ? CceIcons.snowflake : CceIcons.flame,
           ),
-        ],
 
         // Modo (Manual / Program) = chips convexos sin borde.
-        if (s.tempMode != null) ...[
-          const SizedBox(height: 22),
-          const _SectionLabel('MODO'),
-          const SizedBox(height: 10),
-          _ModeChips(
-            value: _normalizeMode(s.tempMode!),
-            onChanged: reachable
-                ? (m) {
-                    HapticFeedback.selectionClick();
-                    service.setTempMode(d, m);
-                  }
-                : null,
+        if (s.tempMode != null)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _SectionLabel('MODO'),
+              const SizedBox(height: 10),
+              _ModeChips(
+                value: _normalizeMode(s.tempMode!),
+                onChanged: reachable
+                    ? (m) {
+                        HapticFeedback.selectionClick();
+                        service.setTempMode(d, m);
+                      }
+                    : null,
+              ),
+            ],
           ),
-        ],
 
         // Wordmark grabado al pie.
-        const SizedBox(height: 22),
         const _Wordmark('CCE THERMOSTAT'),
       ],
     );
@@ -298,154 +299,6 @@ List<Shadow> _glowTextShadows(Color color) => [
       Shadow(color: color.withValues(alpha: 0.55), blurRadius: 12),
       Shadow(color: color.withValues(alpha: 0.35), blurRadius: 4),
     ];
-
-// ── HEADER (fuera del control) ──────────────────────────────────────────────
-
-/// Header a nivel del drawer (fuera de la carcasa): badge redondo convexo con el
-/// termómetro · título + dot de estado · cerrar redondo. Réplica del
-/// `.sidebar-header` del dashboard.
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.title,
-    required this.online,
-    required this.heating,
-    required this.cooling,
-    required this.onClose,
-  });
-
-  final String title;
-  final bool online;
-  final bool heating;
-  final bool cooling;
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    // Badge: info por defecto, danger (llama) cuando calienta.
-    final badgeColor = heating ? CceColors.danger : CceColors.info;
-    final badgeIcon = heating
-        ? CceIcons.flame
-        : (cooling ? CceIcons.snowflake : CceIcons.thermometer);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
-      child: Row(
-        children: [
-          // Badge redondo convexo (48px).
-          _ConvexBadge(color: badgeColor, glow: heating, svg: badgeIcon),
-          const SizedBox(width: 14),
-          // Título + estado (dot).
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: CceColors.neoText,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: online
-                            ? CceColors.ok
-                            : CceColors.textTertiary,
-                        boxShadow: online
-                            ? [
-                                BoxShadow(
-                                  color:
-                                      CceColors.ok.withValues(alpha: 0.7),
-                                  blurRadius: 6,
-                                ),
-                              ]
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      online ? 'En línea' : 'Sin conexión',
-                      style: CceText.caption.copyWith(
-                        fontSize: 12.5,
-                        color: CceColors.neoTextSub,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          // Cerrar redondo (44px, base plana + sombra externa estándar).
-          _RoundNeoButton(
-            svg: CceIcons.close,
-            size: 44,
-            iconSize: 18,
-            color: CceColors.neoTextSub,
-            tooltip: 'Cerrar',
-            onTap: onClose,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Badge redondo CONVEXO (48px) del header: gradiente convexo + sombra externa
-/// estándar; ícono tinte [color] (con glow cuando [glow]).
-class _ConvexBadge extends StatelessWidget {
-  const _ConvexBadge({
-    required this.color,
-    required this.glow,
-    required this.svg,
-  });
-
-  final Color color;
-  final bool glow;
-  final String svg;
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = CceIcon(svg, size: 20, emboss: false, color: color);
-    return Container(
-      width: 48,
-      height: 48,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: CceColors.neoBase,
-        gradient: CceGradients.convex(CceColors.neoBase),
-        boxShadow: _convexShadow(),
-      ),
-      child: glow
-          ? DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: color.withValues(alpha: 0.6),
-                    blurRadius: 12,
-                    spreadRadius: -2,
-                  ),
-                ],
-              ),
-              child: icon,
-            )
-          : icon,
-    );
-  }
-}
 
 // ── Botones redondos ────────────────────────────────────────────────────────
 

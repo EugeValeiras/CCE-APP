@@ -38,6 +38,7 @@ class RoomPanel extends StatelessWidget {
     this.jbl,
     this.onOpenTv,
     this.onOpenJbl,
+    this.onOpenThermostat,
   });
 
   final DevicesService service;
@@ -56,6 +57,10 @@ class RoomPanel extends StatelessWidget {
   final JblService? jbl;
   final VoidCallback? onOpenTv;
   final VoidCallback? onOpenJbl;
+
+  /// TABLET: abre el termostato INLINE en el panel derecho (igual que TV/JBL).
+  /// Si es null (teléfono / RoomDetail), el header card cae a su push de ruta.
+  final ValueChanged<Device>? onOpenThermostat;
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -258,6 +263,9 @@ class RoomPanel extends StatelessWidget {
                     device: d,
                     service: service,
                     neo: neo,
+                    onOpen: onOpenThermostat == null
+                        ? null
+                        : () => onOpenThermostat!(d),
                   );
                 },
               ),

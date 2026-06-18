@@ -24,10 +24,15 @@ class ThermostatTile extends StatelessWidget {
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
+    this.onOpen,
   });
 
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
+
+  /// TABLET: abre el control INLINE en el panel derecho (igual que TV/JBL). Si
+  /// es null (teléfono), cae al `Navigator.push(ThermostatScreen)` de siempre.
+  final VoidCallback? onOpen;
 
   bool _isCool(DeviceState s) {
     final m = (s.systemMode ?? '').toLowerCase();
@@ -165,11 +170,13 @@ class ThermostatTile extends StatelessWidget {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ThermostatScreen(device: device, service: service),
-        ),
-      ),
+      onTap: onOpen ??
+          () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ThermostatScreen(device: device, service: service),
+                ),
+              ),
       child: tile,
     );
   }

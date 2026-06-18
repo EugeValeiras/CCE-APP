@@ -20,11 +20,17 @@ class ThermostatHeaderCard extends StatelessWidget {
   /// OPT-IN: relieve neumórfico (igual que el resto del header). Default false.
   final bool neo;
 
+  /// Override de apertura: en la TABLET el control se abre INLINE en el panel
+  /// derecho (igual que TV/JBL) en vez de empujar una ruta fullscreen. Si es
+  /// null (teléfono), cae al `Navigator.push(ThermostatScreen)` de siempre.
+  final VoidCallback? onOpen;
+
   const ThermostatHeaderCard({
     super.key,
     required this.device,
     required this.service,
     this.neo = false,
+    this.onOpen,
   });
 
   bool _isCool(DeviceState s) {
@@ -66,11 +72,13 @@ class ThermostatHeaderCard extends StatelessWidget {
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,
         neo: neo,
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ThermostatScreen(device: device, service: service),
-          ),
-        ),
+        onTap: onOpen ??
+            () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        ThermostatScreen(device: device, service: service),
+                  ),
+                ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [

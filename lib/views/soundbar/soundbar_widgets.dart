@@ -325,23 +325,32 @@ class _JblWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Sombra que sigue la FORMA de las letras (réplica del drop-shadow del
+    // dashboard): una copia oscura desplazada DETRÁS del glyph. El `boxShadow`
+    // del `DecoratedBox` anterior pintaba un RECTÁNGULO oscuro detrás del
+    // bounding-box del ícono (44×44) → el "fondo negro" que rompía la estética.
     return const Center(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Color(0xCC05060A), // sombra de contacto (moldea el logo)
-              offset: Offset(0.8, 1.2),
-              blurRadius: 1,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Ghost: copia desplazada (0.8, 1.2) teñida de contacto, detrás.
+          Padding(
+            padding: EdgeInsets.only(left: 0.8, top: 1.2),
+            child: CceIcon(
+              CceIcons.jbl,
+              size: 44,
+              emboss: false,
+              color: Color(0xCC05060A),
             ),
-          ],
-        ),
-        child: CceIcon(
-          CceIcons.jbl,
-          size: 44,
-          emboss: false,
-          color: CceColors.jblOrange,
-        ),
+          ),
+          // Logo nítido en jbl-orange al frente.
+          CceIcon(
+            CceIcons.jbl,
+            size: 44,
+            emboss: false,
+            color: CceColors.jblOrange,
+          ),
+        ],
       ),
     );
   }
