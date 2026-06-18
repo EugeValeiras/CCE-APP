@@ -49,6 +49,11 @@ class FloorPlanPanel extends StatefulWidget {
   final VoidCallback? onOpenTv;
   final VoidCallback? onOpenJbl;
 
+  /// Tablet: tap en el marker de un TERMOSTATO abre el control INLINE en el
+  /// panel derecho (igual que TV/JBL) en vez de empujar una ruta fullscreen.
+  /// Si es null, el marker cae al Navigator.push de siempre.
+  final ValueChanged<Device>? onOpenThermostat;
+
   const FloorPlanPanel({
     super.key,
     required this.service,
@@ -61,6 +66,7 @@ class FloorPlanPanel extends StatefulWidget {
     this.jbl,
     this.onOpenTv,
     this.onOpenJbl,
+    this.onOpenThermostat,
   });
 
   @override
@@ -221,6 +227,7 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                 jblPos: jblPos,
                 onOpenTv: widget.onOpenTv,
                 onOpenJbl: widget.onOpenJbl,
+                onOpenThermostat: widget.onOpenThermostat,
               ),
             ),
           ],
@@ -249,6 +256,7 @@ class _PlanCanvas extends StatelessWidget {
   final LightPosition? jblPos;
   final VoidCallback? onOpenTv;
   final VoidCallback? onOpenJbl;
+  final ValueChanged<Device>? onOpenThermostat;
 
   const _PlanCanvas({
     required this.plan,
@@ -263,6 +271,7 @@ class _PlanCanvas extends StatelessWidget {
     this.jblPos,
     this.onOpenTv,
     this.onOpenJbl,
+    this.onOpenThermostat,
   });
 
   /// Parser completo del viewBox: comillas simples o dobles, captura los 4
@@ -413,6 +422,7 @@ class _PlanCanvas extends StatelessWidget {
                             service: service,
                             size: dotSize,
                             openOnTap: openOnTap,
+                            onOpenThermostat: onOpenThermostat,
                           ),
                         ),
                       );
@@ -475,11 +485,16 @@ class _DeviceDot extends StatefulWidget {
   /// Tablet: tap ABRE el control (LightColorScreen) en vez de togglear.
   final bool openOnTap;
 
+  /// Tablet: abre el termostato INLINE en el panel derecho (si no es null, el
+  /// tap del marker llama esto en vez de empujar ThermostatScreen).
+  final ValueChanged<Device>? onOpenThermostat;
+
   const _DeviceDot({
     required this.device,
     required this.service,
     required this.size,
     this.openOnTap = false,
+    this.onOpenThermostat,
   });
 
   @override
@@ -677,16 +692,21 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
                     HapticFeedback.selectionClick();
                     _tapCtrl.forward(from: 0);
                     if (isThermostat) {
-                      // Termostato: abrir ThermostatScreen (setpoint, modo,
-                      // power). Nunca togglea desde el plano.
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => ThermostatScreen(
-                            device: device,
-                            service: widget.service,
+                      // Termostato: en tablet abre INLINE en el panel derecho
+                      // (onOpenThermostat); si no, empuja ThermostatScreen.
+                      // Nunca togglea desde el plano.
+                      if (widget.onOpenThermostat != null) {
+                        widget.onOpenThermostat!(device);
+                      } else {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ThermostatScreen(
+                              device: device,
+                              service: widget.service,
+                            ),
                           ),
-                        ),
-                      );
+                        );
+                      }
                     } else if (isLock) {
                       // Cerradura: abrir LockScreen. NUNCA togglear desde el
                       // plano: la apertura es una acción de seguridad con

@@ -449,6 +449,8 @@ class _CasaSplitState extends State<_CasaSplit> {
                     jbl: widget.jbl,
                     onOpenTv: () => setState(() => _selectedDevice = 'tv'),
                     onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
+                    onOpenThermostat: (d) => setState(
+                        () => _selectedDevice = 'thermostat:${d.id}'),
                   )
                 : _AllHouseLights(
                     service: widget.devices,

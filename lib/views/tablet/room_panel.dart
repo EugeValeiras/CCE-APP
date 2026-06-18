@@ -211,6 +211,7 @@ class RoomPanel extends StatelessWidget {
                       jbl: jbl,
                       onOpenTv: onOpenTv,
                       onOpenJbl: onOpenJbl,
+                      onOpenThermostat: onOpenThermostat,
                     )
                   : _buildLights(),
             ),
