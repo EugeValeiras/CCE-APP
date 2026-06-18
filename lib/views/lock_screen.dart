@@ -480,8 +480,14 @@ class _LockScreenState extends State<LockScreen> {
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < 360;
         final gap = narrow ? 8.0 : 12.0;
+        // CAUSA RAÍZ del "render vacío": dentro del SingleChildScrollView la
+        // altura entrante es ILIMITADA, y CrossAxisAlignment.stretch en el
+        // cross-axis (alto) de un Row lo hacía crecer a alto INFINITO → empujaba
+        // el historial y el wordmark a y=∞ (invisibles) y dejaba el ícono del
+        // primer chip pintándose en el origen (el "candado fantasma"). Las 3
+        // métricas tienen contenido idéntico, así que el alto natural empareja
+        // sin stretch.
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Expanded(
               child: _Metric(
@@ -638,52 +644,72 @@ class _LockScreenState extends State<LockScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Header: título + contador DIAGNÓSTICO + "Actualizar" (texto, sin ícono
-        // ni sombras) para que el header sea el caso más simple posible.
+        // Header del historial: título + refrescar (simple, sin _RoundKey).
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('HISTORIAL', style: CceText.section),
-            // DIAGNÓSTICO temporal: confirma en el device cuántos eventos hay.
-            Text(
-              'n=${_events.length}${loading ? ' …' : ''}',
-              style: const TextStyle(color: Color(0xFFFF9F0A), fontSize: 12),
-            ),
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: loading ? null : _loadEvents,
-              child: Text(
-                loading ? 'Cargando…' : 'Actualizar',
-                style: const TextStyle(
-                  color: CceColors.info,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: CceColors.neoBase,
+                  boxShadow: CceShadows.neo(blur: 6, offset: 2),
                 ),
+                child: loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: CceColors.textSecondary,
+                        ),
+                      )
+                    : SizedBox.square(
+                        dimension: 16,
+                        child: CceIcon(_kRefreshCw,
+                            size: 16,
+                            color: CceColors.textSecondary,
+                            emboss: false),
+                      ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 12),
         if (_events.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
-            child: Text(
-              loading ? 'Cargando eventos…' : 'Sin eventos registrados',
-              style: const TextStyle(color: CceColors.textTertiary, fontSize: 13),
+            child: Center(
+              child: Text(
+                loading ? 'Cargando eventos…' : 'Sin eventos registrados',
+                style:
+                    const TextStyle(color: CceColors.textTertiary, fontSize: 13),
+              ),
             ),
           )
         else
-          // DIAGNÓSTICO: lista PLANA y mínima — SIN well (inner-shadow), SIN chip
-          // circular con gradiente/glow y SIN SvgPicture. Solo widgets estándar
-          // (Text + dot de color). Si ESTO pinta debajo de las métricas, la causa
-          // es la decoración; si NO pinta, es estructural (scroll/Impeller). Y si
-          // el candado fantasma del borde sup-izq desaparece, era el SvgPicture.
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (var i = 0; i < _events.length; i++)
-                _buildEventRow(_events[i], last: i == _events.length - 1),
-            ],
+          // Lista en un well HUNDIDO (neoBase + inset) para separarla (espejo
+          // del dashboard, que usa --neo-base en .events-list).
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: CceColors.neoBase,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < _events.length; i++)
+                  _buildEventRow(_events[i], last: i == _events.length - 1),
+              ],
+            ),
           ),
       ],
     );
@@ -691,30 +717,48 @@ class _LockScreenState extends State<LockScreen> {
 
   Widget _buildEventRow(EzvizLockEvent ev, {required bool last}) {
     final color = _eventColor(ev.kind);
+    // Glow solo en los tipos tintados; el 'otro'/default queda neutro (en el
+    // dashboard sólo las clases ev-* llevan drop-shadow).
+    final glow = color != CceColors.textTertiary;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
         border: last
             ? null
             : Border(
+                // hairline oscuro (espejo de rgba(12,13,17,0.55) del dashboard).
                 bottom: BorderSide(
                     color: CceColors.neoDark.withValues(alpha: 0.55)),
               ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // DIAGNÓSTICO: dot de color en vez del chip+SVG. Si el "candado
-          // fantasma" del borde sup-izq DESAPARECE, el culpable era el SvgPicture.
-          Padding(
-            padding: const EdgeInsets.only(top: 3),
-            child: Container(
-              width: 12,
-              height: 12,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+          // Chip redondo CONVEXO tintado + glow según tipo (espejo .event-icon
+          // del dashboard: gradiente convexo + par de sombras neo + aura del
+          // color, SOLO vía BoxShadow — nunca filtros de imagen, por Impeller).
+          Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: CceGradients.convex(CceColors.neoBase),
+              boxShadow: [
+                ...CceShadows.neo(blur: 8, offset: 3),
+                if (glow)
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.40),
+                    blurRadius: 8,
+                  ),
+              ],
+            ),
+            child: SizedBox.square(
+              dimension: 16,
+              child: CceIcon(_eventIconSvg(ev),
+                  size: 16, color: color, emboss: false),
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
