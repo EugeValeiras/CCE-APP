@@ -348,13 +348,14 @@ class _RoomCardState extends State<RoomCard> {
                 curve: Curves.easeOutCubic,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(CceRadii.hueCard),
+                  // Sin anillo de "encendido": el estado ON lo marca el switch
+                  // (que prende) + el ícono tinteado. Sólo la selección (tablet)
+                  // dibuja un hairline blanco.
                   border: Border.all(
                     color: widget.selected
                         ? Colors.white.withValues(alpha: 0.80)
-                        : (widget.anyOn
-                            ? accent.withValues(alpha: 0.22)
-                            : Colors.transparent),
-                    width: widget.selected ? 1.4 : 1.2,
+                        : Colors.transparent,
+                    width: 1.4,
                   ),
                 ),
               ),

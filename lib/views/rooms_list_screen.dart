@@ -126,15 +126,16 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         // identidades aunque service.rooms regenere RoomRef en cada notify.
         final ordered = _applyOrder(service.rooms, _savedOrder);
         return Scaffold(
-          // Fondo neumórfico (home teléfono): card y fondo comparten neoBase.
-          backgroundColor: CceColors.neoBase,
+          // Fondo de la app (matte oscuro, #101014): MÁS oscuro que las cards
+          // (neoBase) para que el relieve se vea y las cards "floten". Antes el
+          // fondo compartía neoBase con las cards y el relieve se perdía.
+          backgroundColor: CceColors.bg,
           appBar: AppBar(
             toolbarHeight: 64,
-            // Placa continua: el appbar comparte neoBase con el body y NO
-            // proyecta sombra/línea de Material al hacer scroll (elevation +
-            // scrolledUnderElevation 0; surfaceTint transparente). Esto mantiene
-            // la lectura de "una sola superficie de goma".
-            backgroundColor: CceColors.neoBase,
+            // El appbar comparte el fondo de la app y NO proyecta sombra/línea
+            // de Material al hacer scroll (elevation + scrolledUnderElevation 0;
+            // surfaceTint transparente).
+            backgroundColor: CceColors.bg,
             elevation: 0,
             scrolledUnderElevation: 0,
             surfaceTintColor: Colors.transparent,

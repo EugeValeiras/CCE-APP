@@ -30,10 +30,29 @@ class CceSwitch extends StatelessWidget {
           width: _w,
           height: _h,
           decoration: BoxDecoration(
-            // Pista hundida (well) en la goma.
-            color: CceColors.neoSunken,
             borderRadius: BorderRadius.circular(999),
-            boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
+            // Apagado: pista hundida (well) oscura. Encendido: la pista
+            // "PRENDE" — se ilumina en ámbar cálido con glow (como una luz).
+            gradient: value
+                ? const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [Color(0xFFE3A340), Color(0xFFC07F26)],
+                  )
+                : const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [CceColors.neoSunken, CceColors.neoSunken],
+                  ),
+            boxShadow: value
+                ? const [
+                    BoxShadow(
+                      color: Color(0x66FFC15A),
+                      blurRadius: 12,
+                      spreadRadius: -1,
+                    ),
+                  ]
+                : CceShadows.neoInset(blur: 6, offset: 2),
           ),
           child: AnimatedAlign(
             duration: const Duration(milliseconds: 200),
@@ -46,16 +65,16 @@ class CceSwitch extends StatelessWidget {
                 height: _knob,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  // Perilla convexa: encendida más clara (neoLight), apagada neoBase.
+                  // Perilla convexa: encendida blanco cálido, apagada neoBase.
                   gradient: CceGradients.convex(
-                    value ? CceColors.neoLight : CceColors.neoBase,
+                    value ? const Color(0xFFFFF4E2) : CceColors.neoBase,
                   ),
                   boxShadow: [
                     ...CceShadows.neo(blur: 5, offset: 2),
                     if (value)
-                      BoxShadow(
-                        color: Colors.white.withValues(alpha: 0.22),
-                        blurRadius: 10,
+                      const BoxShadow(
+                        color: Color(0x4DFFFFFF),
+                        blurRadius: 8,
                         spreadRadius: -1,
                       ),
                   ],
