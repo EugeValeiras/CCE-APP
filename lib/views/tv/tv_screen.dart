@@ -100,18 +100,26 @@ class _TvScreenState extends State<TvScreen> {
             // dashboard, max-width 320): en el teléfono queda angosto con aire
             // a los costados, no a ancho completo. BoxFit.contain escala para
             // usar el alto disponible (en tablet crece y queda centrado).
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 340),
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: 420,
-                    child: _RemoteBody(service: service, online: online),
+            child: LayoutBuilder(
+              builder: (ctx, c) {
+                // El control se ALARGA al alto disponible (llena la pantalla en
+                // el teléfono), capeado a maxH=780 (en tablet estira un poco).
+                // Piso minH para no comprimir; si la pantalla es más baja,
+                // FittedBox(scaleDown) lo achica para que no desborde.
+                const double w = 360, minH = 600, maxH = 780;
+                final double target = c.maxHeight.clamp(minH, maxH);
+                return Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    alignment: Alignment.center,
+                    child: SizedBox(
+                      width: w,
+                      height: target,
+                      child: _RemoteBody(service: service, online: online),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],
@@ -160,6 +168,9 @@ class _RemoteBody extends StatelessWidget {
             ],
           ),
           child: Column(
+            // Distribuye las secciones para LLENAR la altura de la carcasa
+            // (el control "alargado"): gaps iguales entre secciones.
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // ── Fila superior: Power (rojo) + Mic ─────────────────────────
               Row(
@@ -183,7 +194,6 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
 
               // ── D-PAD GRANDE + OK central (elemento dominante) ────────────
               _DPad(
@@ -194,7 +204,6 @@ class _RemoteBody extends StatelessWidget {
                 onRight: () => _key(service, TvRemoteKeys.right),
                 onOk: () => _key(service, TvRemoteKeys.ok),
               ),
-              const SizedBox(height: 22),
 
               // ── Fila de utilidades (4 en una línea): Guía · Home · Back ·
               //    Ajustes. El mute NO va acá (vive al centro del rocker VOL);
@@ -231,7 +240,6 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
 
               // ── Rockers píldora: VOLUMEN (con mute al centro) · CANAL ──────
               Row(
@@ -295,7 +303,6 @@ class _RemoteBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
 
               // ── Botón ANCHO de aplicaciones (estilo dashboard) ────────────
               //    Reemplaza al viejo botón redondo del anillo de utilidades.
@@ -304,7 +311,6 @@ class _RemoteBody extends StatelessWidget {
               _AppsWideButton(
                 onTap: () => _openAppsSheet(context, service),
               ),
-              const SizedBox(height: 22),
 
               // ── Wordmark SAMSUNG ──────────────────────────────────────────
               Text(
