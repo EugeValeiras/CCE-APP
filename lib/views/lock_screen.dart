@@ -353,31 +353,17 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // SIN header externo (el swipe iOS vuelve atrás). Layout scroll-centrado:
-    // la carcasa se CENTRA verticalmente cuando el contenido es corto, y
-    // scrollea cuando el historial es largo. (NO se usa FittedBox: escalar una
-    // región scrolleable descolocaba el botón/refresh arriba y dejaba el vacío
-    // abajo. El termostato sí usa FittedBox porque su contenido es de alto fijo;
-    // el lock tiene historial variable.)
+    // SIN header externo (el swipe iOS vuelve atrás). Layout scroll ESTÁNDAR y
+    // simple: la carcasa alineada arriba, ancho máx 480, scrolleable cuando el
+    // historial es largo. (Patrón básico y confiable; el FittedBox y el
+    // minHeight+Center vertical de versiones previas dejaban el render vacío.)
     return Scaffold(
       backgroundColor: CceColors.bg,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (ctx, c) {
-            return SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: c.maxHeight - 28),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: _buildCarcasa(),
-                  ),
-                ),
-              ),
-            );
-          },
+        child: SingleChildScrollView(
+          physics: const ClampingScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+          child: _buildCarcasa(),
         ),
       ),
     );
