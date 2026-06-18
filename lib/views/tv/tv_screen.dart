@@ -95,13 +95,13 @@ class _TvScreenState extends State<TvScreen> {
             const SizedBox(height: 8),
           ],
           Expanded(
-            // Igual que el control del JBL: CENTRADO (ambos ejes) y capeado a
-            // ancho de celular (480). BoxFit.contain escala el control para usar
-            // el ALTO completo disponible (en iPad crece y queda centrado; en
-            // teléfono se achica para entrar en una sola pantalla).
+            // CENTRADO (ambos ejes) y capeado a ~340 (como el .remote del
+            // dashboard, max-width 320): en el teléfono queda angosto con aire
+            // a los costados, no a ancho completo. BoxFit.contain escala para
+            // usar el alto disponible (en tablet crece y queda centrado).
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+                constraints: const BoxConstraints(maxWidth: 340),
                 child: FittedBox(
                   fit: BoxFit.contain,
                   alignment: Alignment.center,
