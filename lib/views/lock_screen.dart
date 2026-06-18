@@ -12,25 +12,25 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 
 /// Pantalla de control de una CERRADURA EZVIZ (capability 'lock', provider
-/// ezviz). Portada PÍXEL A PÍXEL del control neumórfico del dashboard
-/// (lock-sidebar.component.ts): el cuerpo es una CARCASA que flota sobre un
-/// fondo de drawer MÁS OSCURO (#16181D), con el HEADER fuera del control.
+/// ezviz). Espejo del control neumórfico del dashboard (lock-sidebar
+/// .component.ts) a ancho de celular: un PANEL PLANO full-screen (fondo neoBase
+/// de borde a borde, SIN tarjeta flotante) sobre el que cada bloque hace su
+/// propio relieve.
+///
+/// Es de SOLO ESTADO + HISTORIAL: sin header ni botón de apertura (no se abre la
+/// casa desde el celular manteniendo presionado; eso además evita el preview de
+/// drag de iOS). El código del botón ABRIR queda en el archivo
+/// (_buildUnlockSection / _UnlockButton) por si se reconecta, pero NO se monta.
 ///
 /// Recetas del manual de diseño del dashboard, traducidas a los tokens/helpers
-/// existentes (CceColors, CceShadows.neo/neoInset/plato, CceGradients.concave/
-/// convex, _PressFx, _lerp):
-///  - HEADER (fuera de la carcasa): [badge redondo convexo · título+dot ·
-///    cerrar redondo].
+/// existentes (CceColors, CceShadows.neo/neoInset/plato/glowDot,
+/// CceGradients.concave/convex, _PressFx, _lerp):
 ///  - Estado grande Trabada/Destrabada = PLATO CÓNCAVO (relieve externo + cara
 ///    hundida) con el candado y el label "encendidos" en el color de estado
-///    (verde trabada / ámbar destrabada) con glow.
+///    (verde trabada / ámbar destrabada) con glow (SOLO vía BoxShadow).
 ///  - Métricas (batería/conexión/último evento) en huecos HUNDIDOS (inset).
-///  - Botón ABRIR CONVEXO prominente que se "enciende" (ámbar + glow) al
-///    mantener; conserva el HOLD-TO-CONFIRM (~1,5 s) → unlock(serial). Nunca es
-///    un click idempotente; el backend loguea cada apertura. Si el modelo no
-///    soporta apertura remota (501), queda deshabilitado (inset hundido).
-///  - Historial de eventos dentro de un hueco hundido; cada evento es un chip
-///    redondo convexo tintado según tipo.
+///  - Historial de eventos en un hueco hundido; cada evento es un chip redondo
+///    CONVEXO tintado + glow según tipo, en filas con hairline oscuro.
 ///
 /// Todos los íconos salen de icons0.dev (colección lucide): los de [CceIcons]
 /// más los cuatro vendoreados localmente acá ([_kBatteryFull], [_kWifi],
@@ -353,69 +353,50 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // SIN header externo (el swipe iOS vuelve atrás). Layout scroll ESTÁNDAR y
-    // simple: la carcasa alineada arriba, ancho máx 480, scrolleable cuando el
-    // historial es largo. (Patrón básico y confiable; el FittedBox y el
-    // minHeight+Center vertical de versiones previas dejaban el render vacío.)
+    // PANEL PLANO full-screen (espejo del lock-sidebar del dashboard a ancho de
+    // celular): fondo neoBase de borde a borde, SIN tarjeta flotante. Cada
+    // bloque (estado/métricas/historial) hace su propio relieve sobre el panel.
+    // SIN header externo (el swipe iOS vuelve atrás). Scroll estándar y simple,
+    // alineado ARRIBA, para historial largo (patrón confiable: nada de
+    // FittedBox/minHeight que dejaban el render vacío en versiones previas).
     return Scaffold(
-      backgroundColor: CceColors.bg,
+      backgroundColor: CceColors.neoBase,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-          child: _buildCarcasa(),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          child: _buildPanel(),
         ),
       ),
     );
   }
 
-  // ── CARCASA ─────────────────────────────────────────────────────────────────
-  /// El cuerpo del control: radius 40, neoBase plano, padding 22, gap 22, con la
-  /// sombra externa EXAGERADA del manual (10/10/28 negra abajo-der + -6/-6/20
-  /// luz arriba-izq) para flotar sobre el fondo del drawer.
-  Widget _buildCarcasa() {
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(40),
-        boxShadow: const [
-          // 10px 10px 28px rgba(0,0,0,0.45) — caída abajo-derecha.
-          BoxShadow(
-            color: Color(0x73000000),
-            blurRadius: 28,
-            offset: Offset(10, 10),
-          ),
-          // -6px -6px 20px rgba(42,45,55,0.25) — luz arriba-izquierda.
-          BoxShadow(
-            color: Color(0x402A2D37),
-            blurRadius: 20,
-            offset: Offset(-6, -6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // ── Estado grande Trabada / Destrabada (PLATO cóncavo) ──────────
-          _buildState(),
-          const SizedBox(height: 22),
+  // ── PANEL ─────────────────────────────────────────────────────────────────
+  /// El cuerpo del control, ahora un PANEL PLANO (sin tarjeta flotante): los
+  /// bloques (estado · métricas · historial) se apilan directo sobre el fondo
+  /// neoBase del Scaffold, cada uno con su propio relieve neumórfico.
+  Widget _buildPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // ── Estado grande Trabada / Destrabada (PLATO cóncavo) ──────────
+        _buildState(),
+        const SizedBox(height: 22),
 
-          // ── Métricas: batería · conexión · último evento (huecos inset) ─
-          _buildMetrics(),
-          const SizedBox(height: 22),
+        // ── Métricas: batería · conexión · último evento (huecos inset) ─
+        _buildMetrics(),
+        const SizedBox(height: 22),
 
-          // (Sin botón de apertura: el usuario no abre la casa desde el celular
-          // manteniendo presionado; esta pantalla es para VER estado + historial.
-          // Eso además elimina el preview de drag de iOS que aparecía al mantener.)
+        // (Sin botón de apertura: el usuario no abre la casa desde el celular
+        // manteniendo presionado; esta pantalla es para VER estado + historial.
+        // Eso además elimina el preview de drag de iOS que aparecía al mantener.)
 
-          // ── Historial ───────────────────────────────────────────────────
-          _buildEventsSection(),
-          const SizedBox(height: 18),
-          // Wordmark al pie (estilo termostato).
-          const _Wordmark('CCE SMARTLOCK'),
-        ],
-      ),
+        // ── Historial ───────────────────────────────────────────────────
+        _buildEventsSection(),
+        const SizedBox(height: 18),
+        // Wordmark al pie (estilo termostato).
+        const _Wordmark('CCE SMARTLOCK'),
+      ],
     );
   }
 
@@ -707,11 +688,12 @@ class _LockScreenState extends State<LockScreen> {
             ),
           )
         else
-          // Lista en un well HUNDIDO (neoSunken + inset) para separarla.
+          // Lista en un well HUNDIDO (neoBase + inset) para separarla (espejo
+          // del dashboard, que usa --neo-base en .events-list).
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: CceColors.neoSunken,
+              color: CceColors.neoBase,
               borderRadius: BorderRadius.circular(18),
               boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
             ),
@@ -729,25 +711,40 @@ class _LockScreenState extends State<LockScreen> {
 
   Widget _buildEventRow(EzvizLockEvent ev, {required bool last}) {
     final color = _eventColor(ev.kind);
+    // Glow solo en los tipos tintados; el 'otro'/default queda neutro (en el
+    // dashboard sólo las clases ev-* llevan drop-shadow).
+    final glow = color != CceColors.textTertiary;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
         border: last
             ? null
             : Border(
-                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+                // hairline oscuro (espejo de rgba(12,13,17,0.55) del dashboard).
+                bottom: BorderSide(
+                    color: CceColors.neoDark.withValues(alpha: 0.55)),
               ),
       ),
       child: Row(
         children: [
-          // Chip redondo tintado según tipo (círculo simple, sin gradiente).
+          // Chip redondo CONVEXO tintado + glow según tipo (espejo .event-icon
+          // del dashboard: gradiente convexo + par de sombras neo + aura del
+          // color, SOLO vía BoxShadow — nunca filtros de imagen, por Impeller).
           Container(
-            width: 34,
-            height: 34,
+            width: 38,
+            height: 38,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: color.withValues(alpha: 0.15),
+              gradient: CceGradients.convex(CceColors.neoBase),
+              boxShadow: [
+                ...CceShadows.neo(blur: 8, offset: 3),
+                if (glow)
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.40),
+                    blurRadius: 8,
+                  ),
+              ],
             ),
             child: SizedBox.square(
               dimension: 16,
