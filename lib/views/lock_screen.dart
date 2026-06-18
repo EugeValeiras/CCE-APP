@@ -423,6 +423,19 @@ class _LockScreenState extends State<LockScreen> {
 
           // ── Historial ───────────────────────────────────────────────────
           _buildEventsSection(),
+          const SizedBox(height: 18),
+          // Sello de versión (temporal): confirma en el dispositivo qué build
+          // corre, para destrabar el debug del "candado gigante".
+          const Center(
+            child: Text(
+              'v1.54.5+155',
+              style: TextStyle(
+                fontSize: 11,
+                color: CceColors.textTertiary,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -974,26 +987,13 @@ class _GlowGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // iOS-SAFE: SIN ImageFiltered. En Impeller (iOS) el blur de ImageFiltered se
-    // renderiza a PANTALLA COMPLETA — ESA era la causa del "candado gigante": los
-    // halos de los íconos de EVENTO (candado ámbar = destrabada, verde = trabada,
-    // azul = timbre) explotaban a tamaño pantalla encima del control. El glow
-    // ahora es un BoxShadow circular detrás del glyph nítido: mismo "drop-shadow"
-    // neón pero confiable en iOS y SIEMPRE acotado (blur finito, no full-screen).
-    return Center(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.55),
-              blurRadius: size * 0.45,
-              spreadRadius: size * 0.02,
-            ),
-          ],
-        ),
-        child: CceIcon(svg, size: size, color: color, emboss: false),
-      ),
+    // MÁXIMA SEGURIDAD: glifo PLANO, acotado por el SizedBox.square interno de
+    // CceIcon. Sin ImageFiltered (en Impeller pintaba a pantalla completa) y sin
+    // BoxShadow: imposible que el candado/ícono escale a tamaño pantalla. El
+    // SizedBox.square externo fija además el layout a size×size.
+    return SizedBox.square(
+      dimension: size,
+      child: CceIcon(svg, size: size, color: color, emboss: false),
     );
   }
 }
