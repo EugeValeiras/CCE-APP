@@ -353,35 +353,31 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // SIN header externo (el swipe iOS vuelve atrás): el control llena la
-    // pantalla como el termostato. La carcasa neumórfica flota sobre el fondo.
-    // El historial puede ser largo → SingleChildScrollView dentro del SizedBox
-    // de alto fijo para scrollear sin desbordar.
+    // SIN header externo (el swipe iOS vuelve atrás). Layout scroll-centrado:
+    // la carcasa se CENTRA verticalmente cuando el contenido es corto, y
+    // scrollea cuando el historial es largo. (NO se usa FittedBox: escalar una
+    // región scrolleable descolocaba el botón/refresh arriba y dejaba el vacío
+    // abajo. El termostato sí usa FittedBox porque su contenido es de alto fijo;
+    // el lock tiene historial variable.)
     return Scaffold(
       backgroundColor: CceColors.bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
-          child: LayoutBuilder(
-            builder: (ctx, c) {
-              const double w = 360, minH = 600, maxH = 780;
-              final double target = c.maxHeight.clamp(minH, maxH).toDouble();
-              return Center(
-                child: FittedBox(
-                  fit: BoxFit.contain,
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: w,
-                    height: target,
-                    child: SingleChildScrollView(
-                      physics: const ClampingScrollPhysics(),
-                      child: _buildCarcasa(),
-                    ),
+        child: LayoutBuilder(
+          builder: (ctx, c) {
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: c.maxHeight - 28),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: _buildCarcasa(),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
