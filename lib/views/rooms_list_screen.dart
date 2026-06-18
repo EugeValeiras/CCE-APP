@@ -12,6 +12,7 @@ import '../theme/components/room_card.dart';
 import '../utils/room_icon.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
+import '../widgets/thermostat_home_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
 import 'splash_view.dart';
@@ -110,6 +111,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         // build): estable porque _savedOrder lo es; no hay carrera de
         // identidades aunque service.rooms regenere RoomRef en cada notify.
         final ordered = _applyOrder(service.rooms, _savedOrder);
+        // Termostato destacado: a diferencia del TV/JBL (services dedicados) vive
+        // DENTRO de DevicesService. Tomamos el primero si existe; la card escucha
+        // al service y reresuelve por id.
+        final thermostat =
+            service.thermostats.isNotEmpty ? service.thermostats.first : null;
         return Scaffold(
           // Fondo de la app (matte oscuro, #101014): MÁS oscuro que las cards
           // (neoBase) para que el relieve se vea y las cards "floten". Antes el
@@ -190,7 +196,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                         ),
                         // Grupo "destacados" (dispositivos dedicados): solo se
                         // muestra el encabezado si hay al menos un dispositivo.
-                        if (widget.tv != null || widget.jbl != null) ...[
+                        // Orden: TV → JBL → Termostato (gap 12 entre cada uno).
+                        if (widget.tv != null ||
+                            widget.jbl != null ||
+                            thermostat != null) ...[
                           const SizedBox(height: 20),
                           _sectionLabel('Destacados'),
                           const SizedBox(height: 10),
@@ -205,6 +214,17 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                             RepaintBoundary(
                               child: SoundbarHomeCard(
                                   service: widget.jbl!, neo: true),
+                            ),
+                          if ((widget.tv != null || widget.jbl != null) &&
+                              thermostat != null)
+                            const SizedBox(height: 12),
+                          if (thermostat != null)
+                            RepaintBoundary(
+                              child: ThermostatHomeCard(
+                                service: service,
+                                device: thermostat,
+                                neo: true,
+                              ),
                             ),
                         ],
                         // Grupo "habitaciones": encabezado de la grilla

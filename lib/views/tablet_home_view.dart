@@ -14,6 +14,7 @@ import '../theme/components/section_header.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_tile.dart';
+import '../widgets/thermostat_home_card.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
@@ -294,6 +295,12 @@ class _CasaSplitState extends State<_CasaSplit> {
           _selectedRoomId = null;
         }
 
+        // Termostato destacado en la sidebar (3er dispositivo dedicado, junto a
+        // TV/JBL). Vive dentro de DevicesService; tomamos el primero si existe.
+        final thermostat = widget.devices.thermostats.isNotEmpty
+            ? widget.devices.thermostats.first
+            : null;
+
         // Panel derecho: si hay un device dedicado seleccionado, su control
         // INLINE; si no, la sala (RoomPanel) o "Toda la casa".
         Widget panel;
@@ -362,6 +369,14 @@ class _CasaSplitState extends State<_CasaSplit> {
                     neo: true,
                     onOpen: () => setState(() => _selectedDevice = 'jbl'),
                   ),
+                  if (thermostat != null)
+                    ThermostatHomeCard(
+                      service: widget.devices,
+                      device: thermostat,
+                      neo: true,
+                      onOpen: () => setState(() =>
+                          _selectedDevice = 'thermostat:${thermostat.id}'),
+                    ),
                 ],
               ),
             ),
