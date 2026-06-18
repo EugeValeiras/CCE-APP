@@ -976,16 +976,25 @@ class _GlowGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final glow = color.withValues(alpha: 0.65);
-    return Stack(
-      alignment: Alignment.center,
-      clipBehavior: Clip.none,
-      children: [
-        // Halo: copia desenfocada del glyph teñida con el color (el "drop-shadow"
-        // neón). blur escala con el tamaño del glyph.
-        ImageFilteredGlyph(svg: svg, size: size, color: glow, blur: size * 0.16),
-        // Glyph nítido al frente.
-        CceIcon(svg, size: size, color: color, emboss: false),
-      ],
+    // BLINDAJE: el Stack va envuelto en SizedBox.square(size) para fijar su
+    // tamano de LAYOUT a size x size. Asi el glyph NUNCA puede expandirse a
+    // tamano pantalla, aun bajo constraints infinitas. Se conserva
+    // clipBehavior: Clip.none para que el halo (blur = size * 0.16) siga
+    // pintandose fuera del cuadrado sin afectar el tamano de layout.
+    return SizedBox.square(
+      dimension: size,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // Halo: copia desenfocada del glyph teñida con el color (el
+          // "drop-shadow" neón). blur escala con el tamaño del glyph.
+          ImageFilteredGlyph(
+              svg: svg, size: size, color: glow, blur: size * 0.16),
+          // Glyph nítido al frente.
+          CceIcon(svg, size: size, color: color, emboss: false),
+        ],
+      ),
     );
   }
 }

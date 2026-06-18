@@ -388,13 +388,24 @@ class CceIcon extends StatelessWidget {
   final bool emboss;
 
   /// El SVG tintado con [tint] (o el color ambiente si [tint] es null).
+  ///
+  /// BLINDAJE: el SVG va SIEMPRE envuelto en un `SizedBox.square(size)` ademas
+  /// de pasarle width/height a SvgPicture. Asi el glyph queda acotado a
+  /// `size x size` de LAYOUT aunque el padre pase constraints sueltas/infinitas
+  /// (Stack sin Positioned, Row/Column sin tamano, FittedBox) o aunque una
+  /// version futura de flutter_svg cambie su auto-bounding: es imposible que el
+  /// candado se expanda a tamano pantalla.
   Widget _raw(Color? tint) {
-    return SvgPicture.string(
-      svg,
-      width: size,
-      height: size,
-      colorFilter:
-          tint != null ? ColorFilter.mode(tint, BlendMode.srcIn) : null,
+    return SizedBox.square(
+      dimension: size,
+      child: SvgPicture.string(
+        svg,
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        colorFilter:
+            tint != null ? ColorFilter.mode(tint, BlendMode.srcIn) : null,
+      ),
     );
   }
 
