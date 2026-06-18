@@ -142,11 +142,9 @@ class _RoomCardState extends State<RoomCard> {
         : [widget.tint ?? CceColors.warm];
 
     // Acento de la card encendida = color real de las luces NORMALIZADO (clamp
-    // de sat/luz en HSL, conservando hue). Es la chispa permitida: tiñe glow,
-    // anillo, ícono y dot — nunca la superficie ni la tipografía. El glow usa el
-    // mismo `mid` desaturado para que el halo no grite.
+    // de sat/luz en HSL, conservando hue). Es la chispa permitida: tiñe el ícono
+    // y el switch que prende — nunca la superficie ni la tipografía.
     final Color accent = CceTint.normalize(_avgColor(colors));
-    final Color mid = CceTint.pastel(_avgColor(colors));
 
     // ÍCONO GRANDE EXTRUIDO (sin círculo): SIEMPRE sobre la goma oscura neoBase,
     // así que usa el par FIJO de CceEmboss (calibrado para oscuro, misma fuente
@@ -257,6 +255,7 @@ class _RoomCardState extends State<RoomCard> {
         // El título Expanded cede ancho; entra al final del Row sin desbordar.
         CceSwitch(
           value: widget.anyOn,
+          accent: accent,
           onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
               ? null
               : widget.onToggle,
@@ -311,31 +310,10 @@ class _RoomCardState extends State<RoomCard> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Glow al encender / fade al apagar (300 ms easeOutCubic).
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(CceRadii.hueCard),
-              // La flotación (cardFloat) + gradiente almohada + bevel los aporta
-              // CceCard via raisedDecoration (DecoratedBox externo); aquí NO se
-              // duplica. ON suma el GLOW de acento como SEÑAL PRIMARIA de
-              // "encendido" (ahora que no hay fill): se filtra bajo la almohada.
-              // Más peso que el glowOn por defecto (alpha 0.45 / spread -2) con
-              // el `mid` desaturado para que el halo no grite.
-              boxShadow: widget.anyOn
-                  ? [
-                      BoxShadow(
-                        color: mid.withValues(alpha: 0.45),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                        spreadRadius: -2,
-                      ),
-                    ]
-                  : const [],
-            ),
-            child: card,
-          ),
+          // SIN glow de acento: el relieve lo da CceCard (raisedDecoration) y
+          // el estado ON lo marca el SWITCH (que prende del color del ícono) +
+          // el ícono tinteado. No se derrama luz fuera de la card.
+          card,
           // Borde superpuesto. PRIORIDAD:
           //  1) selección (tablet) → hairline blanco 0.80, width 1.4 (gana).
           //  2) encendido sin selección → ANILLO de acento sutil 0.22, width 1.2:
