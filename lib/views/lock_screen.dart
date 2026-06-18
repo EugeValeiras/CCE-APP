@@ -358,80 +358,27 @@ class _LockScreenState extends State<LockScreen> {
       // Fondo de la app (#101014), MÁS oscuro que la carcasa (neoBase) para que
       // el control FLOTE con claridad (igual que la home).
       backgroundColor: CceColors.bg,
+      // SIN header externo (se vuelve con el swipe iOS): consistente con el
+      // termostato/Samsung. La carcasa se CENTRA verticalmente (sin el vacío de
+      // abajo que se veía "roto") y, si el historial es largo, todo scrollea.
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(18, 8, 18, 28),
-          children: [
-            // ── HEADER (FUERA del control, a nivel del drawer) ─────────────
-            _buildHeader(),
-            const SizedBox(height: 16),
-
-            // ── CARCASA: el cuerpo del control que flota sobre el fondo ─────
-            _buildCarcasa(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── HEADER ────────────────────────────────────────────────────────────────
-  /// [badge redondo convexo (info) · título + dot de estado · cerrar redondo].
-  Widget _buildHeader() {
-    return Row(
-      children: [
-        // Badge redondo convexo, glyph candado en acento info.
-        _RoundKey(
-          svg: _isLocked ? CceIcons.lockLocked : CceIcons.lockUnlocked,
-          accent: CceColors.info,
-          semantic: 'Cerradura',
-          size: 48,
-          dimWhenDisabled: false, // badge decorativo a opacidad plena.
-          onTap: null, // visual (en el dashboard abre el icon picker; acá no).
-        ),
-        const SizedBox(width: 14),
-        // Título + estado en línea (dot + texto).
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.service.displayName(widget.device),
-                style: CceText.title.copyWith(fontSize: 20),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  _StatusDot(online: _online),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      _online ? 'En línea' : 'Sin conexión',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.caption.copyWith(fontSize: 12.5),
-                    ),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            return SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: c.maxHeight - 28),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: _buildCarcasa(),
                   ),
-                ],
+                ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        // Cerrar = botón redondo neumórfico (plano).
-        _RoundKey(
-          icon: Icons.close_rounded,
-          semantic: 'Cerrar',
-          size: 44,
-          flat: true,
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).pop();
+            );
           },
         ),
-      ],
+      ),
     );
   }
 
@@ -833,33 +780,6 @@ class _LockScreenState extends State<LockScreen> {
 // ════════════════════════════════════════════════════════════════════════════
 //  SUBWIDGETS NEUMÓRFICOS
 // ════════════════════════════════════════════════════════════════════════════
-
-/// Dot de estado: gris apagado / verde "ok" con glow (igual al `.status-dot`).
-class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.online});
-
-  final bool online;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: online ? _LockScreenState._locked : const Color(0xFF8E8E93),
-        boxShadow: online
-            ? [
-                BoxShadow(
-                  color: _LockScreenState._locked.withValues(alpha: 0.8),
-                  blurRadius: 6,
-                ),
-              ]
-            : null,
-      ),
-    );
-  }
-}
 
 /// Botón circular neumórfico genérico (badge / cerrar / refrescar). Convexo por
 /// defecto (gradiente + sombra externa estándar); `flat:true` lo deja plano
