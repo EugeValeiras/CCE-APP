@@ -11,6 +11,7 @@ import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_neo_button.dart';
 import '../../theme/components/cce_segmented.dart';
 import '../../theme/components/section_header.dart';
+import '../../utils/room_icon.dart';
 import '../../widgets/light_tile.dart';
 import '../../widgets/lock_tile.dart';
 import '../../widgets/scenes_section.dart';
@@ -105,6 +106,16 @@ class RoomPanel extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
               child: Row(
                 children: [
+                  // Icono de la habitación (mismo que el sidebar y el dashboard).
+                  SizedBox(
+                    width: 34,
+                    height: 34,
+                    child: Center(
+                      child: roomGlyphBuilder(room, service, size: 30)(
+                          CceColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Text(
                       room.name,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
@@ -10,7 +9,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
-import '../utils/icon_resolver.dart';
+import '../utils/room_icon.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
 import 'room_detail_screen.dart';
@@ -93,20 +92,6 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       return 0; // dos nuevos → mantienen orden de service.rooms.
     });
     return out;
-  }
-
-  /// Ícono de la habitación: el configurado (iconName) resuelto vía
-  /// IconResolver con un device representativo, o el genérico de sala.
-  Widget _roomIcon(RoomRef room) {
-    final rep =
-        room.deviceIds.map(widget.service.byId).whereType<Device>().firstOrNull;
-    if (room.iconName != null && room.iconName!.isNotEmpty && rep != null) {
-      return Icon(
-        IconResolver.resolve(rep,
-            configuredIcon: room.iconName, displayName: room.name),
-      );
-    }
-    return const CceIcon(CceIcons.room);
   }
 
   @override
@@ -313,7 +298,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       borderRadius: CceRadii.card,
       child: RoomCard(
         title: room.name,
-        icon: _roomIcon(room),
+        iconBuilder: roomGlyphBuilder(room, service),
         lightsOn: stats.lightsOn,
         lightsTotal: stats.lightsTotal,
         anyOn: stats.anyOn,

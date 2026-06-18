@@ -9,6 +9,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_neo_button.dart';
 import '../theme/components/cce_switch.dart';
 import '../theme/components/section_header.dart';
+import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
 import '../widgets/scenes_section.dart';
@@ -526,7 +527,27 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             // Sin flecha de atrás: se vuelve con el swipe nativo de iOS.
             automaticallyImplyLeading: false,
             titleSpacing: 16,
-            title: Text(widget.title),
+            // Icono de la habitación junto al nombre (mismo que la card y el
+            // dashboard). Solo en rooms reales (no en pantallas sin RoomRef).
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (widget.room != null) ...[
+                  SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: Center(
+                      child: roomGlyphBuilder(widget.room!, service, size: 24)(
+                          CceColors.textPrimary),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Flexible(
+                  child: Text(widget.title, overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ),
             actions: [
               // Menú "..." (incluye Reordenar secciones).
               Padding(

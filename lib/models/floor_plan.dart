@@ -6,7 +6,16 @@ class FloorPlan {
   /// Room Hue linkeado al plano (para la sección de escenas); opcional.
   final String? hueRoomId;
 
-  FloorPlan({required this.id, required this.name, required this.svg, this.hueRoomId});
+  /// Ícono de la room (emoji, `icons0:<prefix>:<name>` o nombre MDI); opcional.
+  /// Lo asigna el dashboard sobre el plano y lo muestran todas las plataformas.
+  final String? icon;
+
+  FloorPlan(
+      {required this.id,
+      required this.name,
+      required this.svg,
+      this.hueRoomId,
+      this.icon});
 
   factory FloorPlan.fromJson(Map<String, dynamic> json) {
     return FloorPlan(
@@ -14,6 +23,7 @@ class FloorPlan {
       name: (json['name'] ?? '').toString(),
       svg: (json['svg'] ?? '').toString(),
       hueRoomId: json['hueRoomId'] as String?,
+      icon: json['icon'] as String?,
     );
   }
 }

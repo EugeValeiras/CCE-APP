@@ -1,14 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import '../../models/device.dart';
 import '../../models/room_ref.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_logo.dart';
 import '../../theme/components/room_card.dart';
-import '../../utils/icon_resolver.dart';
+import '../../utils/room_icon.dart';
 import '../../widgets/pulse_on_update.dart';
 
 /// Sidebar de habitaciones estilo Hue (tablet): entrada fija "Toda la casa"
@@ -49,17 +48,6 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
   void dispose() {
     _allHouseTimer?.cancel();
     super.dispose();
-  }
-
-  Widget _roomIcon(RoomRef room) {
-    final device =
-        room.deviceIds.map(widget.service.byId).whereType<Device>().firstOrNull;
-    if (device == null) return const CceIcon(CceIcons.room);
-    return Icon(IconResolver.resolve(
-      device,
-      configuredIcon: room.iconName ?? widget.service.iconFor(device.id),
-      displayName: widget.service.displayName(device),
-    ));
   }
 
   void _showRetrySnack(String message, VoidCallback retry) {
@@ -127,7 +115,7 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
       borderRadius: CceRadii.card,
       child: RoomCard(
         title: room.name,
-        icon: _roomIcon(room),
+        iconBuilder: roomGlyphBuilder(room, service),
         lightsOn: stats.lightsOn,
         lightsTotal: stats.lightsTotal,
         anyOn: stats.anyOn,

@@ -25,7 +25,8 @@ class RoomCard extends StatefulWidget {
   const RoomCard({
     super.key,
     required this.title,
-    required this.icon,
+    this.icon,
+    this.iconBuilder,
     required this.lightsOn,
     required this.lightsTotal,
     required this.anyOn,
@@ -42,10 +43,19 @@ class RoomCard extends StatefulWidget {
     required this.onToggle,
     this.onBrightnessCommitted,
     this.neo = false,
-  });
+  }) : assert(icon != null || iconBuilder != null,
+            'RoomCard necesita icon o iconBuilder');
 
   final String title;
-  final Widget icon; // Icon(MdiIcons...) o CceIcon
+
+  /// Glyph fijo (Icon(MdiIcons...) o CceIcon). EmbossedGlyph lo recolorea vía
+  /// IconTheme — sirve para Material/CceIcon, NO para un SvgPicture de icons0.
+  final Widget? icon;
+
+  /// Glyph dependiente del color de estado: recibe el `glyphColor` calculado en
+  /// build y lo hornea (necesario para SVG icons0, que ignora IconTheme). Si se
+  /// pasa, tiene prioridad sobre [icon]. Mismo patrón que las light tiles.
+  final Widget Function(Color glyphColor)? iconBuilder;
   final int lightsOn;
   final int lightsTotal;
   final bool anyOn;
@@ -180,7 +190,7 @@ class _RoomCardState extends State<RoomCard> {
               color: glyphColor,
               highlight: embHi,
               shadow: embSh,
-              child: widget.icon,
+              child: widget.iconBuilder?.call(glyphColor) ?? widget.icon!,
             ),
           ),
         ),

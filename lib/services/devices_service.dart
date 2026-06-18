@@ -366,6 +366,9 @@ class DevicesService extends ChangeNotifier {
           deviceIds: ids,
           planId: plan.id,
           hueRoomId: plan.hueRoomId,
+          // Ícono PROPIO de la room (plano), asignado desde el dashboard. Las
+          // rooms son los planos, no los grupos: el ícono sale de plan.icon.
+          iconName: plan.icon,
         ));
       }
     }
