@@ -165,7 +165,11 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
               ),
               const SizedBox(width: 8),
               if (online)
-                CceSwitch(value: on, onChanged: (_) => jbl.togglePower())
+                CceSwitch(
+                  value: on,
+                  accent: CceColors.jblOrange,
+                  onChanged: (_) => jbl.togglePower(),
+                )
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
             ],

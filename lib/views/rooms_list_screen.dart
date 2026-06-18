@@ -8,6 +8,7 @@ import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/brightness_slider.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
 import '../utils/icon_resolver.dart';
@@ -311,33 +312,89 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       triggerAt: stats.latestEventAt,
       color: stats.anyOn && stats.tint != null ? stats.tint! : CceColors.info,
       borderRadius: CceRadii.card,
-      child: RoomCard(
-        title: room.name,
-        icon: _roomIcon(room),
-        lightsOn: stats.lightsOn,
-        lightsTotal: stats.lightsTotal,
-        anyOn: stats.anyOn,
-        tint: stats.tint,
-        tintColors: stats.tintColors,
-        // compact nunca muestra slider; el brillo por sala vive en el detalle.
-        brightness: null,
-        compact: true,
-        motion: stats.anyMotion,
-        contactOpen: stats.anyContactOpen,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (_) => RoomDetailScreen(
-              title: room.name,
-              deviceIds: room.deviceIds,
-              service: service,
-              room: room,
-            ),
-          ));
-        },
-        onToggle: (v) => service.setRoomOn(room, v),
-        neo: true,
+      // Long-press = ajustar el BRILLO de toda la sala (si hay luces encendidas)
+      // con una hoja neomórdica; el tap sigue abriendo el detalle.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: stats.anyOn
+            ? () => _showRoomBrightnessSheet(context, room)
+            : null,
+        child: RoomCard(
+          title: room.name,
+          icon: _roomIcon(room),
+          lightsOn: stats.lightsOn,
+          lightsTotal: stats.lightsTotal,
+          anyOn: stats.anyOn,
+          tint: stats.tint,
+          tintColors: stats.tintColors,
+          // compact nunca muestra slider; el brillo por sala va por long-press.
+          brightness: null,
+          compact: true,
+          motion: stats.anyMotion,
+          contactOpen: stats.anyContactOpen,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => RoomDetailScreen(
+                title: room.name,
+                deviceIds: room.deviceIds,
+                service: service,
+                room: room,
+              ),
+            ));
+          },
+          onToggle: (v) => service.setRoomOn(room, v),
+          neo: true,
+        ),
       ),
+    );
+  }
+
+  /// Hoja neomórdica para ajustar el brillo de toda la sala (aplica a las luces
+  /// encendidas vía DevicesService.setRoomBrightness). Reusa CceBrightnessSlider.
+  void _showRoomBrightnessSheet(BuildContext context, RoomRef room) {
+    final service = widget.service;
+    final stats = service.statsFor(room);
+    if (stats.lightsTotal == 0) return;
+    HapticFeedback.selectionClick();
+    final Color accent = stats.tint ?? CceColors.warm;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        double v = (stats.avgBrightness ?? 0.5).clamp(0.0, 1.0);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+              decoration: BoxDecoration(
+                color: CceColors.neoBase,
+                borderRadius: BorderRadius.circular(CceRadii.card),
+                boxShadow: CceShadows.neo(blur: 16, offset: 6),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Brillo · ${room.name}', style: CceText.title),
+                  const SizedBox(height: 16),
+                  StatefulBuilder(
+                    builder: (ctx, setSheet) => CceBrightnessSlider(
+                      value: v,
+                      activeColor: accent,
+                      onChanged: (nv) {
+                        setSheet(() => v = nv);
+                        service.setRoomBrightness(room, nv);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
