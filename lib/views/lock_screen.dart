@@ -353,29 +353,124 @@ class _LockScreenState extends State<LockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // VERSIÓN DIAGNÓSTICA MINIMAL: SOLO TEXTO, sin NINGÚN ícono/SVG/glifo de
+    // candado, para descartar de raíz el "candado gigante". Si aun así aparece un
+    // candado gigante sobre esta pantalla, NO sale del lock screen (es externo).
+    // Banner de versión bien visible arriba para confirmar el build instalado.
+    const amber = Color(0xFFFF9F0A);
     return Scaffold(
-      // Fondo de la app (#101014), MÁS oscuro que la carcasa (neoBase) para que
-      // el control FLOTE con claridad (igual que la home).
       backgroundColor: CceColors.bg,
-      // SIN header externo (se vuelve con el swipe iOS): consistente con el
-      // termostato/Samsung. La carcasa se CENTRA verticalmente (sin el vacío de
-      // abajo que se veía "roto") y, si el historial es largo, todo scrollea.
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, c) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: c.maxHeight - 28),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: _buildCarcasa(),
-                  ),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: CceColors.info,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'BUILD v1.54.6+156',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.5,
                 ),
               ),
-            );
-          },
+            ),
+            const SizedBox(height: 24),
+            Text(
+              widget.service.displayName(widget.device),
+              style: const TextStyle(
+                color: CceColors.neoText,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _online ? 'En línea' : 'Sin conexión',
+              style:
+                  const TextStyle(color: CceColors.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 28),
+            Text(
+              _isLocked ? 'TRABADA' : 'DESTRABADA',
+              style: TextStyle(
+                color: _isLocked ? CceColors.ok : amber,
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 28),
+            Text('Batería: $_batteryLabel',
+                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
+            const SizedBox(height: 6),
+            Text('Conexión: ${_online ? 'OK' : '—'}',
+                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
+            const SizedBox(height: 6),
+            Text('Último evento: $_lastEventLabel',
+                style: const TextStyle(color: CceColors.neoText, fontSize: 15)),
+            const SizedBox(height: 28),
+            if (_unlockSupported)
+              Listener(
+                onPointerDown:
+                    (_online && !_unlocking) ? (_) => _startHold() : null,
+                onPointerUp: (_) => _cancelHold(),
+                onPointerCancel: (_) => _cancelHold(),
+                child: Container(
+                  height: 60,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: CceColors.neoBase,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: CceShadows.neo(blur: 8, offset: 3),
+                  ),
+                  child: Text(
+                    _unlocking
+                        ? 'Abriendo…'
+                        : _unlockDone
+                            ? 'Abierta'
+                            : _holding
+                                ? 'Mantené… ${(_holdPct * 100).round()}%'
+                                : 'Mantené para abrir',
+                    style: const TextStyle(
+                      color: amber,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              )
+            else
+              const Text('Apertura no soportada por el modelo',
+                  style: TextStyle(color: CceColors.textTertiary, fontSize: 14)),
+            if (_unlockError != null) ...[
+              const SizedBox(height: 10),
+              Text(_unlockError!,
+                  style: const TextStyle(color: CceColors.danger, fontSize: 13)),
+            ],
+            const SizedBox(height: 28),
+            Text('HISTORIAL', style: CceText.section),
+            const SizedBox(height: 10),
+            if (_events.isEmpty)
+              const Text('Sin eventos',
+                  style: TextStyle(color: CceColors.textTertiary, fontSize: 14))
+            else
+              for (final ev in _events)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '${_fmtDateTime(ev.at)} · ${_eventLabel(ev)}',
+                    style:
+                        const TextStyle(color: CceColors.neoText, fontSize: 13),
+                  ),
+                ),
+          ],
         ),
       ),
     );
