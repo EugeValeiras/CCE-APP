@@ -652,47 +652,71 @@ class _LockScreenState extends State<LockScreen> {
 
   // ── HISTORIAL ───────────────────────────────────────────────────────────────
   Widget _buildEventsSection() {
+    final loading = _eventsLoading;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // Header del historial: título + refrescar (botón redondo).
+        // Header del historial: título + refrescar (simple, sin _RoundKey).
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('HISTORIAL', style: CceText.section),
-            _RoundKey(
-              svg: _kRefreshCw,
-              semantic: 'Actualizar',
-              size: 40,
-              flat: true,
-              spinning: _eventsLoading,
-              onTap: _eventsLoading ? null : _loadEvents,
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: loading ? null : _loadEvents,
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: CceColors.neoBase,
+                  boxShadow: CceShadows.neo(blur: 6, offset: 2),
+                ),
+                child: loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: CceColors.textSecondary,
+                        ),
+                      )
+                    : SizedBox.square(
+                        dimension: 16,
+                        child: CceIcon(_kRefreshCw,
+                            size: 16,
+                            color: CceColors.textSecondary,
+                            emboss: false),
+                      ),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        if (_eventsLoading && _events.isEmpty)
-          const _EventsState(
-            svg: null,
-            text: 'Cargando eventos…',
-            spinner: true,
-          )
-        else if (_events.isEmpty)
-          const _EventsState(
-            svg: CceIcons.calendar,
-            text: 'Sin eventos registrados',
-            spinner: false,
+        if (_events.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Center(
+              child: Text(
+                loading ? 'Cargando eventos…' : 'Sin eventos registrados',
+                style:
+                    const TextStyle(color: CceColors.textTertiary, fontSize: 13),
+              ),
+            ),
           )
         else
-          // La lista vive en un hueco HUNDIDO para separarla de la carcasa.
+          // Lista en un well HUNDIDO (neoSunken + inset) para separarla.
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
             decoration: BoxDecoration(
-              color: CceColors.neoBase,
+              color: CceColors.neoSunken,
               borderRadius: BorderRadius.circular(18),
               boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
             ),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
                 for (var i = 0; i < _events.length; i++)
                   _buildEventRow(_events[i], last: i == _events.length - 1),
@@ -706,38 +730,40 @@ class _LockScreenState extends State<LockScreen> {
   Widget _buildEventRow(EzvizLockEvent ev, {required bool last}) {
     final color = _eventColor(ev.kind);
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: const EdgeInsets.symmetric(vertical: 11),
       decoration: BoxDecoration(
         border: last
             ? null
-            : const Border(bottom: BorderSide(color: Color(0x8C0C0D11))),
+            : Border(
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+              ),
       ),
       child: Row(
         children: [
-          // Chip redondo CONVEXO tintado según tipo (con glow del color).
+          // Chip redondo tintado según tipo (círculo simple, sin gradiente).
           Container(
-            width: 38,
-            height: 38,
+            width: 34,
+            height: 34,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: CceGradients.convex(CceColors.neoBase),
-              boxShadow: CceShadows.neo(blur: 8, offset: 3),
+              color: color.withValues(alpha: 0.15),
             ),
             child: SizedBox.square(
-              dimension: 18,
+              dimension: 16,
               child: CceIcon(_eventIconSvg(ev),
-                  size: 18, color: color, emboss: false),
+                  size: 16, color: color, emboss: false),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   _eventLabel(ev),
-                  style: CceText.body.copyWith(fontSize: 14),
+                  style: CceText.body.copyWith(fontSize: 13.5),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -745,7 +771,7 @@ class _LockScreenState extends State<LockScreen> {
                 Text(
                   _fmtDateTime(ev.at),
                   style: CceText.caption.copyWith(
-                    fontSize: 12,
+                    fontSize: 11.5,
                     color: CceColors.textTertiary,
                   ),
                 ),
