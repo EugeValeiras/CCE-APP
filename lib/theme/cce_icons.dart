@@ -196,13 +196,15 @@ abstract final class CceIcons {
 
   // ── Cerradura (icons0.dev / CoreUI Free) ───────────────────────────────────
 
-  // cil:lock-locked (cerrada)
+  // lucide:lock-keyhole (cerrada) — viewBox 0 0 24 24 (el cil:lock anterior
+  // tenía viewBox 512 con width/height 24: ese mismatch hacía que en iOS/Impeller
+  // SvgPicture lo renderizara GIGANTE a pantalla completa = el "candado gigante").
   static const String lockLocked =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512"><path fill="currentColor" d="M384 200v-56a128 128 0 0 0-256 0v56H88v128c0 92.635 75.364 168 168 168s168-75.365 168-168V200Zm-224-56a96 96 0 0 1 192 0v56H160Zm232 184c0 74.99-61.01 136-136 136s-136-61.01-136-136v-96h272Z"/></svg>';
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="16" r="1"/><rect width="18" height="12" x="3" y="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></g></svg>';
 
-  // cil:lock-unlocked (abierta)
+  // lucide:lock-keyhole-open (abierta) — viewBox 0 0 24 24 (ver nota arriba).
   static const String lockUnlocked =
-      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 512 512"><path fill="currentColor" d="M384 200v-56a128 128 0 0 0-217.582-91.43l22.4 22.855A96 96 0 0 1 352 144v56H88v128c0 92.636 75.364 168 168 168s168-75.364 168-168V200Zm8 128c0 74.99-61.009 136-136 136s-136-61.01-136-136v-96h272Z"/></svg>';
+      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><circle cx="12" cy="16" r="1"/><rect width="18" height="12" x="3" y="10" rx="2"/><path d="M7 10V7a5 5 0 0 1 9.33-2.5"/></g></svg>';
 
   // lucide:battery-warning (badge batería baja en el plano)
   static const String batteryWarning =
