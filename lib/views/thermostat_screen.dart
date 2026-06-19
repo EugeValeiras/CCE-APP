@@ -42,28 +42,6 @@ class ThermostatScreen extends StatelessWidget {
   /// a neoBase en el OLED).
   static const Color _drawerBg = CceColors.bg;
 
-  /// ¿El sistema está calentando? (power + systemMode heat). Réplica de
-  /// `isHeating` del dashboard.
-  bool _isHeating(DeviceState s) {
-    final sm = (s.systemMode ?? '').toLowerCase();
-    return s.on && (sm == 'heat' || sm == 'heating');
-  }
-
-  /// ¿Modo frío? (para elegir glifo copo vs llama).
-  bool _isCooling(DeviceState s) {
-    final sm = (s.systemMode ?? '').toLowerCase();
-    return sm.contains('cool') || sm.contains('frio') || sm.contains('frío');
-  }
-
-  /// Etiqueta del estado del sistema (réplica `systemModeLabel`).
-  String _systemLabel(DeviceState s) {
-    final sm = (s.systemMode ?? '').toLowerCase();
-    if (sm == 'heat' || sm == 'heating') return 'Encendido';
-    if (sm == 'cool' || sm == 'cooling') return 'Enfriando';
-    if (sm == 'off') return 'En reposo';
-    return s.systemMode ?? 'En reposo';
-  }
-
   /// Formatea temperaturas: 0.5 con decimal, enteros sin decimal.
   String _fmt(double n) =>
       n == n.roundToDouble() ? n.toStringAsFixed(0) : n.toStringAsFixed(1);
@@ -140,7 +118,6 @@ class ThermostatScreen extends StatelessWidget {
   Widget _buildControl(BuildContext context, Device d, DeviceState s) {
     final on = s.on;
     final reachable = s.reachable;
-    final heating = _isHeating(s);
     final target = s.targetTemp;
     final current = s.currentTemp;
     final minT = s.minTemp ?? 5;
@@ -220,16 +197,6 @@ class ThermostatScreen extends StatelessWidget {
             ),
           ),
         ),
-
-        // Estado del sistema (heat / idle): chip hundido; "Encendido" con glow.
-        if (s.systemMode != null) ...[
-          const SizedBox(height: 18),
-          _SystemStatus(
-            label: _systemLabel(s),
-            heating: heating,
-            icon: _isCooling(s) ? CceIcons.snowflake : CceIcons.flame,
-          ),
-        ],
 
         // Modo (Manual / Program) = chips convexos sin borde.
         if (s.tempMode != null) ...[
@@ -662,66 +629,6 @@ class _Readout extends StatelessWidget {
 }
 
 // ── Estado del sistema (heat / idle) ────────────────────────────────────────
-
-/// Chip hundido del estado del sistema. Calentando = ícono + label danger con
-/// glow. Réplica del `.th-system` del dashboard.
-class _SystemStatus extends StatelessWidget {
-  const _SystemStatus({
-    required this.label,
-    required this.heating,
-    required this.icon,
-  });
-
-  final String label;
-  final bool heating;
-  final String icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = heating ? CceColors.danger : CceColors.neoTextSub;
-    final glyph = CceIcon(icon, size: 18, emboss: false, color: color);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: _convexInset(),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          heating
-              ? DecoratedBox(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.55),
-                        blurRadius: 12,
-                        spreadRadius: -2,
-                      ),
-                    ],
-                  ),
-                  child: glyph,
-                )
-              : glyph,
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: color,
-              shadows: heating ? _glowTextShadows(CceColors.danger) : null,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ── Modo (Manual / Program) = chips convexos ────────────────────────────────
 
