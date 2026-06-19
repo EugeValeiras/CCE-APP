@@ -236,13 +236,14 @@ class InputBarState extends State<InputBar> {
     // suelto (teléfono).
     final Widget fieldArea = widget.embedded
         ? Container(
-            // Card neumórfica ELEVADA: relieve hacia afuera (CceShadows.neo),
-            // fill opaco neoBase. Adjuntar + texto + mic + enviar viven adentro
-            // → un único objeto táctil, como el composer del dashboard.
+            // FLUSH: mismo fondo que la página (transparente) + solo un hairline
+            // de contorno. El input no contrasta como loza elevada; adjuntar +
+            // texto + mic + enviar flotan directo sobre la superficie, integrando
+            // con el resto de la UI en vez de romperla.
             decoration: BoxDecoration(
-              color: CceColors.neoBase,
+              color: Colors.transparent,
               borderRadius: BorderRadius.circular(26),
-              boxShadow: CceShadows.neo(blur: 12, offset: 4),
+              border: Border.all(color: CceColors.stroke),
             ),
             padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
             child: Row(
