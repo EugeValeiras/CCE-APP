@@ -1,7 +1,7 @@
 name: cce_app
 description: "CCE Home - Alarm Control"
 publish_to: 'none'
-version: 1.55.1+168
+version: 1.55.2+169
 
 environment:
   sdk: ^3.11.4

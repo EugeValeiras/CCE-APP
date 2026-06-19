@@ -1084,72 +1084,67 @@ class _DeviceMarker extends StatelessWidget {
       builder: (context, _) {
         final online = isOnline();
         final active = online && isOn();
-        final accent = active ? onColor : _offColor;
+        // Espeja el marker del dashboard (floor-plan.component): panel vertical
+        // TRANSLÚCIDO con BORDE del color de marca + wordmark de marca girado
+        // 90° (color de marca encendido, gris apagado) y dot de estado. SIN
+        // relleno sólido ni "pantalla" triangular (eso no existe en la web).
 
-        // Proporción ~18×100 de la web, escalada al dotSize del plano sin
-        // pisar dots vecinos.
+        // Proporción ~18×100 de la web, escalada al dotSize del plano.
         final pillW = size * 0.34;
         final pillH = size * 1.40;
         final isTv = shape == _MarkerShape.tv;
+        final double border = (size * 0.05).clamp(1.4, 2.6).toDouble();
+
+        // Wordmark de marca girado 90° para correr a lo largo de la píldora
+        // vertical (igual que la web). Tamaño por forma: el JBL es ~cuadrado y
+        // llena el ancho; el Samsung es un wordmark ancho que corre a lo largo.
+        // OverflowBox: el glifo puede exceder el ancho de la píldora sin que las
+        // constraints lo achiquen (la tinta visible igual entra en el ancho).
+        final double glyphSize = isTv ? pillH * 0.58 : pillW * 1.12;
+        final Widget logo = OverflowBox(
+          minWidth: 0,
+          maxWidth: double.infinity,
+          minHeight: 0,
+          maxHeight: double.infinity,
+          child: RotatedBox(
+            quarterTurns: 1,
+            child: CceIcon(
+              isTv ? CceIcons.samsung : CceIcons.jbl,
+              size: glyphSize,
+              color: active ? onColor : _offColor,
+              emboss: false,
+            ),
+          ),
+        );
 
         final pill = Container(
           width: pillW,
           height: pillH,
           alignment: Alignment.center,
+          clipBehavior: Clip.none,
           decoration: BoxDecoration(
-            color: accent,
-            borderRadius: BorderRadius.circular(pillW),
-            // TV: borde izquierdo marcado = la pantalla mira a la izquierda.
-            border: isTv
-                ? Border(
-                    left: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      width: 2,
-                    ),
-                  )
-                : null,
+            // Relleno casi transparente (tinte de marca tenue al encender); el
+            // panel se lee por el BORDE + el wordmark, como en la web.
+            color: active
+                ? onColor.withValues(alpha: 0.15)
+                : Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(pillW * 0.42),
+            border: Border.all(
+              color: active ? onColor : _offColor.withValues(alpha: 0.55),
+              width: border,
+            ),
             boxShadow: active
                 ? [
                     BoxShadow(
-                      color: accent.withValues(alpha: 0.45),
-                      blurRadius: 18,
-                      spreadRadius: 2,
+                      color: onColor.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      spreadRadius: 1,
                     ),
                   ]
                 : null,
           ),
-          // El logo de Samsung (TV) va GIRADO 90° dentro de la píldora vertical;
-          // el de JBL queda derecho.
-          child: () {
-            final glyph = CceIcon(
-              isTv ? CceIcons.samsung : CceIcons.jbl,
-              size: pillW * 0.78,
-              color: active
-                  ? CceTint.textOn(accent)
-                  : Colors.white.withValues(alpha: 0.85),
-              emboss: false,
-            );
-            return isTv
-                ? RotatedBox(quarterTurns: 1, child: glyph)
-                : glyph;
-          }(),
+          child: logo,
         );
-
-        // Triángulo apuntando a la IZQUIERDA, pegado al borde de la pantalla.
-        // El CUERPO del TV NO se gira; solo el logo Samsung de adentro (arriba).
-        final pillWithScreen = isTv
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  CustomPaint(
-                    size: Size(size * 0.12, size * 0.20),
-                    painter: _LeftTrianglePainter(accent),
-                  ),
-                  pill,
-                ],
-              )
-            : pill;
 
         final onlineDot = Container(
           width: size * 0.20,
@@ -1161,32 +1156,16 @@ class _DeviceMarker extends StatelessWidget {
           ),
         );
 
-        final body = Column(
-          mainAxisSize: MainAxisSize.min,
+        // Píldora + dot online en la esquina superior derecha (como la web).
+        final body = Stack(
+          clipBehavior: Clip.none,
           children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                pillWithScreen,
-                Positioned(
-                  right: -size * 0.06,
-                  top: -size * 0.06,
-                  child: onlineDot,
-                ),
-              ],
+            pill,
+            Positioned(
+              right: -size * 0.06,
+              top: -size * 0.06,
+              child: onlineDot,
             ),
-            if (label.isNotEmpty) ...[
-              SizedBox(height: size * 0.10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: CceColors.textPrimary,
-                  fontSize: size * 0.22,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ],
           ],
         );
 
@@ -1203,27 +1182,4 @@ class _DeviceMarker extends StatelessWidget {
       },
     );
   }
-}
-
-/// Triángulo isósceles que apunta a la izquierda (la pantalla del TV).
-class _LeftTrianglePainter extends CustomPainter {
-  final Color color;
-  const _LeftTrianglePainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final path = Path()
-      ..moveTo(0, size.height / 2)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _LeftTrianglePainter oldDelegate) =>
-      oldDelegate.color != color;
 }
