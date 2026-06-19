@@ -85,28 +85,21 @@ class ThermostatScreen extends StatelessWidget {
             final d = service.byId(device.id) ?? device;
             final s = d.state;
 
-            // SIN header (se vuelve con el swipe iOS): el control llena la
-            // pantalla como el Samsung. Se ALARGA al alto disponible (capeado a
-            // maxH=780; en tablet estira un poco) y, si la pantalla es más baja,
-            // FittedBox(scaleDown) lo achica para que nunca desborde.
+            // SIN header (se vuelve con el swipe iOS). El control es COMPACTO
+            // (alto natural de su contenido, como el dashboard — ya no se
+            // estira al alto de la pantalla). FittedBox(contain) lo centra y, si
+            // la pantalla es más baja que el control, lo achica para no desbordar.
             return Padding(
               padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
-              child: LayoutBuilder(
-                builder: (ctx, c) {
-                  const double w = 360, minH = 600, maxH = 780;
-                  final double target = c.maxHeight.clamp(minH, maxH);
-                  return Center(
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: w,
-                        height: target,
-                        child: _panel(child: _buildControl(context, d, s)),
-                      ),
-                    ),
-                  );
-                },
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: 360,
+                    child: _panel(child: _buildControl(context, d, s)),
+                  ),
+                ),
               ),
             );
           },
@@ -155,9 +148,9 @@ class ThermostatScreen extends StatelessWidget {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      // Distribuye las secciones para LLENAR el alto de la carcasa (control
-      // "alargado"), igual que el Samsung: gaps iguales entre bloques.
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      // Contenido COMPACTO (alto natural, como el dashboard): gaps fijos en vez
+      // de spaceBetween, así no se estira ni queda aire de más arriba.
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Power redondo 52px arriba-IZQUIERDA del control.
         _PowerButton(
@@ -169,6 +162,9 @@ class ThermostatScreen extends StatelessWidget {
                 }
               : null,
         ),
+
+        // Dial pegado al power (poco aire arriba, como el dashboard).
+        const SizedBox(height: 6),
 
         // Control de temperatura: [−] dial [+] (deshabilitado/atenuado si off).
         Opacity(
@@ -216,10 +212,9 @@ class ThermostatScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 14),
-                // READOUT: cápsula hundida con la temp ACTUAL destacada + rango.
+                // READOUT: cápsula hundida con la temp ACTUAL centrada.
                 _Readout(
                   current: current != null ? '${_fmt(current)}°' : '—',
-                  range: '${_fmt(minT)}–${_fmt(maxT)}°',
                 ),
               ],
             ),
@@ -227,15 +222,18 @@ class ThermostatScreen extends StatelessWidget {
         ),
 
         // Estado del sistema (heat / idle): chip hundido; "Encendido" con glow.
-        if (s.systemMode != null)
+        if (s.systemMode != null) ...[
+          const SizedBox(height: 18),
           _SystemStatus(
             label: _systemLabel(s),
             heating: heating,
             icon: _isCooling(s) ? CceIcons.snowflake : CceIcons.flame,
           ),
+        ],
 
         // Modo (Manual / Program) = chips convexos sin borde.
-        if (s.tempMode != null)
+        if (s.tempMode != null) ...[
+          const SizedBox(height: 18),
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
@@ -253,8 +251,10 @@ class ThermostatScreen extends StatelessWidget {
               ),
             ],
           ),
+        ],
 
         // Wordmark grabado al pie.
+        const SizedBox(height: 18),
         const _Wordmark('CCE THERMOSTAT'),
       ],
     );
@@ -609,60 +609,50 @@ class _SetpointArcPainter extends CustomPainter {
 
 // ── READOUT (cápsula hundida: temp actual + rango) ──────────────────────────
 
-/// Cápsula HUNDIDA con la temperatura ACTUAL destacada (🌡 + número + "actual") a
-/// la izquierda y el rango (min–max°) a la derecha. Réplica del `.th-readout`.
+/// Cápsula HUNDIDA con la temperatura ACTUAL centrada y protagonista (🌡 +
+/// número + "actual"). Réplica del `.th-readout` del dashboard (sin el rango).
 class _Readout extends StatelessWidget {
-  const _Readout({required this.current, required this.range});
+  const _Readout({required this.current});
 
   final String current;
-  final String range;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: CceColors.neoSunken,
         borderRadius: BorderRadius.circular(14),
         boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
       ),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Temp actual destacada.
+          // Temp actual destacada, centrada.
           CceIcon(
             CceIcons.thermometer,
-            size: 15,
+            size: 16,
             emboss: false,
             color: const Color(0xFFFF9F6A),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           Text(
             current,
             style: const TextStyle(
-              fontSize: 17,
+              fontSize: 20,
               fontWeight: FontWeight.w700,
               color: CceColors.neoText,
               height: 1,
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           Text(
             'actual',
             style: CceText.caption.copyWith(
-              fontSize: 9.5,
+              fontSize: 10,
               letterSpacing: 1,
               fontWeight: FontWeight.w600,
               color: CceColors.neoTextSub,
-            ),
-          ),
-          const Spacer(),
-          // Rango min–max.
-          Text(
-            range,
-            style: CceText.caption.copyWith(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: CceColors.textTertiary,
             ),
           ),
         ],
