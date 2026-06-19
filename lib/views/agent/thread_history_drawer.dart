@@ -58,7 +58,7 @@ class ThreadHistoryDrawer extends StatelessWidget {
                               itemCount: service.threadList.length,
                               itemBuilder: (context, i) {
                                 final thread = service.threadList[i];
-                                return _ThreadTile(
+                                return ThreadTile(
                                   service: service,
                                   thread: thread,
                                   selected:
@@ -76,14 +76,21 @@ class ThreadHistoryDrawer extends StatelessWidget {
   }
 }
 
-class _ThreadTile extends StatelessWidget {
+class ThreadTile extends StatelessWidget {
   final ChatService service;
   final ThreadSummary thread;
   final bool selected;
-  const _ThreadTile({
+
+  /// Si true (drawer del teléfono), cierra el Navigator al abrir un hilo. En el
+  /// sidebar fijo de la tablet es false (no hay drawer que cerrar).
+  final bool popOnOpen;
+
+  const ThreadTile({
+    super.key,
     required this.service,
     required this.thread,
     required this.selected,
+    this.popOnOpen = true,
   });
 
   @override
@@ -113,7 +120,7 @@ class _ThreadTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(CceRadii.tile),
           onTap: () {
             service.openThread(thread.id);
-            Navigator.of(context).pop();
+            if (popOnOpen) Navigator.of(context).pop();
           },
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),

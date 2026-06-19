@@ -16,7 +16,7 @@ import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_tile.dart';
 import '../widgets/thermostat_home_card.dart';
 import '../widgets/temperature_summary_card.dart';
-import 'agent/chat_screen.dart';
+import 'agent/chat_screen_tablet.dart';
 import 'alarm_view.dart';
 import 'automations/automations_view.dart';
 import 'floor_plan_tab.dart';
@@ -104,7 +104,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           _CasaSplit(devices: _devices, ui: _ui, jbl: _jbl, tv: _tv),
           AutomationsView(devices: _devices, config: widget.config),
           HistoryScreen(config: widget.config, devices: _devices, neo: true),
-          ChatScreen(config: widget.config),
+          ChatScreenTablet(config: widget.config),
           AlarmView(initialConfig: widget.config, neo: true),
         ];
 

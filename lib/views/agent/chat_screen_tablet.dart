@@ -1,0 +1,425 @@
+import 'package:flutter/material.dart';
+
+import '../../models/server_config.dart';
+import '../../services/chat_service.dart';
+import '../../theme/cce_icons.dart';
+import '../../theme/cce_tokens.dart';
+import '../../theme/components/cce_neo_button.dart';
+import 'input_bar.dart';
+import 'message_bubble.dart';
+import 'thread_history_drawer.dart'; // ThreadTile (reusado)
+
+/// Variante TABLET del Asistente, con el layout de DOS COLUMNAS del dashboard
+/// web (que al usuario le gusta): sidebar fijo de conversaciones a la izquierda
+/// + chat centrado a la derecha (topbar con selector de modelo en chips, lista
+/// de mensajes con ancho máximo y composer centrado).
+///
+/// Reusa toda la maquinaria existente: [ChatService] (estado + SSE),
+/// [MessageBubble], [InputBar] y [ThreadTile]. El teléfono sigue usando
+/// [ChatScreen] (full-screen, historial en end-drawer) sin cambios.
+class ChatScreenTablet extends StatefulWidget {
+  final ServerConfig config;
+  const ChatScreenTablet({super.key, required this.config});
+
+  @override
+  State<ChatScreenTablet> createState() => _ChatScreenTabletState();
+}
+
+class _ChatScreenTabletState extends State<ChatScreenTablet> {
+  late final ChatService _service;
+  final _scrollController = ScrollController();
+
+  /// Ancho de la columna de chat (mensajes + composer), centrada como en el
+  /// dashboard para que las líneas no se estiren a lo ancho del iPad.
+  static const double _colMaxWidth = 820;
+
+  static const _suggestions = [
+    '¿Prendé la luz del living?',
+    '¿Qué temperatura hace?',
+    'Armá la alarma',
+    'Mostrame los sensores',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _service = ChatService(widget.config);
+    _service.loadThreads();
+  }
+
+  @override
+  void dispose() {
+    _service.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _onSuggestion(String text) {
+    _scrollToBottom();
+    _service.sendMessage(text);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: CceColors.neoBase,
+      body: SafeArea(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Sidebar de conversaciones (como el dashboard) ──────────────
+            SizedBox(width: 280, child: _Sidebar(service: _service)),
+            const VerticalDivider(
+                width: 1, thickness: 1, color: CceColors.cardBevel),
+            // ── Chat ───────────────────────────────────────────────────────
+            Expanded(
+              child: AnimatedBuilder(
+                animation: _service,
+                builder: (context, _) {
+                  if (_service.streaming) _scrollToBottom();
+                  return Column(
+                    children: [
+                      _Topbar(service: _service),
+                      const Divider(
+                          height: 1, thickness: 1, color: CceColors.cardBevel),
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => FocusScope.of(context).unfocus(),
+                          child: _service.loadingThread
+                              ? const Center(
+                                  child: CircularProgressIndicator(
+                                      color: CceColors.accent),
+                                )
+                              : _service.messages.isEmpty
+                                  ? _EmptyChat(onPick: _onSuggestion)
+                                  : Center(
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                            maxWidth: _colMaxWidth),
+                                        child: ListView.builder(
+                                          controller: _scrollController,
+                                          keyboardDismissBehavior:
+                                              ScrollViewKeyboardDismissBehavior
+                                                  .onDrag,
+                                          padding: const EdgeInsets.fromLTRB(
+                                              20, 12, 20, 12),
+                                          itemCount: _service.messages.length,
+                                          itemBuilder: (context, i) =>
+                                              MessageBubble(
+                                                  message:
+                                                      _service.messages[i]),
+                                        ),
+                                      ),
+                                    ),
+                        ),
+                      ),
+                      // Composer centrado, alineado con la columna de mensajes.
+                      Center(
+                        child: ConstrainedBox(
+                          constraints:
+                              const BoxConstraints(maxWidth: _colMaxWidth),
+                          child: InputBar(service: _service),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sidebar de conversaciones: header con "Nueva" + lista de [ThreadTile].
+class _Sidebar extends StatelessWidget {
+  final ChatService service;
+  const _Sidebar({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 10, 10),
+          child: Row(
+            children: [
+              Text('Conversaciones', style: CceText.title.copyWith(fontSize: 16)),
+              const Spacer(),
+              CceNeoIconButton(
+                icon: Icons.edit_square,
+                tooltip: 'Nueva conversación',
+                size: 38,
+                onPressed: service.newConversation,
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: CceColors.stroke),
+        Expanded(
+          child: AnimatedBuilder(
+            animation: service,
+            builder: (context, _) {
+              if (service.loadingThreads && service.threadList.isEmpty) {
+                return const Center(
+                  child: CircularProgressIndicator(color: CceColors.accent),
+                );
+              }
+              if (service.threadList.isEmpty) {
+                return const _SidebarEmpty();
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                itemCount: service.threadList.length,
+                itemBuilder: (context, i) {
+                  final t = service.threadList[i];
+                  return ThreadTile(
+                    service: service,
+                    thread: t,
+                    selected: t.id == service.currentThreadId,
+                    // En el sidebar (no es un drawer) NO hay que cerrar nada al
+                    // abrir un hilo: solo carga en el panel de la derecha.
+                    popOnOpen: false,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SidebarEmpty extends StatelessWidget {
+  const _SidebarEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24),
+        child: Text(
+          'Todavía no tenés conversaciones.\nEmpezá una nueva.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: CceColors.textTertiary, height: 1.5),
+        ),
+      ),
+    );
+  }
+}
+
+/// Topbar del panel de chat: identidad del asistente + selector de modelo.
+class _Topbar extends StatelessWidget {
+  final ChatService service;
+  const _Topbar({required this.service});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      alignment: Alignment.center,
+      child: Row(
+        children: [
+          EmbossedGlyph(
+            size: 22,
+            color: CceColors.accent,
+            highlight: CceEmboss.highlight.color,
+            shadow: CceEmboss.shadow.color,
+            child: const Icon(Icons.smart_toy_outlined),
+          ),
+          const SizedBox(width: 10),
+          const Text(
+            'Asistente',
+            style: TextStyle(
+                color: CceText.titleInk, shadows: CceText.embossShadows),
+          ),
+          const Spacer(),
+          _ModelChips(service: service),
+        ],
+      ),
+    );
+  }
+}
+
+/// Selector de modelo en chips (segmented), espejando el del dashboard. Maneja
+/// su propio [setState] porque [ChatService.model] es un campo simple (no
+/// dispara notifyListeners al asignarse).
+class _ModelChips extends StatefulWidget {
+  final ChatService service;
+  const _ModelChips({required this.service});
+
+  @override
+  State<_ModelChips> createState() => _ModelChipsState();
+}
+
+class _ModelChipsState extends State<_ModelChips> {
+  static const _models = ['sonnet', 'opus', 'haiku'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: CceColors.neoSunken,
+        borderRadius: BorderRadius.circular(CceRadii.pill),
+        boxShadow: CceShadows.neoInset(blur: 5, offset: 2),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [for (final m in _models) _chip(m)],
+      ),
+    );
+  }
+
+  Widget _chip(String m) {
+    final active = widget.service.model == m;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (!active) setState(() => widget.service.model = m);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? CceColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+        ),
+        child: Text(
+          m[0].toUpperCase() + m.substring(1),
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : CceColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Estado vacío del chat (centrado): tótem + título + sugerencias.
+class _EmptyChat extends StatelessWidget {
+  final ValueChanged<String> onPick;
+  const _EmptyChat({required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final (hi, sh) = EmbossedGlyph.surfaceEmboss(CceColors.neoBase);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 104,
+              height: 104,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: CceColors.neoBase,
+                boxShadow: CceShadows.neo(blur: 16, offset: 7),
+              ),
+              child: EmbossedGlyph(
+                size: 56,
+                color: CceColors.accent,
+                highlight: hi,
+                shadow: sh,
+                child: const Icon(Icons.smart_toy_outlined),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text('Tu asistente de la casa', style: CceText.title),
+            const SizedBox(height: 10),
+            const Text(
+              'Controlá luces, alarma y sensores\nen lenguaje natural. También por voz o foto.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: CceColors.textSecondary, height: 1.5),
+            ),
+            const SizedBox(height: 24),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final s in _ChatScreenTabletState._suggestions)
+                    _SuggestionChip(label: s, onPick: () => onPick(s)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip de sugerencia: pill neo raised → inset al presionar (mismo patrón que
+/// el de [ChatScreen]).
+class _SuggestionChip extends StatefulWidget {
+  final String label;
+  final VoidCallback onPick;
+  const _SuggestionChip({required this.label, required this.onPick});
+
+  @override
+  State<_SuggestionChip> createState() => _SuggestionChipState();
+}
+
+class _SuggestionChipState extends State<_SuggestionChip> {
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
+      onTap: widget.onPick,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(
+          color: CceColors.neoBase,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          boxShadow: _pressed
+              ? CceShadows.neoInset(blur: 6, offset: 2)
+              : CceShadows.neo(blur: 8, offset: 3),
+        ),
+        child: Text(
+          widget.label,
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w600,
+            color: CceColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
