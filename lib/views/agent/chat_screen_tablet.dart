@@ -33,11 +33,15 @@ class _ChatScreenTabletState extends State<ChatScreenTablet> {
   /// dashboard para que las líneas no se estiren a lo ancho del iPad.
   static const double _colMaxWidth = 820;
 
-  static const _suggestions = [
-    '¿Prendé la luz del living?',
-    '¿Qué temperatura hace?',
-    'Armá la alarma',
-    'Mostrame los sensores',
+  /// Sugerencias del estado vacío: (ícono SVG vendoreado, texto). Espeja las
+  /// del dashboard web — mismas 6, con ícono accent a la izquierda.
+  static const _suggestions = <(String, String)>[
+    (CceIcons.lights, 'Prendé la luz del living'),
+    (CceIcons.thermometer, '¿Qué temperatura hace?'),
+    (CceIcons.alarmShield, 'Armá la alarma'),
+    (CceIcons.sensors, 'Mostrame los sensores'),
+    (CceIcons.sun, 'Poné el cuarto al 30%'),
+    (CceIcons.users, '¿Hay alguien en la oficina?'),
   ];
 
   @override
@@ -225,10 +229,20 @@ class _SidebarEmpty extends StatelessWidget {
   }
 }
 
-/// Topbar del panel de chat: identidad del asistente + selector de modelo.
+/// Topbar del panel de chat: título del hilo + selector de modelo (como el
+/// dashboard web). El título sale del hilo activo (o "Nueva conversación").
 class _Topbar extends StatelessWidget {
   final ChatService service;
   const _Topbar({required this.service});
+
+  String get _title {
+    final id = service.currentThreadId;
+    if (id == null) return 'Nueva conversación';
+    for (final t in service.threadList) {
+      if (t.id == id) return t.title;
+    }
+    return 'Conversación';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -238,20 +252,22 @@ class _Topbar extends StatelessWidget {
       alignment: Alignment.center,
       child: Row(
         children: [
-          EmbossedGlyph(
-            size: 22,
-            color: CceColors.accent,
-            highlight: CceEmboss.highlight.color,
-            shadow: CceEmboss.shadow.color,
-            child: const Icon(Icons.smart_toy_outlined),
+          Expanded(
+            child: Text(
+              _title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: CceText.titleInk,
+                shadows: CceText.embossShadows,
+              ),
+            ),
           ),
-          const SizedBox(width: 10),
-          const Text(
-            'Asistente',
-            style: TextStyle(
-                color: CceText.titleInk, shadows: CceText.embossShadows),
-          ),
-          const Spacer(),
+          const SizedBox(width: 14),
+          Text('MODELO', style: CceText.section.copyWith(fontSize: 10.5)),
+          const SizedBox(width: 8),
           _ModelChips(service: service),
         ],
       ),
@@ -324,28 +340,27 @@ class _EmptyChat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (hi, sh) = EmbossedGlyph.surfaceEmboss(CceColors.neoBase);
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Hero liviano: círculo con tinte accent + destello (sparkles),
+            // espejando el del dashboard (en vez del robot pesado embossado).
             Container(
-              width: 104,
-              height: 104,
+              width: 76,
+              height: 76,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: CceColors.neoBase,
-                boxShadow: CceShadows.neo(blur: 16, offset: 7),
+                color: CceColors.accent.withOpacity(0.14),
               ),
-              child: EmbossedGlyph(
-                size: 56,
+              child: const CceIcon(
+                CceIcons.scenes,
+                size: 36,
                 color: CceColors.accent,
-                highlight: hi,
-                shadow: sh,
-                child: const Icon(Icons.smart_toy_outlined),
+                emboss: false,
               ),
             ),
             const SizedBox(height: 20),
@@ -358,14 +373,18 @@ class _EmptyChat extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 560),
+              constraints: const BoxConstraints(maxWidth: 580),
               child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 alignment: WrapAlignment.center,
                 children: [
                   for (final s in _ChatScreenTabletState._suggestions)
-                    _SuggestionChip(label: s, onPick: () => onPick(s)),
+                    _SuggestionChip(
+                      icon: s.$1,
+                      label: s.$2,
+                      onPick: () => onPick(s.$2),
+                    ),
                 ],
               ),
             ),
@@ -379,9 +398,14 @@ class _EmptyChat extends StatelessWidget {
 /// Chip de sugerencia: pill neo raised → inset al presionar (mismo patrón que
 /// el de [ChatScreen]).
 class _SuggestionChip extends StatefulWidget {
+  final String icon;
   final String label;
   final VoidCallback onPick;
-  const _SuggestionChip({required this.label, required this.onPick});
+  const _SuggestionChip({
+    required this.icon,
+    required this.label,
+    required this.onPick,
+  });
 
   @override
   State<_SuggestionChip> createState() => _SuggestionChipState();
@@ -411,13 +435,25 @@ class _SuggestionChipState extends State<_SuggestionChip> {
               ? CceShadows.neoInset(blur: 6, offset: 2)
               : CceShadows.neo(blur: 8, offset: 3),
         ),
-        child: Text(
-          widget.label,
-          style: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w600,
-            color: CceColors.textPrimary,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CceIcon(
+              widget.icon,
+              size: 15,
+              color: CceColors.accent,
+              emboss: false,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              widget.label,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: CceColors.textPrimary,
+              ),
+            ),
+          ],
         ),
       ),
     );
