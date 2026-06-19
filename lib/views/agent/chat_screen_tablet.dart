@@ -135,7 +135,7 @@ class _ChatScreenTabletState extends State<ChatScreenTablet> {
                         child: ConstrainedBox(
                           constraints:
                               const BoxConstraints(maxWidth: _colMaxWidth),
-                          child: InputBar(service: _service),
+                          child: InputBar(service: _service, embedded: true),
                         ),
                       ),
                     ],

@@ -15,7 +15,14 @@ import '../../theme/components/cce_neo_button.dart';
 /// streamea. Solo cambia la presentación: SSE, voz, imágenes intactos.
 class InputBar extends StatefulWidget {
   final ChatService service;
-  const InputBar({super.key, required this.service});
+
+  /// `true` en la TABLET: el composer se presenta como UNA tarjeta neumórfica
+  /// ELEVADA, cohesiva (adjuntar + texto + mic + enviar adentro), flotando con
+  /// margen — sin la banda-footer full-width ni el botón enviar suelto al lado.
+  /// El teléfono ([ChatScreen]) lo deja en `false`: footer band + well hundido.
+  final bool embedded;
+
+  const InputBar({super.key, required this.service, this.embedded = false});
 
   @override
   State<InputBar> createState() => InputBarState();
@@ -181,8 +188,138 @@ class InputBarState extends State<InputBar> {
     final hasContent =
         _controller.text.trim().isNotEmpty || _images.isNotEmpty;
 
-    // Footer neo: fondo neoBase + hairline superior cardBevel (transición
-    // continua a la lista, en vez del stroke duro anterior).
+    // Piezas compartidas entre teléfono (well hundido) y tablet (card elevada).
+    final attachBtn = Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: CceNeoIconButton(
+        icon: Icons.add_photo_alternate_outlined,
+        tooltip: 'Adjuntar',
+        size: 40,
+        onPressed: streaming ? null : _showAttachSheet,
+      ),
+    );
+    final textField = Expanded(
+      child: TextField(
+        controller: _controller,
+        minLines: 1,
+        maxLines: 5,
+        textInputAction: TextInputAction.newline,
+        keyboardType: TextInputType.multiline,
+        style: const TextStyle(color: CceColors.textPrimary),
+        cursorColor: CceColors.accent,
+        decoration: const InputDecoration(
+          hintText: 'Mensaje',
+          hintStyle: TextStyle(color: CceColors.textTertiary),
+          border: InputBorder.none,
+          // Padding generoso: despega texto/cursor del relieve de los bordes.
+          contentPadding: EdgeInsets.fromLTRB(10, 12, 10, 12),
+        ),
+      ),
+    );
+    final micBtn = Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: _NeoMicButton(
+        listening: _listening,
+        tooltip: _listening ? 'Detener' : 'Dictar',
+        size: 40,
+        onPressed: streaming ? null : _toggleListen,
+      ),
+    );
+    final sendBtn = _SendButton(
+      streaming: streaming,
+      enabled: streaming || hasContent,
+      onSend: _send,
+      onStop: _service.abort,
+    );
+
+    // Área del campo: card ELEVADA cohesiva (tablet) vs well hundido + enviar
+    // suelto (teléfono).
+    final Widget fieldArea = widget.embedded
+        ? Container(
+            // Card neumórfica ELEVADA: relieve hacia afuera (CceShadows.neo),
+            // fill opaco neoBase. Adjuntar + texto + mic + enviar viven adentro
+            // → un único objeto táctil, como el composer del dashboard.
+            decoration: BoxDecoration(
+              color: CceColors.neoBase,
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: CceShadows.neo(blur: 12, offset: 4),
+            ),
+            padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                attachBtn,
+                textField,
+                micBtn,
+                const SizedBox(width: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: sendBtn,
+                ),
+              ],
+            ),
+          )
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                // Pill del campo = WELL HUNDIDO: color OPACO neoSunken
+                // (requisito de BlurStyle.inner) + neoInset.
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: CceColors.neoSunken,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [attachBtn, textField, micBtn],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              sendBtn,
+            ],
+          );
+
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_images.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6, left: 4),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final img in _images)
+                  _ImageChip(file: img, onRemove: () => _removeImage(img)),
+              ],
+            ),
+          ),
+        fieldArea,
+        if (_listening)
+          const Padding(
+            padding: EdgeInsets.only(top: 4, left: 12),
+            child: Text(
+              'Escuchando…',
+              style: TextStyle(color: CceColors.danger, fontSize: 12),
+            ),
+          ),
+      ],
+    );
+
+    // Tablet: card flotante con margen, sin banda ni hairline.
+    if (widget.embedded) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+        child: content,
+      );
+    }
+
+    // Teléfono: footer neo full-width (fondo neoBase + hairline superior).
     return Container(
       decoration: const BoxDecoration(
         color: CceColors.neoBase,
@@ -192,102 +329,7 @@ class InputBarState extends State<InputBar> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_images.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6, left: 4),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final img in _images) _ImageChip(file: img, onRemove: () => _removeImage(img)),
-                    ],
-                  ),
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    // Pill del campo = WELL HUNDIDO: color OPACO neoSunken
-                    // (requisito de BlurStyle.inner) + neoInset. El padding
-                    // interno generoso despega cursor/hint/iconos del
-                    // inner-shadow oscuro de los bordes.
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: CceColors.neoSunken,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: CceNeoIconButton(
-                              icon: Icons.add_photo_alternate_outlined,
-                              tooltip: 'Adjuntar',
-                              size: 40,
-                              onPressed: streaming ? null : _showAttachSheet,
-                            ),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: _controller,
-                              minLines: 1,
-                              maxLines: 5,
-                              textInputAction: TextInputAction.newline,
-                              keyboardType: TextInputType.multiline,
-                              style: const TextStyle(
-                                  color: CceColors.textPrimary),
-                              cursorColor: CceColors.accent,
-                              decoration: const InputDecoration(
-                                hintText: 'Mensaje',
-                                hintStyle:
-                                    TextStyle(color: CceColors.textTertiary),
-                                border: InputBorder.none,
-                                // Padding generoso: despega texto/cursor del
-                                // inner-shadow del well (sup-izq, neoDark).
-                                contentPadding:
-                                    EdgeInsets.fromLTRB(10, 12, 10, 12),
-                              ),
-                            ),
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: _NeoMicButton(
-                              listening: _listening,
-                              tooltip: _listening ? 'Detener' : 'Dictar',
-                              size: 40,
-                              onPressed: streaming ? null : _toggleListen,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  _SendButton(
-                    streaming: streaming,
-                    enabled: streaming || hasContent,
-                    onSend: _send,
-                    onStop: _service.abort,
-                  ),
-                ],
-              ),
-              if (_listening)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4, left: 12),
-                  child: Text(
-                    'Escuchando…',
-                    style: TextStyle(color: CceColors.danger, fontSize: 12),
-                  ),
-                ),
-            ],
-          ),
+          child: content,
         ),
       ),
     );
