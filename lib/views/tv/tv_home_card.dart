@@ -174,7 +174,9 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 // así que setPower garantiza la dirección correcta.
                 CceSwitch(
                   value: on,
-                  accent: Colors.white,
+                  // El switch ON prende con el azul del TV (mismo acento que el
+                  // ícono y el dot del Samsung), en vez del blanco neutro.
+                  accent: _tvAccent,
                   onChanged: (v) => tv.setPower(v),
                 )
               else

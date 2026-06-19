@@ -394,6 +394,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final locks = devices.where((d) => d.isLock).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
         final onCount = lights.where((l) => l.state.on).length;
+        // Color representativo del room (mismo tint normalizado que usa RoomCard
+        // en la home): el master toggle PRENDE con el color del room en vez del
+        // ámbar por defecto. Sin RoomRef (vistas sin sala) cae a cálido.
+        final Color masterAccent =
+            (widget.room != null ? service.statsFor(widget.room!).tint : null) ??
+                CceColors.warm;
 
         // Sección "Cerraduras": fija después de las secciones reordenables.
         final lockSlivers = <Widget>[
@@ -566,6 +572,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                     scale: 1.2,
                     child: CceSwitch(
                       value: onCount > 0,
+                      accent: masterAccent,
                       onChanged: (v) => _toggleAll(lights, v),
                     ),
                   ),

@@ -177,7 +177,10 @@ class LightCard extends StatelessWidget {
                     ),
                   ),
                   alignment: Alignment.center,
-                  child: CceSwitch(value: on, onChanged: onToggle),
+                  // El switch PRENDE con el color real de la luz (mismo
+                  // displayColor que tiñe el ícono), no con el ámbar por defecto.
+                  child: CceSwitch(
+                      value: on, accent: displayColor, onChanged: onToggle),
                 ),
               ],
             ),
