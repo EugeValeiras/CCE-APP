@@ -12,6 +12,7 @@ import '../theme/components/room_card.dart';
 import '../utils/room_icon.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
+import '../widgets/temperature_sensor_picker_sheet.dart';
 import '../widgets/thermostat_home_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
@@ -51,16 +52,23 @@ class RoomsListScreen extends StatefulWidget {
 
 class _RoomsListScreenState extends State<RoomsListScreen> {
   static const String _orderKey = 'home.roomOrder';
+  static const String _tempSensorKey = 'home.tempSensorId';
 
   /// Fuente de verdad del orden interactivo: lista de RoomRef.id. Estable
   /// (no se regenera con cada notify del service). El build deriva la lista
   /// de RoomRef desde acá vía [_applyOrder] sobre service.rooms.
   List<String> _savedOrder = const [];
 
+  /// Id del termómetro elegido para el hero de clima (null ⇒ primero). Persiste
+  /// en SharedPreferences; el TemperatureSummaryCard cae al primero si el id
+  /// guardado ya no existe.
+  String? _tempSensorId;
+
   @override
   void initState() {
     super.initState();
     _loadOrder();
+    _loadTempSensor();
   }
 
   Future<void> _loadOrder() async {
@@ -69,6 +77,31 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       final saved = prefs.getStringList(_orderKey);
       if (saved != null && mounted) setState(() => _savedOrder = saved);
     } catch (_) {}
+  }
+
+  Future<void> _loadTempSensor() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_tempSensorKey);
+      if (saved != null && mounted) setState(() => _tempSensorId = saved);
+    } catch (_) {}
+  }
+
+  Future<void> _saveTempSensor(String id) async {
+    if (mounted) setState(() => _tempSensorId = id);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tempSensorKey, id);
+    } catch (_) {}
+  }
+
+  Future<void> _openTempSensorPicker() async {
+    final picked = await TemperatureSensorPickerSheet.show(
+      context,
+      service: widget.service,
+      selectedId: _tempSensorId,
+    );
+    if (picked != null) _saveTempSensor(picked);
   }
 
   Future<void> _saveOrder(List<String> ids) async {
@@ -189,10 +222,15 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     header: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // HERO único: resumen de clima de toda la casa.
+                        // HERO único: resumen de clima de toda la casa. Tappable
+                        // → abre el selector de termómetros (si hay más de uno).
                         RepaintBoundary(
                           child: TemperatureSummaryCard(
-                              service: service, neo: true),
+                            service: service,
+                            neo: true,
+                            selectedSensorId: _tempSensorId,
+                            onTap: _openTempSensorPicker,
+                          ),
                         ),
                         // Grupo "destacados" (dispositivos dedicados): solo se
                         // muestra el encabezado si hay al menos un dispositivo.

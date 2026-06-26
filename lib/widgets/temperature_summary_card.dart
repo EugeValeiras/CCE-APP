@@ -17,12 +17,23 @@ class TemperatureSummaryCard extends StatelessWidget {
   /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
   /// idéntico al actual (los 3 call-sites fuera de Home quedan byte-idénticos).
   final bool neo;
+
+  /// Id del sensor de temperatura a mostrar como hero. Si es null o no matchea
+  /// ningún sensor disponible, cae al primero (comportamiento histórico).
+  final String? selectedSensorId;
+
+  /// OPT-IN: cuando != null la card se vuelve tappable (abre el selector de
+  /// termómetros) y muestra un chevron de afordancia. Default null ⇒ render y
+  /// comportamiento idénticos al actual.
+  final VoidCallback? onTap;
   const TemperatureSummaryCard({
     super.key,
     required this.service,
     this.room,
     this.compact = false,
     this.neo = false,
+    this.selectedSensorId,
+    this.onTap,
   });
 
   @override
@@ -39,13 +50,30 @@ class TemperatureSummaryCard extends StatelessWidget {
         scoped.where((s) => s.sensor?.humidity != null).toList();
     if (tempSensors.isEmpty && humSensors.isEmpty) return const SizedBox.shrink();
 
-    final primary = tempSensors.isNotEmpty ? tempSensors.first : null;
+    // Hero = el sensor elegido por el usuario (selectedSensorId) si sigue
+    // disponible; si no, el primero (fallback histórico).
+    final primary = tempSensors.isEmpty
+        ? null
+        : tempSensors.firstWhere(
+            (s) => s.id == selectedSensorId,
+            orElse: () => tempSensors.first,
+          );
     final primaryHumDevice = humSensors.firstWhere(
       (s) => s.id == primary?.id,
       orElse: () => humSensors.isNotEmpty ? humSensors.first : _dummy,
     );
     final primaryHum = primaryHumDevice.sensor?.humidity;
     final primaryTemp = primary?.sensor?.temperature;
+
+    // Card seleccionable: hay handler de tap Y más de un termómetro entre los
+    // que elegir. Con un solo sensor el tap no aportaría nada → la card queda
+    // estática (sin chevron) y el render es el histórico.
+    final canPick = onTap != null && tempSensors.length > 1;
+    // Cuando es seleccionable, el label de temperatura pasa a ser el NOMBRE del
+    // termómetro elegido (feedback de "cuál estoy viendo"); si no, "Temperatura".
+    final tempLabel = canPick && primary != null
+        ? service.displayName(primary)
+        : 'Temperatura';
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: compact ? 0 : 8),
@@ -59,6 +87,7 @@ class TemperatureSummaryCard extends StatelessWidget {
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,
         neo: neo,
+        onTap: canPick ? onTap : null,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -68,7 +97,7 @@ class TemperatureSummaryCard extends StatelessWidget {
                   icon: CceIcons.thermometer,
                   value: primaryTemp.toStringAsFixed(1),
                   unit: '°C',
-                  label: 'Temperatura',
+                  label: tempLabel,
                   color: _desaturate(_colorForTemp(primaryTemp)),
                   compact: compact,
                   neo: neo,
@@ -95,6 +124,17 @@ class TemperatureSummaryCard extends StatelessWidget {
                   neo: neo,
                 ),
               ),
+            // Afordancia de "tocá para cambiar": chevron tenue a la derecha.
+            // Solo cuando la card es seleccionable (>1 termómetro).
+            if (canPick) ...[
+              const SizedBox(width: 8),
+              CceIcon(
+                CceIcons.chevronDown,
+                size: 18,
+                color: CceColors.textSecondary,
+                emboss: false,
+              ),
+            ],
           ],
         ),
       ),
