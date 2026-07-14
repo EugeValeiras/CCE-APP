@@ -7,7 +7,9 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
 import '../views/dial_switch_screen.dart';
+import '../views/single_button_screen.dart';
 import '../views/switch_detail_screen.dart';
+import '../views/thermometer_screen.dart';
 import 'pulse_on_update.dart';
 
 /// Tile de sensor (contacto, movimiento, temperatura, humedad). Los devices
@@ -23,10 +25,17 @@ class SensorTile extends StatelessWidget {
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
+    this.interactive = true,
   });
 
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
+
+  /// Si es true (default), tocar el tile navega a la pantalla del device
+  /// (switch/botón/termómetro). Se pone en false cuando el tile se usa como
+  /// mero selector (p.ej. el picker de triggers de automatizaciones), donde el
+  /// contenedor maneja su propio tap y NO se debe pushear una pantalla.
+  final bool interactive;
 
   @override
   Widget build(BuildContext context) {
@@ -213,16 +222,39 @@ class SensorTile extends StatelessWidget {
       ),
     );
 
-    if (!isSwitch) return tile;
-    // Switch: multi-botón (Tap Dial) → pantalla del dial; resto → switch grande.
+    if (!interactive) return tile;
+
+    // Resuelve la pantalla de detalle según el tipo de device:
+    //  - Switch multi-botón (Tap Dial / remote) → DialSwitchScreen.
+    //  - Botón de 1 tecla (eWeLink Button: lastKey!=null o type 'button')
+    //    → SingleButtonScreen (dispara press, NO es un toggle de relé).
+    //  - Resto de switches/relés → SwitchDetailScreen (toggle grande).
+    //  - Termómetro (sensor con temp/humedad, NO contacto ni movimiento)
+    //    → ThermometerScreen.
+    //  - Otros sensores (contacto/movimiento) → sin tap.
+    Widget? target;
+    if (isSwitch) {
+      final isButton = s?.lastKey != null ||
+          device.type.toLowerCase().contains('button');
+      if (device.isMultiButton) {
+        target = DialSwitchScreen(device: device, service: service);
+      } else if (isButton) {
+        target = SingleButtonScreen(device: device, service: service);
+      } else {
+        target = SwitchDetailScreen(device: device, service: service);
+      }
+    } else if (!device.isContactSensor &&
+        !device.isMotionSensor &&
+        (s?.temperature != null || s?.humidity != null)) {
+      target = ThermometerScreen(device: device, service: service);
+    }
+
+    if (target == null) return tile;
+    final dest = target;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => device.isMultiButton
-              ? DialSwitchScreen(device: device, service: service)
-              : SwitchDetailScreen(device: device, service: service),
-        ),
+        MaterialPageRoute(builder: (_) => dest),
       ),
       child: tile,
     );

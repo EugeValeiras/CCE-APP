@@ -202,6 +202,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                   device: d,
                   service: widget.devices,
                   size: TileSize.small,
+                  interactive: false,
                 ),
               ),
               if (selected)
