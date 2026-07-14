@@ -68,6 +68,10 @@ class ThermostatHeaderCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: CceCard(
+        // En neo iguala el radio de TemperatureSummaryCard (hueCard 24) para
+        // que ambas placas del header se lean del mismo material; en plano
+        // conserva el default (28).
+        radius: neo ? CceRadii.hueCard : CceRadii.card,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,

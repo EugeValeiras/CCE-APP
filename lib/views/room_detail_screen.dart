@@ -12,6 +12,7 @@ import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
+import '../widgets/room_temperature_header.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_header_card.dart';
@@ -586,6 +587,25 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
+                // Clima de la room (termómetro/higrómetro): header fijo arriba
+                // de todo, espejo del banner del tablet. Se auto-oculta sin
+                // sensores. Solo con RoomRef real: sin room el scope caería a
+                // toda la casa.
+                if (widget.room != null)
+                  SliverPadding(
+                    // compact anula el padding vertical interno de la card:
+                    // este wrapper repone el ritmo, espejo del tablet
+                    // (room_panel.dart usa fromLTRB(24, 4, 24, 4)).
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    sliver: SliverToBoxAdapter(
+                      child: RoomTemperatureHeader(
+                        service: service,
+                        room: widget.room!,
+                        compact: true,
+                        neo: true,
+                      ),
+                    ),
+                  ),
                 // Termostato del room: header fijo arriba del contenido,
                 // junto al lector de temperatura (no es sección reordenable).
                 if (primaryThermostat != null)

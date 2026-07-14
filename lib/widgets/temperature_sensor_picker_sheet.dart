@@ -5,20 +5,24 @@ import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 
-/// Bottom-sheet que lista TODOS los termómetros de la casa para elegir cuál
-/// mostrar como hero de clima en la home. Devuelve el id del sensor elegido
-/// (o null si se cierra sin elegir). [selectedId] marca el actual.
+/// Bottom-sheet que lista los termómetros disponibles para elegir cuál
+/// mostrar como hero de clima. Con [room] == null lista TODA la casa (hero de
+/// la home); con [room] != null solo los de esa habitación (header por room).
+/// Devuelve el id del sensor elegido (o null si se cierra sin elegir).
+/// [selectedId] marca el actual.
 ///
 /// Vive escuchando a [service] (AnimatedBuilder) para que las lecturas de la
 /// lista se mantengan frescas mientras el sheet está abierto.
 class TemperatureSensorPickerSheet extends StatelessWidget {
   final DevicesService service;
   final String? selectedId;
+  final RoomRef? room;
 
   const TemperatureSensorPickerSheet({
     super.key,
     required this.service,
     this.selectedId,
+    this.room,
   });
 
   /// Abre el selector y resuelve con el id elegido (o null si se descartó).
@@ -26,13 +30,14 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
     BuildContext context, {
     required DevicesService service,
     String? selectedId,
+    RoomRef? room,
   }) {
     return showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) =>
-          TemperatureSensorPickerSheet(service: service, selectedId: selectedId),
+      builder: (_) => TemperatureSensorPickerSheet(
+          service: service, selectedId: selectedId, room: room),
     );
   }
 
@@ -41,13 +46,16 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
     return AnimatedBuilder(
       animation: service,
       builder: (context, _) {
-        // Termómetros disponibles: sensores con lectura de temperatura.
-        // El orden SIN ordenar (insertion order) define el fallback "primero"
-        // que muestra la card cuando no hay selección explícita; lo calculamos
-        // ANTES de ordenar alfabéticamente para mostrar la fila marcada.
-        final available =
-            service.sensors.where((s) => s.sensor?.temperature != null).toList();
-        // Id efectivamente mostrado en la home: el elegido si sigue disponible;
+        // Termómetros disponibles: sensores con lectura de temperatura,
+        // scopeados a [room] si hay. Ambos where preservan el insertion order
+        // de service.sensors (mismo orden que el scoping de la card), y el
+        // fallback "primero" se calcula ANTES de ordenar alfabéticamente para
+        // que la fila marcada coincida con lo que muestra la card.
+        final available = service.sensors
+            .where((s) => s.sensor?.temperature != null)
+            .where((s) => room == null || room!.deviceIds.contains(s.id))
+            .toList();
+        // Id efectivamente mostrado: el elegido si sigue disponible;
         // si no (o si nunca se eligió), el primero — idéntico al fallback de
         // TemperatureSummaryCard, así la fila marcada coincide con el hero.
         final effectiveId = (selectedId != null &&
@@ -92,10 +100,12 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
                     child: Text('Termómetro', style: CceText.title),
                   ),
                   const SizedBox(height: 4),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      'Elegí cuál mostrar en la home',
+                      room == null
+                          ? 'Elegí cuál mostrar en la home'
+                          : 'Elegí cuál mostrar en ${room!.name}',
                       style: CceText.caption,
                     ),
                   ),
@@ -112,7 +122,9 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
                     for (final s in sensors) ...[
                       _SensorRow(
                         name: service.displayName(s),
-                        room: _roomNameFor(s.id),
+                        // En modo scopeado la room es siempre la misma:
+                        // omitimos el nombre redundante en cada fila.
+                        room: room == null ? _roomNameFor(s.id) : null,
                         temperature: s.sensor!.temperature!,
                         humidity: s.sensor?.humidity,
                         selected: s.id == effectiveId,

@@ -14,9 +14,9 @@ import '../../theme/components/section_header.dart';
 import '../../utils/room_icon.dart';
 import '../../widgets/light_tile.dart';
 import '../../widgets/lock_tile.dart';
+import '../../widgets/room_temperature_header.dart';
 import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
-import '../../widgets/temperature_summary_card.dart';
 import '../../widgets/thermostat_header_card.dart';
 import '../floor_plan_tab.dart';
 
@@ -199,10 +199,12 @@ class RoomPanel extends StatelessWidget {
               ),
             ),
             // Banner de clima de la habitación (se auto-oculta si la room no
-            // tiene termómetro/higrómetro).
+            // tiene termómetro/higrómetro). Con >1 termómetro es tappable y
+            // abre el selector scopeado a la room; la elección persiste por
+            // room (RoomTemperatureHeader).
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
-              child: TemperatureSummaryCard(
+              child: RoomTemperatureHeader(
                 service: service,
                 room: room,
                 compact: true,
