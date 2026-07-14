@@ -50,6 +50,19 @@ workflows:
       - name: Flutter pub get
         script: flutter pub get
 
+      # --- Gate de calidad (QW5): analyze + tests ANTES de firmar/buildear ---
+      - name: Flutter analyze
+        script: flutter analyze --no-fatal-infos
+
+      - name: Flutter test
+        script: |
+          if [ -d test ] && ls test/*_test.dart >/dev/null 2>&1; then
+            flutter test
+          else
+            echo "Sin tests en test/ — se omite flutter test"
+          fi
+      # ----------------------------------------------------------------------
+
       # --- Code signing manual (crea cert + profile si faltan) ---
       - name: Inicializar keychain
         script: keychain initialize
