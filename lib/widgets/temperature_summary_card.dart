@@ -46,6 +46,17 @@ class TemperatureSummaryCard extends StatelessWidget {
             .toList();
     final tempSensors =
         scoped.where((s) => s.sensor?.temperature != null).toList();
+    // REGLA DEL DUEÑO: los termostatos entran al pool SOLO si además hay
+    // termómetros. Room con ÚNICAMENTE termostato ⇒ esta card devuelve shrink
+    // (ThermostatHeaderCard ya muestra esa temperatura; acá se duplicaría).
+    // Se agregan AL FINAL para no mover el fallback "primero" ni la
+    // persistencia del hero de la home (que históricamente solo conocía
+    // sensores). El picker (TemperatureSensorPickerSheet) espeja este pool.
+    if (tempSensors.isNotEmpty) {
+      tempSensors.addAll(service.thermostats
+          .where((d) => room == null || room!.deviceIds.contains(d.id))
+          .where((d) => d.state.currentTemp != null));
+    }
     final humSensors =
         scoped.where((s) => s.sensor?.humidity != null).toList();
     if (tempSensors.isEmpty && humSensors.isEmpty) return const SizedBox.shrink();
@@ -63,7 +74,7 @@ class TemperatureSummaryCard extends StatelessWidget {
       orElse: () => humSensors.isNotEmpty ? humSensors.first : _dummy,
     );
     final primaryHum = primaryHumDevice.sensor?.humidity;
-    final primaryTemp = primary?.sensor?.temperature;
+    final primaryTemp = primary == null ? null : _tempOf(primary);
 
     // Card seleccionable: hay handler de tap Y más de un termómetro entre los
     // que elegir. Con un solo sensor el tap no aportaría nada → la card queda
@@ -145,6 +156,12 @@ class TemperatureSummaryCard extends StatelessWidget {
   // puede tocar cce_icons.dart; el resto de glyphs salen de CceIcons).
   static const String _dropletSvg =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7"/></svg>';
+
+  /// Lectura unificada de temperatura: termómetro (sensor.temperature) o
+  /// termostato (state.currentTemp — en los termostatos `sensor` suele ser
+  /// null, la lectura ambiente vive en el estado del equipo).
+  static double? _tempOf(Device d) =>
+      d.isThermostat ? d.state.currentTemp : d.sensor?.temperature;
 
   /// Desatura el color de la escala térmica (60% de la saturación original).
   static Color _desaturate(Color c) {

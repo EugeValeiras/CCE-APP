@@ -167,12 +167,13 @@ class _RoomCardState extends State<RoomCard> {
     final Color embHi = CceEmboss.highlight.color;
     final Color embSh = CceEmboss.shadow.color;
 
-    // Subtítulo de estado (como la card del JBL): override > conteo > apagado.
-    final lo = widget.lightsOn, lt = widget.lightsTotal;
+    // Subtítulo de estado (como la card del JBL): override > estado on/off.
+    // SIN cantidad (pedido del dueño): el "cuántas" ya no se muestra en la
+    // card — el conteo con cifras sigue solo en el subtitleOverride de
+    // "Toda la casa" (sidebar tablet).
+    final lt = widget.lightsTotal;
     final subtitle = widget.subtitleOverride ??
-        (lt == 0
-            ? 'Sin luces'
-            : (widget.anyOn ? '$lo de $lt encendidas' : 'Apagado'));
+        (lt == 0 ? 'Sin luces' : (widget.anyOn ? 'Encendido' : 'Apagado'));
 
     final headerRow = Row(
       children: [
@@ -235,13 +236,14 @@ class _RoomCardState extends State<RoomCard> {
                     ),
                     const SizedBox(width: 6),
                   ],
-                  // Punto de estado "encendido": redunda el acento del ícono
-                  // (chispa de color del estado activo), sin pulso. Sólo cuando
-                  // no hay ya un dot de sensor (motion/contact) ocupando el lugar.
-                  if (widget.anyOn && !widget.motion && !widget.contactOpen) ...[
-                    StatusDot(
-                      accent,
-                      semanticLabel: 'Encendido',
+                  // Punto AMARILLO fijo "luz encendida" (amberHi): siempre que
+                  // anyOn, SIN cantidad y SIN pulso; convive con los dots de
+                  // contact (naranja) y motion (azul) — ya no se suprime cuando
+                  // hay sensores activos.
+                  if (widget.anyOn) ...[
+                    const StatusDot(
+                      CceColors.amberHi,
+                      semanticLabel: 'Luz encendida',
                     ),
                     const SizedBox(width: 6),
                   ],

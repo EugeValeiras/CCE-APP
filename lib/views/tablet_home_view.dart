@@ -15,7 +15,7 @@ import '../widgets/light_tile.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_tile.dart';
 import '../widgets/thermostat_home_card.dart';
-import '../widgets/temperature_summary_card.dart';
+import '../widgets/room_temperature_header.dart';
 import 'agent/chat_screen_tablet.dart';
 import 'alarm_view.dart';
 import 'automations/automations_view.dart';
@@ -448,7 +448,12 @@ class _CasaSplitState extends State<_CasaSplit> {
             ],
           ),
           const SizedBox(height: 8),
-          TemperatureSummaryCard(service: widget.devices, neo: true),
+          // Hero de clima de toda la casa, ahora tappable como el del phone:
+          // room omitido ⇒ scope toda la casa + picker + persistencia en
+          // 'home.tempSensorId' (la MISMA key que el hero del phone — ambos
+          // form factors comparten el termómetro elegido). El estado/prefs
+          // viven dentro del header; _CasaSplitState no suma estado.
+          RoomTemperatureHeader(service: widget.devices, neo: true),
           Expanded(
             child: mode == RoomPanelMode.plan
                 ? FloorPlanPanel(

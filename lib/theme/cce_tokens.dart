@@ -16,7 +16,7 @@ abstract final class CceColors {
   // REGLA: Room cards ON usan el gradiente pastel del tint real de las
   // luces (Hue-style); todo color derivado de luces pasa por CceTint.pastel,
   // que vive SOLO en cce_tokens.dart.
-  // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
+  // Amarillo canónico del dot "luz encendida" (RoomCard).
   static const amberHi = Color(0xFFF4D993);
   // LEGACY: ya no lo usan las room cards; candidato a limpieza posterior.
   static const amberLo = Color(0xFFE7BE69);

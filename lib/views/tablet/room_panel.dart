@@ -14,10 +14,12 @@ import '../../theme/components/section_header.dart';
 import '../../utils/room_icon.dart';
 import '../../widgets/light_tile.dart';
 import '../../widgets/lock_tile.dart';
+import '../../widgets/media_device_tile.dart';
 import '../../widgets/room_temperature_header.dart';
 import '../../widgets/scenes_section.dart';
 import '../../widgets/sensor_tile.dart';
 import '../../widgets/thermostat_header_card.dart';
+import '../../widgets/thermostat_tile.dart';
 import '../floor_plan_tab.dart';
 
 /// Panel derecho de la tab Casa cuando hay una habitacion seleccionada:
@@ -53,7 +55,8 @@ class RoomPanel extends StatelessWidget {
   /// Servicios + callbacks de los dispositivos dedicados (item 6): se
   /// reenvían a [FloorPlanPanel] para que el plano de la sala muestre los
   /// markers de TV / JBL si están ubicados en ESE plano y el tap abra el
-  /// control inline en el panel derecho (igual que "Toda la casa").
+  /// control inline en el panel derecho (igual que "Toda la casa"). También
+  /// alimentan las filas de TV/JBL de la sección "Devices" (_buildLights).
   final TvService? tv;
   final JblService? jbl;
   final VoidCallback? onOpenTv;
@@ -251,8 +254,28 @@ class RoomPanel extends StatelessWidget {
         .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
         .toList();
     final locks = devices.where((d) => d.isLock).toList();
+    // Pertenencia config-driven de TV/JBL (NO hardcodear el Living): el
+    // dispositivo pertenece a la room si su posición está en el plano de ESTA
+    // room (mismo lookup que floor_plan_tab). planId == null en rooms de
+    // fallback (groups/_orphans) ⇒ nunca muestran TV/JBL.
+    final fp = service.floorPlans;
+    final hasTv = tv != null &&
+        room.planId != null &&
+        fp != null &&
+        fp.tvPositions.containsKey(room.planId);
+    final hasJbl = jbl != null &&
+        room.planId != null &&
+        fp != null &&
+        fp.jblPositions.containsKey(room.planId);
+    // Termostatos NO-primarios: el primario YA es ThermostatHeaderCard fijo
+    // arriba — relistarlo lo duplicaría. Los demás (hoy invisibles en la room)
+    // entran a la sección Devices como tiles.
+    final extraThermostats =
+        thermostats.length > 1 ? thermostats.sublist(1) : const <Device>[];
+    final extraCount =
+        extraThermostats.length + (hasTv ? 1 : 0) + (hasJbl ? 1 : 0);
 
-    if (devices.isEmpty) {
+    if (devices.isEmpty && !hasTv && !hasJbl) {
       return const Center(
         child: Text('Esta habitación no tiene dispositivos',
             style: CceText.caption),
@@ -260,7 +283,7 @@ class RoomPanel extends StatelessWidget {
     }
 
     return CustomScrollView(
-      // Orden: Termostato (header) → Escenas → Luces → Sensores → Cerraduras.
+      // Orden: Termostato (header) → Escenas → Luces → Devices → Cerraduras.
       slivers: [
         // Termostato del room: header fijo arriba del contenido (espejo del
         // teléfono), junto al lector de temperatura (no es sección "Clima").
@@ -325,11 +348,15 @@ class RoomPanel extends StatelessWidget {
             ),
           ),
         ],
-        if (sensors.isNotEmpty) ...[
+        // "Devices" (ex "Sensores"): sensores → termostatos extra → TV → JBL,
+        // en UN solo grid indexado (espejo del phone). Tap de los tiles nuevos
+        // = control INLINE en el panel derecho vía los callbacks ya cableados
+        // (si son null caen a su push de ruta — fallback inocuo).
+        if (sensors.isNotEmpty || extraCount > 0) ...[
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             sliver: const SliverToBoxAdapter(
-              child: SectionHeader(title: 'Sensores'),
+              child: SectionHeader(title: 'Devices'),
             ),
           ),
           SliverPadding(
@@ -342,19 +369,60 @@ class RoomPanel extends StatelessWidget {
                 mainAxisSpacing: 12,
               ),
               delegate: SliverChildBuilderDelegate(
-                (context, i) => ListenableBuilder(
-                  listenable: service,
-                  builder: (context, _) {
-                    final d = service.byId(sensors[i].id) ?? sensors[i];
-                    return SensorTile(
-                      device: d,
-                      service: service,
-                      size: tileSize,
-                      neo: neo,
+                (context, i) {
+                  if (i < sensors.length) {
+                    return ListenableBuilder(
+                      listenable: service,
+                      builder: (context, _) {
+                        final d = service.byId(sensors[i].id) ?? sensors[i];
+                        return SensorTile(
+                          device: d,
+                          service: service,
+                          size: tileSize,
+                          neo: neo,
+                        );
+                      },
                     );
-                  },
-                ),
-                childCount: sensors.length,
+                  }
+                  var j = i - sensors.length;
+                  if (j < extraThermostats.length) {
+                    final t = extraThermostats[j];
+                    return ListenableBuilder(
+                      listenable: service,
+                      builder: (context, _) {
+                        final d = service.byId(t.id) ?? t;
+                        return ThermostatTile(
+                          device: d,
+                          service: service,
+                          size: tileSize,
+                          neo: neo,
+                          onOpen: onOpenThermostat == null
+                              ? null
+                              : () => onOpenThermostat!(d),
+                        );
+                      },
+                    );
+                  }
+                  j -= extraThermostats.length;
+                  if (hasTv) {
+                    if (j == 0) {
+                      return TvDeviceTile(
+                        service: tv!,
+                        size: tileSize,
+                        neo: neo,
+                        onOpen: onOpenTv,
+                      );
+                    }
+                    j -= 1;
+                  }
+                  return JblDeviceTile(
+                    service: jbl!,
+                    size: tileSize,
+                    neo: neo,
+                    onOpen: onOpenJbl,
+                  );
+                },
+                childCount: sensors.length + extraCount,
               ),
             ),
           ),

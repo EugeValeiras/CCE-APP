@@ -377,6 +377,8 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               deviceIds: room.deviceIds,
               service: service,
               room: room,
+              tv: widget.tv,
+              jbl: widget.jbl,
             ),
           ));
         },

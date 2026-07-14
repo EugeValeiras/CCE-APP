@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
+import '../services/jbl_service.dart';
+import '../services/tv_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_neo_button.dart';
@@ -12,10 +14,12 @@ import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
+import '../widgets/media_device_tile.dart';
 import '../widgets/room_temperature_header.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
 import '../widgets/thermostat_header_card.dart';
+import '../widgets/thermostat_tile.dart';
 
 class RoomDetailScreen extends StatefulWidget {
   final String title;
@@ -23,12 +27,19 @@ class RoomDetailScreen extends StatefulWidget {
   final DevicesService service;
   final RoomRef? room; // opcional: habilita la sección de escenas
 
+  /// Servicios dedicados de TV / JBL (opcionales): habilitan sus filas en la
+  /// sección "Devices" cuando el room los contiene (por posición en su plano).
+  final TvService? tv;
+  final JblService? jbl;
+
   const RoomDetailScreen({
     super.key,
     required this.title,
     required this.deviceIds,
     required this.service,
     this.room,
+    this.tv,
+    this.jbl,
   });
 
   @override
@@ -126,7 +137,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               leading: const Icon(Icons.swap_vert, color: CceColors.textPrimary),
               title: const Text('Reordenar secciones',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Cambiá el orden de Escenas, Luces y Sensores',
+              subtitle: const Text('Cambiá el orden de Escenas, Luces y Devices',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -138,7 +149,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   const Icon(Icons.drag_indicator, color: CceColors.textPrimary),
               title: const Text('Reordenar elementos',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Ordená las luces y sensores de la habitación',
+              subtitle: const Text('Ordená las luces y devices de la habitación',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -152,10 +163,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     );
   }
 
+  // OJO: solo cambia el LABEL visible ('Devices'); el key persistido sigue
+  // siendo 'sensors' (room.sectionOrder) — renombrarlo invalidaría el orden
+  // guardado de todos los usuarios.
   String _sectionLabel(String key) => switch (key) {
         'scenes' => 'Escenas',
         'lights' => 'Luces',
-        _ => 'Sensores',
+        _ => 'Devices',
       };
 
   IconData _sectionIcon(String key) => switch (key) {
@@ -347,7 +361,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         setState(() => _lightOrder = List.of(lo));
                         _saveItemOrder('light', lo);
                       }),
-                      section('Sensores', so, (oldI, newI) {
+                      section('Devices', so, (oldI, newI) {
                         setSheet(() {
                           if (newI > oldI) newI -= 1;
                           so.insert(newI, so.removeAt(oldI));
@@ -394,6 +408,27 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // Cerraduras del room → sección propia (no reordenable, fija al final).
         final locks = devices.where((d) => d.isLock).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
+        // Pertenencia config-driven de TV/JBL (NO hardcodear el Living): el
+        // dispositivo pertenece a la room si su posición está en el plano de
+        // ESTA room (mismo lookup que floor_plan_tab). planId == null en rooms
+        // de fallback (groups/_orphans) ⇒ nunca muestran TV/JBL.
+        final fp = service.floorPlans;
+        final planId = widget.room?.planId;
+        final hasTv = widget.tv != null &&
+            planId != null &&
+            fp != null &&
+            fp.tvPositions.containsKey(planId);
+        final hasJbl = widget.jbl != null &&
+            planId != null &&
+            fp != null &&
+            fp.jblPositions.containsKey(planId);
+        // Termostatos NO-primarios: el primario YA es ThermostatHeaderCard fijo
+        // arriba — relistarlo lo duplicaría. Los demás (hoy invisibles en la
+        // room) entran a la sección Devices como tiles.
+        final extraThermostats =
+            thermostats.length > 1 ? thermostats.sublist(1) : const <Device>[];
+        final extraCount =
+            extraThermostats.length + (hasTv ? 1 : 0) + (hasJbl ? 1 : 0);
         final onCount = lights.where((l) => l.state.on).length;
         // Color representativo del room (mismo tint normalizado que usa RoomCard
         // en la home): el master toggle PRENDE con el color del room en vez del
@@ -490,12 +525,15 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   ),
                 ]
               : const [],
-          'sensors': sensors.isNotEmpty
+          // "Devices" (ex "Sensores"): sensores (orden persistido intacto) →
+          // termostatos extra → TV → JBL, en UN solo grid indexado. Los tiles
+          // nuevos van fijos al final (no participan del reorder).
+          'sensors': (sensors.isNotEmpty || extraCount > 0)
               ? [
                   const SliverPadding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
-                      child: SectionHeader(title: 'Sensores'),
+                      child: SectionHeader(title: 'Devices'),
                     ),
                   ),
                   SliverPadding(
@@ -508,18 +546,52 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         mainAxisExtent: TileSize.medium.sensorTileHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(
-                        (context, i) => ListenableBuilder(
-                          listenable: service,
-                          builder: (ctx, _) {
-                            final d = service.byId(sensors[i].id) ?? sensors[i];
-                            return SensorTile(
-                                device: d,
-                                service: service,
-                                size: TileSize.medium,
-                                neo: true);
-                          },
-                        ),
-                        childCount: sensors.length,
+                        (context, i) {
+                          if (i < sensors.length) {
+                            return ListenableBuilder(
+                              listenable: service,
+                              builder: (ctx, _) {
+                                final d =
+                                    service.byId(sensors[i].id) ?? sensors[i];
+                                return SensorTile(
+                                    device: d,
+                                    service: service,
+                                    size: TileSize.medium,
+                                    neo: true);
+                              },
+                            );
+                          }
+                          var j = i - sensors.length;
+                          if (j < extraThermostats.length) {
+                            final t = extraThermostats[j];
+                            return ListenableBuilder(
+                              listenable: service,
+                              builder: (ctx, _) {
+                                final d = service.byId(t.id) ?? t;
+                                return ThermostatTile(
+                                    device: d,
+                                    service: service,
+                                    size: TileSize.medium,
+                                    neo: true);
+                              },
+                            );
+                          }
+                          j -= extraThermostats.length;
+                          if (hasTv) {
+                            if (j == 0) {
+                              return TvDeviceTile(
+                                  service: widget.tv!,
+                                  size: TileSize.medium,
+                                  neo: true);
+                            }
+                            j -= 1;
+                          }
+                          return JblDeviceTile(
+                              service: widget.jbl!,
+                              size: TileSize.medium,
+                              neo: true);
+                        },
+                        childCount: sensors.length + extraCount,
                       ),
                     ),
                   ),
@@ -625,7 +697,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   ),
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
-                if (devices.isEmpty)
+                // Una room de plano solo-con-TV/JBL ya no es "vacía".
+                if (devices.isEmpty && !hasTv && !hasJbl)
                   const SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(

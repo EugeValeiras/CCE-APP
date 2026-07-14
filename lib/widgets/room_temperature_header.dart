@@ -8,18 +8,21 @@ import 'temperature_summary_card.dart';
 /// Header de clima de UNA habitación (phone y tablet): TemperatureSummaryCard
 /// scopeada a [room] + persistencia del termómetro elegido por room
 /// (key `home.tempSensorId.<room.id>`, mismo namespace que el hero de la home).
+/// Con [room] == null el scope es TODA LA CASA (hero del tablet) y persiste
+/// en la MISMA key que el hero del phone (`home.tempSensorId`): un solo
+/// termómetro elegido para ambos form factors.
 /// La card resuelve sola el resto: >1 sensor → tappable con chevron (abre el
 /// picker filtrado a la room), 1 sensor → estática, 0 → se auto-oculta.
 class RoomTemperatureHeader extends StatefulWidget {
   final DevicesService service;
-  final RoomRef room;
+  final RoomRef? room;
   final bool compact;
   final bool neo;
 
   const RoomTemperatureHeader({
     super.key,
     required this.service,
-    required this.room,
+    this.room,
     this.compact = false,
     this.neo = false,
   });
@@ -33,7 +36,12 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
   /// al primero si el id guardado ya no existe (mismo fallback que la home).
   String? _tempSensorId;
 
-  String get _prefKey => 'home.tempSensorId.${widget.room.id}';
+  // room == null ⇒ comparte 'home.tempSensorId' con el hero del phone
+  // (rooms_list_screen): un solo termómetro de la casa para ambos heros.
+  String get _prefKey {
+    final r = widget.room;
+    return r == null ? 'home.tempSensorId' : 'home.tempSensorId.${r.id}';
+  }
 
   @override
   void initState() {
@@ -47,7 +55,7 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
     // El RoomPanel del tablet se reconstruye con OTRA room en la misma
     // posición del árbol al cambiar la selección: reseteamos y recargamos
     // para no mostrar la selección de la room anterior.
-    if (oldWidget.room.id != widget.room.id) {
+    if (oldWidget.room?.id != widget.room?.id) {
       setState(() => _tempSensorId = null);
       _load();
     }
@@ -86,7 +94,7 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
       selectedId: _tempSensorId,
       room: room,
     );
-    if (picked == null || !mounted || widget.room.id != room.id) return;
+    if (picked == null || !mounted || widget.room?.id != room?.id) return;
     _save(picked);
   }
 

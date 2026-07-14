@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
@@ -46,15 +47,27 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
     return AnimatedBuilder(
       animation: service,
       builder: (context, _) {
-        // Termómetros disponibles: sensores con lectura de temperatura,
-        // scopeados a [room] si hay. Ambos where preservan el insertion order
-        // de service.sensors (mismo orden que el scoping de la card), y el
-        // fallback "primero" se calcula ANTES de ordenar alfabéticamente para
-        // que la fila marcada coincida con lo que muestra la card.
-        final available = service.sensors
+        // Pool disponible: espejo EXACTO del de TemperatureSummaryCard
+        // (termómetros primero, termostatos apendeados al final) para que
+        // effectiveId / fila marcada coincidan con el hero. Los where
+        // preservan el insertion order de service.sensors, y el fallback
+        // "primero" se calcula ANTES de ordenar alfabéticamente para que la
+        // fila marcada coincida con lo que muestra la card.
+        final thermometers = service.sensors
             .where((s) => s.sensor?.temperature != null)
             .where((s) => room == null || room!.deviceIds.contains(s.id))
             .toList();
+        final available = <Device>[
+          ...thermometers,
+          // Termostatos: solo si también hay termómetros (regla del dueño;
+          // ver TemperatureSummaryCard). Elegir el termostato como hero de
+          // una room DUPLICA la lectura junto a ThermostatHeaderCard —
+          // aceptado por ser una elección explícita del usuario.
+          if (thermometers.isNotEmpty)
+            ...service.thermostats
+                .where((d) => room == null || room!.deviceIds.contains(d.id))
+                .where((d) => d.state.currentTemp != null),
+        ];
         // Id efectivamente mostrado: el elegido si sigue disponible;
         // si no (o si nunca se eligió), el primero — idéntico al fallback de
         // TemperatureSummaryCard, así la fila marcada coincide con el hero.
@@ -97,7 +110,7 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
                   ),
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('Termómetro', style: CceText.title),
+                    child: Text('Temperatura', style: CceText.title),
                   ),
                   const SizedBox(height: 4),
                   Padding(
@@ -125,7 +138,13 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
                         // En modo scopeado la room es siempre la misma:
                         // omitimos el nombre redundante en cada fila.
                         room: room == null ? _roomNameFor(s.id) : null,
-                        temperature: s.sensor!.temperature!,
+                        // Lectura unificada: termostato → state.currentTemp
+                        // (su `sensor` suele ser null); termómetro →
+                        // sensor.temperature. Non-null garantizado por los
+                        // filtros de `available`.
+                        temperature: (s.isThermostat
+                            ? s.state.currentTemp
+                            : s.sensor?.temperature)!,
                         humidity: s.sensor?.humidity,
                         selected: s.id == effectiveId,
                         onTap: () {
