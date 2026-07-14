@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/jbl_status.dart';
-import '../../models/room_ref.dart';
-import '../../services/devices_service.dart';
 import '../../services/jbl_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -13,7 +11,6 @@ import '../../theme/components/cce_card.dart';
 import '../../theme/components/cce_neo_button.dart';
 import '../../theme/components/cce_neo_press.dart';
 import '../../theme/components/status_dot.dart';
-import '../../widgets/room_temperature_header.dart';
 
 part 'soundbar_widgets.dart';
 
@@ -28,23 +25,10 @@ class SoundbarScreen extends StatefulWidget {
   const SoundbarScreen({
     super.key,
     required this.service,
-    this.devices,
-    this.headerPadding = const EdgeInsets.fromLTRB(16, 8, 16, 4),
   });
 
   /// El shell lo crea/dispone; la screen NO lo dispone.
   final JblService service;
-
-  /// OPCIONAL: habilita el header de clima de la room del JBL (resuelta por
-  /// config: jblPositions → plano → RoomRef; misma persistencia por room que
-  /// la pantalla de la room). null (call-site sin DevicesService a mano) ⇒
-  /// sin header, degradación segura.
-  final DevicesService? devices;
-
-  /// Padding del header de clima. Default = ritmo phone/room_detail
-  /// (16/8/16/4); el call-site INLINE del panel derecho de tablet pasa
-  /// 24/4/24/4 para no saltar respecto del header de RoomPanel.
-  final EdgeInsets headerPadding;
 
   @override
   State<SoundbarScreen> createState() => _SoundbarScreenState();
@@ -73,66 +57,20 @@ class _SoundbarScreenState extends State<SoundbarScreen> {
       // Sin AppBar: control full-screen. Se vuelve con el swipe iOS; el config de
       // IP sigue disponible desde la card de offline/error cuando hace falta.
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header de clima de la room del JBL (config-driven, sin room ⇒ no
-            // aparece), por FUERA de las ramas de _buildBody (se ve igual en
-            // error/loading/offline/online). Escucha a DevicesService con su
-            // PROPIO ListenableBuilder: esta pantalla solo escucha a JblService
-            // y sin esto la temperatura quedaría congelada.
-            if (widget.devices != null)
-              ListenableBuilder(
-                listenable: widget.devices!,
-                builder: (context, _) {
-                  final devices = widget.devices!;
-                  final room = _resolveRoom(devices);
-                  if (room == null) return const SizedBox.shrink();
-                  return Padding(
-                    // Ritmo del call-site (default 16/8/16/4 como las rooms
-                    // phone; inline en tablet el shell pasa 24/4/24/4).
-                    padding: widget.headerPadding,
-                    child: RoomTemperatureHeader(
-                      service: devices,
-                      room: room,
-                      compact: true,
-                      neo: true,
-                    ),
-                  );
-                },
-              ),
-            Expanded(
-              child: AnimatedBuilder(
-                animation: service,
-                // Centrado a ancho de celular (≈320 como el dashboard): en iPad
-                // el control NO ocupa todo el ancho (queda feo); en teléfono la
-                // pantalla es más angosta así que igual se ve full.
-                builder: (context, _) => Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 360),
-                    child: _buildBody(context, service),
-                  ),
-                ),
-              ),
+        child: AnimatedBuilder(
+          animation: service,
+          // Centrado a ancho de celular (≈320 como el dashboard): en iPad
+          // el control NO ocupa todo el ancho (queda feo); en teléfono la
+          // pantalla es más angosta así que igual se ve full.
+          builder: (context, _) => Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: _buildBody(context, service),
             ),
-          ],
+          ),
         ),
       ),
     );
-  }
-
-  /// Room del JBL derivada de la config (dirección device→room, inversa del
-  /// lookup de room_detail_screen): primera room de plano cuyo planId tiene
-  /// posicionado el JBL en floorPlans.jblPositions. Se resuelve EN CADA build
-  /// (service.rooms regenera los RoomRef en cada notify — no cachear). null si
-  /// la config no lo posiciona o el plano no genera room visible ⇒ sin header.
-  static RoomRef? _resolveRoom(DevicesService devices) {
-    final fp = devices.floorPlans;
-    if (fp == null || fp.jblPositions.isEmpty) return null;
-    for (final room in devices.rooms) {
-      final planId = room.planId;
-      if (planId != null && fp.jblPositions.containsKey(planId)) return room;
-    }
-    return null;
   }
 
   /// CARCASA del control (réplica exacta del `.panel` del dashboard): radius 40,

@@ -581,16 +581,14 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                               return TvDeviceTile(
                                   service: widget.tv!,
                                   size: TileSize.medium,
-                                  neo: true,
-                                  devices: service);
+                                  neo: true);
                             }
                             j -= 1;
                           }
                           return JblDeviceTile(
                               service: widget.jbl!,
                               size: TileSize.medium,
-                              neo: true,
-                              devices: service);
+                              neo: true);
                         },
                         childCount: sensors.length + extraCount,
                       ),

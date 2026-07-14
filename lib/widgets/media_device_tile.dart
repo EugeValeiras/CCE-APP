@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
 import '../services/ui_settings_service.dart';
@@ -26,17 +25,12 @@ class TvDeviceTile extends StatelessWidget {
   final bool neo;
   final VoidCallback? onOpen;
 
-  /// Se REENVÍA a la pantalla pusheada para su header de clima; esta tile
-  /// sigue SIN escuchar a DevicesService. null ⇒ la pantalla sin header.
-  final DevicesService? devices;
-
   const TvDeviceTile({
     super.key,
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
     this.onOpen,
-    this.devices,
   });
 
   @override
@@ -67,7 +61,7 @@ class TvDeviceTile extends StatelessWidget {
               onOpen!();
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TvScreen(service: tv, devices: devices),
+                builder: (_) => TvScreen(service: tv),
               ));
             }
           },
@@ -83,17 +77,12 @@ class JblDeviceTile extends StatelessWidget {
   final bool neo;
   final VoidCallback? onOpen;
 
-  /// Se REENVÍA a la pantalla pusheada para su header de clima; esta tile
-  /// sigue SIN escuchar a DevicesService. null ⇒ la pantalla sin header.
-  final DevicesService? devices;
-
   const JblDeviceTile({
     super.key,
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
     this.onOpen,
-    this.devices,
   });
 
   @override
@@ -130,7 +119,7 @@ class JblDeviceTile extends StatelessWidget {
               onOpen!();
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => SoundbarScreen(service: jbl, devices: devices),
+                builder: (_) => SoundbarScreen(service: jbl),
               ));
             }
           },

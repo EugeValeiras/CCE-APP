@@ -49,7 +49,8 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
 
   Future<void> _press(int key) async {
     HapticFeedback.mediumImpact();
-    setState(() => _feedback = key == 2 ? 'Mantenido' : 'Click');
+    setState(() => _feedback =
+        key == 2 ? 'Mantenido' : (key == 1 ? 'Doble click' : 'Click'));
     _fbTimer?.cancel();
     _fbTimer = Timer(const Duration(milliseconds: 1100), () {
       if (mounted) setState(() => _feedback = null);
@@ -94,7 +95,7 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Tocá para accionar · mantené para long-press',
+              'Tocá · doble tap · mantené para long-press',
               style: TextStyle(color: CceColors.textTertiary, fontSize: 13),
             ),
             const SizedBox(height: 40),
@@ -137,6 +138,7 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
         behavior: HitTestBehavior.opaque,
         onTapDown: (_) => _flash(),
         onTap: () => _press(0),
+        onDoubleTap: () => _press(1),
         onLongPress: () => _press(2),
         child: AnimatedScale(
           duration: const Duration(milliseconds: 110),

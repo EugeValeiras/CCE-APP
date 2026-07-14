@@ -410,7 +410,6 @@ class RoomPanel extends StatelessWidget {
                         size: tileSize,
                         neo: neo,
                         onOpen: onOpenTv,
-                        devices: service,
                       );
                     }
                     j -= 1;
@@ -420,7 +419,6 @@ class RoomPanel extends StatelessWidget {
                     size: tileSize,
                     neo: neo,
                     onOpen: onOpenJbl,
-                    devices: service,
                   );
                 },
                 childCount: sensors.length + extraCount,
