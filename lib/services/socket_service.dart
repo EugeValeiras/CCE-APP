@@ -61,16 +61,18 @@ class SocketService {
       _liveController = StreamController<LiveEvent>.broadcast();
     }
 
-    _socket = io.io(
-      config.socketUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .enableAutoConnect()
-          .enableReconnection()
-          .setReconnectionDelay(2000)
-          .setReconnectionDelayMax(30000)
-          .build(),
-    );
+    final options = io.OptionBuilder()
+        .setTransports(['websocket'])
+        .enableAutoConnect()
+        .enableReconnection()
+        .setReconnectionDelay(2000)
+        .setReconnectionDelayMax(30000);
+    // Auth del handshake Socket.IO: solo si hay token configurado (si no, el
+    // handshake queda EXACTAMENTE como antes).
+    if (ServerConfig.apiToken.isNotEmpty) {
+      options.setAuth({'token': ServerConfig.apiToken});
+    }
+    _socket = io.io(config.socketUrl, options.build());
 
     _socket!.onConnect((_) {
       _isConnected = true;

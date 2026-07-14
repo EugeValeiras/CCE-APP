@@ -43,7 +43,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     try {
       final resp = await http
-          .get(Uri.parse('$_base/agent/threads'))
+          .get(Uri.parse('$_base/agent/threads'), headers: ServerConfig.tokenHeaders)
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
@@ -78,7 +78,7 @@ class ChatService extends ChangeNotifier {
     notifyListeners();
     try {
       final resp = await http
-          .get(Uri.parse('$_base/agent/threads/${Uri.encodeComponent(id)}'))
+          .get(Uri.parse('$_base/agent/threads/${Uri.encodeComponent(id)}'), headers: ServerConfig.tokenHeaders)
           .timeout(const Duration(seconds: 12));
       if (resp.statusCode == 200) {
         final detail = ThreadDetail.fromJson(
@@ -104,7 +104,7 @@ class ChatService extends ChangeNotifier {
       await http
           .patch(
             Uri.parse('$_base/agent/threads/${Uri.encodeComponent(id)}'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
             body: jsonEncode({'title': title}),
           )
           .timeout(const Duration(seconds: 8));
@@ -117,7 +117,7 @@ class ChatService extends ChangeNotifier {
   Future<void> deleteThread(String id) async {
     try {
       await http
-          .delete(Uri.parse('$_base/agent/threads/${Uri.encodeComponent(id)}'))
+          .delete(Uri.parse('$_base/agent/threads/${Uri.encodeComponent(id)}'), headers: ServerConfig.tokenHeaders)
           .timeout(const Duration(seconds: 8));
     } catch (e) {
       debugPrint('[ChatService] deleteThread error: $e');
@@ -202,6 +202,7 @@ class ChatService extends ChangeNotifier {
     final req = http.Request('POST', Uri.parse('$_base/agent/chat'))
       ..headers['Content-Type'] = 'application/json'
       ..headers['Accept'] = 'text/event-stream'
+      ..headers.addAll(ServerConfig.tokenHeaders)
       ..body = jsonEncode(payload);
 
     // No .timeout on the stream — an agent turn can take minutes.
@@ -257,7 +258,7 @@ class ChatService extends ChangeNotifier {
     final resp = await http
         .post(
           Uri.parse('$_base/agent/chat/sync'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
           body: jsonEncode(payload),
         )
         .timeout(const Duration(minutes: 5));

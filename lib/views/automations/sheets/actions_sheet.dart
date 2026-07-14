@@ -1149,7 +1149,7 @@ class _JblActionEditorState extends State<_JblActionEditor> {
   Future<List<String>> _fetchRadios() async {
     try {
       final resp = await http
-          .get(Uri.parse('${widget.config.baseUrl}/jbl/radios'))
+          .get(Uri.parse('${widget.config.baseUrl}/jbl/radios'), headers: ServerConfig.tokenHeaders)
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode != 200) return [];
       final data = jsonDecode(resp.body);

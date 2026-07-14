@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../../models/chat_message.dart';
+import '../../models/server_config.dart';
 import '../../theme/cce_tokens.dart';
 import 'tool_call_tile.dart';
 
@@ -250,6 +251,7 @@ class _ImageGrid extends StatelessWidget {
                   ? Image.file(File(u), fit: BoxFit.cover,
                       errorBuilder: (ctx, err, stack) => _broken())
                   : Image.network(u, fit: BoxFit.cover,
+                      headers: ServerConfig.tokenHeaders,
                       errorBuilder: (ctx, err, stack) => _broken(),
                       loadingBuilder: (ctx, child, progress) =>
                           progress == null ? child : _loading()),

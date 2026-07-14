@@ -124,7 +124,7 @@ class AutomationsService extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> _fetchRaw() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/config/automations'))
+        .get(Uri.parse('${config.baseUrl}/config/automations'), headers: ServerConfig.tokenHeaders)
         .timeout(_timeout);
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -141,7 +141,7 @@ class AutomationsService extends ChangeNotifier {
       final resp = await http
           .put(
             Uri.parse('${config.baseUrl}/config/automations'),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
             body: jsonEncode(array),
           )
           .timeout(_timeout);
@@ -314,8 +314,7 @@ class AutomationsService extends ChangeNotifier {
   Future<void> _bootstrapLastExecuted() async {
     try {
       final resp = await http
-          .get(Uri.parse(
-              '${config.baseUrl}/events?eventName=automation:executed&limit=100'))
+          .get(Uri.parse('${config.baseUrl}/events?eventName=automation:executed&limit=100'), headers: ServerConfig.tokenHeaders)
           .timeout(_timeout);
       if (resp.statusCode != 200) return;
       final data = jsonDecode(resp.body);
@@ -387,7 +386,7 @@ class AutomationsService extends ChangeNotifier {
     if (!_runEndpointMissing) {
       try {
         final resp = await http
-            .post(Uri.parse('${config.baseUrl}/automations/${a.id}/run'))
+            .post(Uri.parse('${config.baseUrl}/automations/${a.id}/run'), headers: ServerConfig.tokenHeaders)
             .timeout(_timeout);
         if (resp.statusCode == 404) {
           _runEndpointMissing = true;
@@ -419,7 +418,7 @@ class AutomationsService extends ChangeNotifier {
               .post(
                 Uri.parse(
                     '${config.baseUrl}/devices/${Uri.encodeComponent(button.sensorId)}/simulate-button'),
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
                 body: jsonEncode({
                   'key': button.sensorValue,
                   if (button.sensorOutlet != null)
@@ -465,7 +464,7 @@ class AutomationsService extends ChangeNotifier {
               .post(
                 Uri.parse(
                     '${config.baseUrl}/hue/scenes/${Uri.encodeComponent(sid)}/recall'),
-                headers: {'Content-Type': 'application/json'},
+                headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
                 body: jsonEncode({'smart': a.sourceSmart}),
               )
               .timeout(_timeout);
@@ -531,7 +530,7 @@ class AutomationsService extends ChangeNotifier {
         .put(
           Uri.parse(
               '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/state'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
           body: jsonEncode(state),
         )
         .timeout(_timeout);
@@ -577,7 +576,7 @@ class AutomationsService extends ChangeNotifier {
     } else {
       // toggle: GET previo y PUT del inverso.
       final resp = await http
-          .get(Uri.parse('${config.baseUrl}/config/alarm-armed'))
+          .get(Uri.parse('${config.baseUrl}/config/alarm-armed'), headers: ServerConfig.tokenHeaders)
           .timeout(_timeout);
       final current =
           resp.statusCode == 200 && jsonDecode(resp.body)['armed'] == true;
@@ -586,7 +585,7 @@ class AutomationsService extends ChangeNotifier {
     await http
         .put(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
           body: jsonEncode({'armed': target}),
         )
         .timeout(_timeout);
@@ -595,7 +594,7 @@ class AutomationsService extends ChangeNotifier {
   Future<List<LightGroup>> _fetchGroups() async {
     try {
       final resp = await http
-          .get(Uri.parse('${config.baseUrl}/config/groups'))
+          .get(Uri.parse('${config.baseUrl}/config/groups'), headers: ServerConfig.tokenHeaders)
           .timeout(_timeout);
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);

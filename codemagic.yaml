@@ -86,6 +86,7 @@ workflows:
           flutter build ipa --release \
             --build-number="$BUILD_NUMBER" \
             --build-name="$BUILD_NAME" \
+            --dart-define=CCE_API_TOKEN="${CCE_API_TOKEN:-}" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
