@@ -866,12 +866,9 @@ class _Glass {
   static const double cardRadius = 18;
   static const Color cardFill = CceColors.neoBase;
   static const Color cardBorder = Color(0x12FFFFFF); // hairline sutil
-  static const Color cardShadow = Color(0x66000000); // legacy (no usado)
 
   // CHIPS / BOTONES neumórficos.
-  static const Color glassFill = CceColors.neoBase;
   static const Color glassBorder = Color(0x14FFFFFF);
-  static const Color glassBorderThin = Color(0x0DFFFFFF);
 }
 
 /// Botón circular neumórfico (raised) para los actions del AppBar

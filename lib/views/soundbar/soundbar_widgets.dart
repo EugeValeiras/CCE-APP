@@ -95,8 +95,6 @@ class _NeoPressable extends StatelessWidget {
     this.activeColor,
     this.radius = CceRadii.control,
     this.padding = const EdgeInsets.symmetric(vertical: 12),
-    this.haptic = true,
-    this.enabled = true,
   });
 
   final Widget child;
@@ -109,8 +107,8 @@ class _NeoPressable extends StatelessWidget {
   final Color? activeColor;
   final double radius;
   final EdgeInsetsGeometry padding;
-  final bool haptic;
-  final bool enabled;
+  final bool haptic = true;
+  final bool enabled = true;
 
   @override
   Widget build(BuildContext context) {
@@ -205,17 +203,14 @@ class _NeoWell extends StatelessWidget {
     required this.child,
     this.size,
     this.radius = CceRadii.control,
-    this.circle = false,
-    this.blur = 8,
-    this.offset = 3,
   });
 
   final Widget child;
   final double? size;
   final double radius;
-  final bool circle;
-  final double blur;
-  final double offset;
+  final bool circle = false;
+  final double blur = 8;
+  final double offset = 3;
 
   @override
   Widget build(BuildContext context) {

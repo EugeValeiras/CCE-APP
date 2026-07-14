@@ -705,7 +705,6 @@ class _RoundKey extends StatelessWidget {
     this.enabled = true,
     this.active = false,
     this.accent,
-    this.size = 52,
   });
 
   final String? svg;
@@ -715,7 +714,7 @@ class _RoundKey extends StatelessWidget {
   final bool enabled;
   final bool active;
   final Color? accent;
-  final double size;
+  final double size = 52;
 
   @override
   Widget build(BuildContext context) {

@@ -1,3 +1,8 @@
+// El subsistema de apertura (_buildUnlockSection / _UnlockButton y helpers)
+// queda a propósito en el archivo aunque no se monte hoy — ver el docstring de
+// LockScreen ("por si se reconecta"). Sin este ignore, el gate de CI
+// (flutter analyze) lo marcaría como código muerto y bloquearía el build.
+// ignore_for_file: unused_element, unused_element_parameter
 import 'dart:async';
 import 'dart:math' as math;
 
