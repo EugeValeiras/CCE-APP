@@ -309,9 +309,19 @@ class _CasaSplitState extends State<_CasaSplit> {
                 ? _selectedDevice!.substring('thermostat:'.length)
                 : null;
         if (_selectedDevice == 'tv') {
-          panel = TvScreen(service: widget.tv);
+          // INLINE en el panel derecho: mismo padding del header de clima que
+          // RoomPanel (24/4/24/4) para que no salte al alternar room ↔ TV/JBL.
+          panel = TvScreen(
+            service: widget.tv,
+            devices: widget.devices,
+            headerPadding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+          );
         } else if (_selectedDevice == 'jbl') {
-          panel = SoundbarScreen(service: widget.jbl);
+          panel = SoundbarScreen(
+            service: widget.jbl,
+            devices: widget.devices,
+            headerPadding: const EdgeInsets.fromLTRB(24, 4, 24, 4),
+          );
         } else if (thermostatId != null) {
           // Termostato INLINE en el panel derecho (igual que TV/JBL). Si el
           // device ya no existe, cae a "Toda la casa".

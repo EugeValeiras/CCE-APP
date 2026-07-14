@@ -422,11 +422,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             planId != null &&
             fp != null &&
             fp.jblPositions.containsKey(planId);
-        // Termostatos NO-primarios: el primario YA es ThermostatHeaderCard fijo
-        // arriba — relistarlo lo duplicaría. Los demás (hoy invisibles en la
-        // room) entran a la sección Devices como tiles.
-        final extraThermostats =
-            thermostats.length > 1 ? thermostats.sublist(1) : const <Device>[];
+        // TODOS los termostatos entran a la sección Devices como tiles
+        // (pedido del dueño v1.62): el primario aparece dos veces a propósito
+        // — como ThermostatHeaderCard fijo arriba Y como tile en la lista.
+        final extraThermostats = thermostats;
         final extraCount =
             extraThermostats.length + (hasTv ? 1 : 0) + (hasJbl ? 1 : 0);
         final onCount = lights.where((l) => l.state.on).length;
@@ -582,14 +581,16 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                               return TvDeviceTile(
                                   service: widget.tv!,
                                   size: TileSize.medium,
-                                  neo: true);
+                                  neo: true,
+                                  devices: service);
                             }
                             j -= 1;
                           }
                           return JblDeviceTile(
                               service: widget.jbl!,
                               size: TileSize.medium,
-                              neo: true);
+                              neo: true,
+                              devices: service);
                         },
                         childCount: sensors.length + extraCount,
                       ),

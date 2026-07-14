@@ -23,8 +23,9 @@ class TemperatureSummaryCard extends StatelessWidget {
   final String? selectedSensorId;
 
   /// OPT-IN: cuando != null la card se vuelve tappable (abre el selector de
-  /// termómetros) y muestra un chevron de afordancia. Default null ⇒ render y
-  /// comportamiento idénticos al actual.
+  /// termómetros). Sin afordancia visual (el chevron se quitó a pedido del
+  /// dueño); el label con el nombre del termómetro sigue indicando "cuál veo".
+  /// Default null ⇒ render y comportamiento idénticos al actual.
   final VoidCallback? onTap;
   const TemperatureSummaryCard({
     super.key,
@@ -78,7 +79,7 @@ class TemperatureSummaryCard extends StatelessWidget {
 
     // Card seleccionable: hay handler de tap Y más de un termómetro entre los
     // que elegir. Con un solo sensor el tap no aportaría nada → la card queda
-    // estática (sin chevron) y el render es el histórico.
+    // estática y el render es el histórico.
     final canPick = onTap != null && tempSensors.length > 1;
     // Cuando es seleccionable, el label de temperatura pasa a ser el NOMBRE del
     // termómetro elegido (feedback de "cuál estoy viendo"); si no, "Temperatura".
@@ -135,17 +136,6 @@ class TemperatureSummaryCard extends StatelessWidget {
                   neo: neo,
                 ),
               ),
-            // Afordancia de "tocá para cambiar": chevron tenue a la derecha.
-            // Solo cuando la card es seleccionable (>1 termómetro).
-            if (canPick) ...[
-              const SizedBox(width: 8),
-              CceIcon(
-                CceIcons.chevronDown,
-                size: 18,
-                color: CceColors.textSecondary,
-                emboss: false,
-              ),
-            ],
           ],
         ),
       ),

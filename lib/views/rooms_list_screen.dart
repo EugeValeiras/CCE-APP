@@ -243,15 +243,19 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                           const SizedBox(height: 10),
                           if (widget.tv != null)
                             RepaintBoundary(
-                              child:
-                                  TvHomeCard(service: widget.tv!, neo: true),
+                              child: TvHomeCard(
+                                  service: widget.tv!,
+                                  neo: true,
+                                  devices: service),
                             ),
                           if (widget.tv != null && widget.jbl != null)
                             const SizedBox(height: 12),
                           if (widget.jbl != null)
                             RepaintBoundary(
                               child: SoundbarHomeCard(
-                                  service: widget.jbl!, neo: true),
+                                  service: widget.jbl!,
+                                  neo: true,
+                                  devices: service),
                             ),
                           if ((widget.tv != null || widget.jbl != null) &&
                               thermostat != null)

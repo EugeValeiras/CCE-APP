@@ -167,13 +167,32 @@ class _RoomCardState extends State<RoomCard> {
     final Color embHi = CceEmboss.highlight.color;
     final Color embSh = CceEmboss.shadow.color;
 
-    // Subtítulo de estado (como la card del JBL): override > estado on/off.
-    // SIN cantidad (pedido del dueño): el "cuántas" ya no se muestra en la
-    // card — el conteo con cifras sigue solo en el subtitleOverride de
-    // "Toda la casa" (sidebar tablet).
-    final lt = widget.lightsTotal;
+    // Subtítulo de estado (pedido del dueño v1.62): SIN "Encendido/Apagado"
+    // (ni "Sin luces") — los dots solos comunican el estado. Con EXACTAMENTE
+    // UN dot activo se muestra su acción como texto; con 0 o 2+ dots, ''
+    // (el Text vacío conserva el line-height del caption para que el título
+    // no se recentre al cambiar el estado). El subtitleOverride de "Toda la
+    // casa" (sidebar tablet) sigue ganando y se muestra tal cual.
+    final activeDots = (widget.contactOpen ? 1 : 0) +
+        (widget.motion ? 1 : 0) +
+        (widget.anyOn ? 1 : 0);
     final subtitle = widget.subtitleOverride ??
-        (lt == 0 ? 'Sin luces' : (widget.anyOn ? 'Encendido' : 'Apagado'));
+        (activeDots == 1
+            ? (widget.contactOpen
+                ? 'Puerta abierta'
+                : (widget.motion ? 'Movimiento detectado' : 'Luz encendida'))
+            : '');
+    // El texto de acción única lleva el MISMO acento que su dot (naranja
+    // contact / azul motion / amarillo amberHi): es la misma "chispa" puntual
+    // permitida por el manual neumórfico — la superficie y el título no se
+    // tiñen. El subtitleOverride ("Toda la casa") y el string vacío quedan
+    // en textSecondary.
+    final Color subtitleColor =
+        (widget.subtitleOverride == null && activeDots == 1)
+            ? (widget.contactOpen
+                ? CceColors.contact
+                : (widget.motion ? CceColors.motion : CceColors.amberHi))
+            : CceColors.textSecondary;
 
     final headerRow = Row(
       children: [
@@ -253,7 +272,7 @@ class _RoomCardState extends State<RoomCard> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: CceText.caption.copyWith(
-                        color: CceColors.textSecondary,
+                        color: subtitleColor,
                       ),
                     ),
                   ),

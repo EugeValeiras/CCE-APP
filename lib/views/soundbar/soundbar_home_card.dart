@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/devices_service.dart';
 import '../../services/jbl_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -21,11 +22,16 @@ class SoundbarHomeCard extends StatefulWidget {
   /// Si se provee, al tocar la card se llama esto EN VEZ de pushear la pantalla
   /// (en tablet el control se muestra inline en el panel derecho).
   final VoidCallback? onOpen;
+
+  /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
+  /// solo escucha a su JblService). null ⇒ la pantalla sin header.
+  final DevicesService? devices;
   const SoundbarHomeCard({
     super.key,
     required this.service,
     this.neo = false,
     this.onOpen,
+    this.devices,
   });
 
   @override
@@ -71,7 +77,8 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
               widget.onOpen!();
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => SoundbarScreen(service: jbl),
+                builder: (_) =>
+                    SoundbarScreen(service: jbl, devices: widget.devices),
               ));
             }
           },

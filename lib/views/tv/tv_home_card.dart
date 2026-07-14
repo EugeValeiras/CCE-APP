@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/devices_service.dart';
 import '../../services/tv_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -23,11 +24,16 @@ class TvHomeCard extends StatefulWidget {
   /// (en tablet el control se muestra inline en el panel derecho, no full-screen
   /// — la tablet no tiene swipe-back para volver).
   final VoidCallback? onOpen;
+
+  /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
+  /// solo escucha a su TvService). null ⇒ la pantalla sin header.
+  final DevicesService? devices;
   const TvHomeCard({
     super.key,
     required this.service,
     this.neo = false,
     this.onOpen,
+    this.devices,
   });
 
   @override
@@ -78,7 +84,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
               widget.onOpen!();
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TvScreen(service: tv),
+                builder: (_) => TvScreen(service: tv, devices: widget.devices),
               ));
             }
           },

@@ -11,8 +11,8 @@ import 'temperature_summary_card.dart';
 /// Con [room] == null el scope es TODA LA CASA (hero del tablet) y persiste
 /// en la MISMA key que el hero del phone (`home.tempSensorId`): un solo
 /// termómetro elegido para ambos form factors.
-/// La card resuelve sola el resto: >1 sensor → tappable con chevron (abre el
-/// picker filtrado a la room), 1 sensor → estática, 0 → se auto-oculta.
+/// La card resuelve sola el resto: >1 sensor → tappable (abre el picker
+/// filtrado a la room), 1 sensor → estática, 0 → se auto-oculta.
 class RoomTemperatureHeader extends StatefulWidget {
   final DevicesService service;
   final RoomRef? room;

@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../models/room_ref.dart';
 import '../../models/tv_status.dart';
+import '../../services/devices_service.dart';
 import '../../services/tv_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../widgets/room_temperature_header.dart';
 import 'tv_app_logos.dart';
 
 /// Pantalla completa del Samsung TV: SIMULA EL CONTROL REMOTO real del usuario
@@ -29,10 +32,26 @@ import 'tv_app_logos.dart';
 /// polling; esta pantalla NO dispone el service ni arranca polling: solo hace un
 /// refresh de cortesía one-shot en initState (mismo patrón que SoundbarScreen).
 class TvScreen extends StatefulWidget {
-  const TvScreen({super.key, required this.service});
+  const TvScreen({
+    super.key,
+    required this.service,
+    this.devices,
+    this.headerPadding = const EdgeInsets.fromLTRB(16, 8, 16, 4),
+  });
 
   /// El shell lo crea/dispone; la screen NO lo dispone.
   final TvService service;
+
+  /// OPCIONAL: habilita el header de clima de la room del TV (resuelta por
+  /// config: samsungTvPositions → plano → RoomRef; misma persistencia por
+  /// room que la pantalla de la room). null (call-site sin DevicesService a
+  /// mano) ⇒ sin header, degradación segura.
+  final DevicesService? devices;
+
+  /// Padding del header de clima. Default = ritmo phone/room_detail
+  /// (16/8/16/4); el call-site INLINE del panel derecho de tablet pasa
+  /// 24/4/24/4 para no saltar respecto del header de RoomPanel.
+  final EdgeInsets headerPadding;
 
   @override
   State<TvScreen> createState() => _TvScreenState();
@@ -58,12 +77,59 @@ class _TvScreenState extends State<TvScreen> {
       backgroundColor: CceColors.bg,
       // Sin AppBar: control full-screen. Se vuelve con el swipe iOS.
       body: SafeArea(
-        child: AnimatedBuilder(
-          animation: service,
-          builder: (context, _) => _buildBody(context, service),
+        child: Column(
+          children: [
+            // Header de clima de la room del TV (config-driven, sin room ⇒ no
+            // aparece). Escucha a DevicesService con su PROPIO ListenableBuilder:
+            // esta pantalla solo escucha a TvService y sin esto la temperatura
+            // quedaría congelada. El FittedBox del remote absorbe el alto que
+            // el header le resta al cuerpo.
+            if (widget.devices != null)
+              ListenableBuilder(
+                listenable: widget.devices!,
+                builder: (context, _) {
+                  final devices = widget.devices!;
+                  final room = _resolveRoom(devices);
+                  if (room == null) return const SizedBox.shrink();
+                  return Padding(
+                    // Ritmo del call-site (default 16/8/16/4 como las rooms
+                    // phone; inline en tablet el shell pasa 24/4/24/4); el
+                    // body del remote conserva su padding angosto propio.
+                    padding: widget.headerPadding,
+                    child: RoomTemperatureHeader(
+                      service: devices,
+                      room: room,
+                      compact: true,
+                      neo: true,
+                    ),
+                  );
+                },
+              ),
+            Expanded(
+              child: AnimatedBuilder(
+                animation: service,
+                builder: (context, _) => _buildBody(context, service),
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  /// Room del TV derivada de la config (dirección device→room, inversa del
+  /// lookup de room_detail_screen): primera room de plano cuyo planId tiene
+  /// posicionado el TV en floorPlans.tvPositions. Se resuelve EN CADA build
+  /// (service.rooms regenera los RoomRef en cada notify — no cachear). null si
+  /// la config no lo posiciona o el plano no genera room visible ⇒ sin header.
+  static RoomRef? _resolveRoom(DevicesService devices) {
+    final fp = devices.floorPlans;
+    if (fp == null || fp.tvPositions.isEmpty) return null;
+    for (final room in devices.rooms) {
+      final planId = room.planId;
+      if (planId != null && fp.tvPositions.containsKey(planId)) return room;
+    }
+    return null;
   }
 
   Widget _buildBody(BuildContext context, TvService service) {
