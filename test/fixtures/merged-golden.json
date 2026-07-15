@@ -1,0 +1,1593 @@
+[
+  {
+    "id": "dev_light_1",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue color spot",
+    "modelid": "LCG006",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": true,
+      "bri": 254,
+      "hue": 8409,
+      "sat": 141,
+      "ct": 367,
+      "colormode": "ct",
+      "xy": [
+        0.4578,
+        0.41
+      ],
+      "reachable": false
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_1",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": false,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_1"
+  },
+  {
+    "id": "dev_light_2",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue color lamp",
+    "modelid": "LCA006",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": true,
+      "bri": 254,
+      "hue": 8418,
+      "sat": 140,
+      "ct": 366,
+      "colormode": "ct",
+      "xy": [
+        0.4572,
+        0.4099
+      ],
+      "reachable": false
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_2",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": false,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_2"
+  },
+  {
+    "id": "dev_sensor_1",
+    "name": "Sensor",
+    "type": "eWeLink Motion Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-03P",
+    "modelid": "SNZB-03P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "motion"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "motion": false,
+      "brightness": "darker",
+      "trigTime": 1784082816697
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_1",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "motion"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_1"
+  },
+  {
+    "id": "dev_light_3",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue color spot",
+    "modelid": "LCG006",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": true,
+      "bri": 254,
+      "hue": 8409,
+      "sat": 141,
+      "ct": 367,
+      "colormode": "ct",
+      "xy": [
+        0.4578,
+        0.41
+      ],
+      "reachable": false
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_3",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": false,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_3"
+  },
+  {
+    "id": "dev_sensor_2",
+    "name": "Sensor",
+    "type": "eWeLink Motion Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-03P",
+    "modelid": "SNZB-03P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "motion"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "motion": false,
+      "brightness": "darker",
+      "trigTime": 1784083667798
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_2",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "motion"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_2"
+  },
+  {
+    "id": "dev_sensor_3",
+    "name": "Sensor",
+    "type": "eWeLink Motion Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-03P",
+    "modelid": "SNZB-03P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "motion"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "motion": false,
+      "brightness": "darker",
+      "trigTime": 1784083434436
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_3",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "motion"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_3"
+  },
+  {
+    "id": "dev_light_4",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue Go",
+    "modelid": "7602031J6",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 62,
+      "hue": 51239,
+      "sat": 160,
+      "ct": 154,
+      "colormode": "xy",
+      "xy": [
+        0.3133,
+        0.2062
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_4",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_4"
+  },
+  {
+    "id": "dev_light_5",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue color spot",
+    "modelid": "LCG006",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": true,
+      "bri": 254,
+      "hue": 8409,
+      "sat": 141,
+      "ct": 367,
+      "colormode": "ct",
+      "xy": [
+        0.4578,
+        0.41
+      ],
+      "reachable": false
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_5",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": false,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_5"
+  },
+  {
+    "id": "dev_light_6",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue Go",
+    "modelid": "7602031J6",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 62,
+      "hue": 59982,
+      "sat": 72,
+      "ct": 310,
+      "colormode": "xy",
+      "xy": [
+        0.4226,
+        0.3351
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_6",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_6"
+  },
+  {
+    "id": "dev_device_1",
+    "name": "Dispositivo",
+    "type": "Hue Switch",
+    "manufacturer": "Signify Netherlands B.V.",
+    "productname": "Hue tap dial switch",
+    "modelid": "RDM002",
+    "capabilities": [
+      "switch",
+      "sensor"
+    ],
+    "state": {
+      "on": true,
+      "bri": 0,
+      "reachable": true
+    },
+    "sensor": {
+      "outlets": 4,
+      "battery": "100"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_device_1",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_device_1"
+  },
+  {
+    "id": "dev_sensor_4",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1783775127569
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_4",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_4"
+  },
+  {
+    "id": "dev_light_7",
+    "name": "Luz",
+    "type": "eWeLink Button",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-01P",
+    "modelid": "SNZB-01P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "button"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "lastKey": 0,
+      "outlets": 1,
+      "trigTime": 1782828600601
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_7",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "button"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_7"
+  },
+  {
+    "id": "dev_sensor_5",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1783775127630
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_5",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_5"
+  },
+  {
+    "id": "dev_sensor_6",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1783775127622
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_6",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_6"
+  },
+  {
+    "id": "dev_sensor_7",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1784065473408
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_7",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_7"
+  },
+  {
+    "id": "dev_sensor_8",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1783775127600
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_8",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_8"
+  },
+  {
+    "id": "dev_sensor_9",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1784051874256
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_9",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_9"
+  },
+  {
+    "id": "dev_sensor_10",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1783775127547
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_10",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_10"
+  },
+  {
+    "id": "dev_light_8",
+    "name": "Luz",
+    "type": "eWeLink Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-02D",
+    "modelid": "SNZB-02D",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "temperature": 25.7,
+      "humidity": 37,
+      "battery": "70",
+      "trigTime": "1784083062490"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_8",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_8"
+  },
+  {
+    "id": "dev_light_9",
+    "name": "Luz",
+    "type": "eWeLink Button",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-01M",
+    "modelid": "SNZB-01M",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "button"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "lastKey": 0,
+      "outlet": 3,
+      "outlets": 4,
+      "trigTime": 1781973325000
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_9",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "button"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_9"
+  },
+  {
+    "id": "dev_sensor_11",
+    "name": "Sensor",
+    "type": "eWeLink Contact Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-04P",
+    "modelid": "SNZB-04P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "contact"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "contact": false,
+      "trigTime": 1784057951045
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_11",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "contact"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_11"
+  },
+  {
+    "id": "dev_light_10",
+    "name": "Luz",
+    "type": "eWeLink Button",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-01P",
+    "modelid": "SNZB-01P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "button"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "lastKey": 1,
+      "outlets": 1,
+      "trigTime": 1782822024821
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_10",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "button"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_10"
+  },
+  {
+    "id": "dev_sensor_12",
+    "name": "Sensor",
+    "type": "eWeLink Motion Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-03P",
+    "modelid": "SNZB-03P",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor",
+      "motion"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "100",
+      "motion": false,
+      "brightness": "darker",
+      "trigTime": 1784083581369
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_sensor_12",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor",
+          "motion"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_sensor_12"
+  },
+  {
+    "id": "dev_device_2",
+    "name": "Dispositivo",
+    "type": "alarm",
+    "manufacturer": "CCE",
+    "modelid": "CCE Alarm",
+    "capabilities": [
+      "alarm"
+    ],
+    "state": {
+      "on": false,
+      "bri": 0,
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_device_2",
+        "provider": "alarm",
+        "identifier": null,
+        "capabilities": [
+          "alarm"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 100
+      }
+    ],
+    "preferredBindingId": "bind_device_2"
+  },
+  {
+    "id": "dev_light_11",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 51,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_11",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_11"
+  },
+  {
+    "id": "dev_light_12",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 203,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_12",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_12"
+  },
+  {
+    "id": "dev_light_13",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 203,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_13",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_13"
+  },
+  {
+    "id": "dev_light_14",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 51,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_14",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_14"
+  },
+  {
+    "id": "dev_light_15",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 203,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_15",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_15"
+  },
+  {
+    "id": "dev_light_16",
+    "name": "Luz",
+    "type": "Extended color light",
+    "manufacturer": "_TZ3210_ffuna0nr",
+    "productname": "Extended color light",
+    "modelid": "TS0505B",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "color_temperature",
+      "color_hsv"
+    ],
+    "state": {
+      "on": false,
+      "bri": 254,
+      "hue": 14988,
+      "sat": 203,
+      "ct": 447,
+      "colormode": "ct",
+      "xy": [
+        0,
+        0
+      ],
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_16",
+        "provider": "hue",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "color_temperature",
+          "color_hsv"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 30
+      }
+    ],
+    "preferredBindingId": "bind_light_16"
+  },
+  {
+    "id": "dev_jbl",
+    "name": "Barra de sonido",
+    "type": "speaker",
+    "manufacturer": "JBL",
+    "modelid": "JBL Bar",
+    "capabilities": [
+      "switch",
+      "volume"
+    ],
+    "state": {
+      "on": false,
+      "bri": 0,
+      "reachable": true,
+      "volume": 51,
+      "muted": false
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_jbl_1",
+        "provider": "jbl",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "volume"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 80
+      }
+    ],
+    "preferredBindingId": "bind_jbl_1"
+  },
+  {
+    "id": "dev_tv",
+    "name": "TV",
+    "type": "tv",
+    "manufacturer": "Samsung",
+    "modelid": "Samsung TV",
+    "capabilities": [
+      "switch",
+      "volume",
+      "media_playback",
+      "input_select",
+      "channel",
+      "app_launcher"
+    ],
+    "state": {
+      "on": false,
+      "bri": 0,
+      "reachable": true,
+      "volume": 0,
+      "muted": false,
+      "mediaApp": "com.samsung.tv.csfs"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_tv_1",
+        "provider": "tv",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "volume",
+          "media_playback",
+          "input_select",
+          "channel",
+          "app_launcher"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 80
+      }
+    ],
+    "preferredBindingId": "bind_tv_1"
+  },
+  {
+    "id": "dev_thermostat_1",
+    "name": "Termostato",
+    "type": "Tuya Thermostat",
+    "manufacturer": "Tuya",
+    "productname": "Thermostat",
+    "modelid": "9u1pognermrqhicq",
+    "capabilities": [
+      "switch",
+      "thermostat"
+    ],
+    "state": {
+      "on": true,
+      "bri": 1,
+      "reachable": true,
+      "currentTemp": 22.8,
+      "targetTemp": 22,
+      "tempMode": "Manual",
+      "systemMode": "heat",
+      "minTemp": 5,
+      "maxTemp": 45
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_thermostat_1",
+        "provider": "tuya",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "thermostat"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 50
+      }
+    ],
+    "preferredBindingId": "bind_thermostat_1"
+  },
+  {
+    "id": "dev_light_17",
+    "name": "Luz",
+    "type": "Tuya Light",
+    "manufacturer": "Tuya",
+    "productname": "Smart Hexagon Light: Desktop KA-FW03",
+    "modelid": "f8hcheiefv1nhejd",
+    "capabilities": [
+      "switch",
+      "brightness"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_17",
+        "provider": "tuya",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 50
+      }
+    ],
+    "preferredBindingId": "bind_light_17"
+  },
+  {
+    "id": "dev_light_18",
+    "name": "Luz",
+    "type": "Tuya Light",
+    "manufacturer": "Tuya",
+    "productname": "Smart Hexagon Light: Desktop KA-FW03",
+    "modelid": "f8hcheiefv1nhejd",
+    "capabilities": [
+      "switch",
+      "brightness"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_18",
+        "provider": "tuya",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 50
+      }
+    ],
+    "preferredBindingId": "bind_light_18"
+  },
+  {
+    "id": "dev_light_19",
+    "name": "Luz",
+    "type": "eWeLink Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-02D",
+    "modelid": "SNZB-02D",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "temperature": 19.9,
+      "humidity": 46,
+      "battery": "100",
+      "trigTime": "1784077035263"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_19",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_19"
+  },
+  {
+    "id": "dev_light_20",
+    "name": "Luz",
+    "type": "eWeLink Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-02D",
+    "modelid": "SNZB-02D",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "temperature": 24.2,
+      "humidity": 38,
+      "battery": "100",
+      "trigTime": "1784083526394"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_20",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_20"
+  },
+  {
+    "id": "dev_light_21",
+    "name": "Luz",
+    "type": "eWeLink Sensor",
+    "manufacturer": "SONOFF",
+    "productname": "SNZB-02D",
+    "modelid": "SNZB-02D",
+    "capabilities": [
+      "switch",
+      "brightness",
+      "sensor"
+    ],
+    "state": {
+      "on": false,
+      "bri": 1,
+      "reachable": true
+    },
+    "sensor": {
+      "temperature": 23.5,
+      "humidity": 37,
+      "battery": "100",
+      "trigTime": "1784083640391"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_light_21",
+        "provider": "ewelink",
+        "identifier": null,
+        "capabilities": [
+          "switch",
+          "brightness",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 40
+      }
+    ],
+    "preferredBindingId": "bind_light_21"
+  },
+  {
+    "id": "dev_lock_1",
+    "name": "Cerradura",
+    "type": "CS-DL05-R101-WBCP-GR lock",
+    "manufacturer": "EZVIZ",
+    "productname": "CS-DL05-R101-WBCP-GR",
+    "modelid": "CS-DL05-R101-WBCP-GR",
+    "capabilities": [
+      "lock",
+      "sensor"
+    ],
+    "state": {
+      "on": true,
+      "bri": 0,
+      "reachable": true
+    },
+    "sensor": {
+      "battery": "63",
+      "lockEventAt": 1784050982202,
+      "lockEventKind": "unlock",
+      "lockActor": "Persona"
+    },
+    "bindings": [
+      {
+        "bindingId": "bind_lock_1",
+        "provider": "ezviz",
+        "identifier": null,
+        "capabilities": [
+          "lock",
+          "sensor"
+        ],
+        "available": true,
+        "lastSeen": 0,
+        "priority": 60
+      }
+    ],
+    "preferredBindingId": "bind_lock_1"
+  }
+]

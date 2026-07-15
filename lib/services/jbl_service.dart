@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 import '../models/jbl_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
+import 'socket_service.dart';
+
+/// Id canónico del soundbar en /merged (F8/F13): emite device:state-changed
+/// al socket con deltas parciales (on/volume/muted/mediaInput).
+const String kJblDeviceId = 'dev_jbl';
 
 /// Tope del control de volumen en la UI: 0-31, step 1. Es la escala de DISPLAY
 /// de la barra (lo que muestra el equipo); la API expone/acepta el volumen en
@@ -25,11 +30,13 @@ abstract final class JblRemoteKeys {
   static const String surround = 'surround';
 }
 
-/// Estado del soundbar JBL con polling controlable (5s). El soundbar NO emite
-/// por socket: el estado se obtiene por polling de getJblStatus.
+/// Estado del soundbar JBL con PUSH por socket (F13). dev_jbl emite
+/// device:state-changed con deltas parciales; el service hace un SEED inicial
+/// (getJblStatus) y luego escucha el socket — sin Timer.periodic.
 ///
-/// El shell (tablet/phone) posee el ciclo de polling: arranca/para según la
-/// tab visible. La screen NO arranca polling en su initState.
+/// El shell (tablet/phone) posee el ciclo: [startPolling] hace el seed +
+/// suscripción, [stopPolling] cancela la suscripción (nombres conservados para
+/// no tocar los call-sites). La screen NO arranca nada en su initState.
 ///
 /// Separación `_error` vs `online:false`:
 ///  - `_error != null` ⟺ excepción real del propio getJblStatus (red caída /
@@ -38,8 +45,11 @@ abstract final class JblRemoteKeys {
 ///    está en standby/inalcanzable a nivel UPnP.
 class JblService extends ChangeNotifier {
   final ApiService _api;
+  final SocketService _socket;
 
-  JblService({required ServerConfig config}) : _api = ApiService(config);
+  JblService({required ServerConfig config, required SocketService socket})
+      : _api = ApiService(config),
+        _socket = socket;
 
   JblStatus? _status;
   List<JblRadio> _radios = const [];
@@ -48,8 +58,9 @@ class JblService extends ChangeNotifier {
 
   bool _disposed = false;
   bool _refreshing = false;
-  Timer? _pollTimer;
-  static const _pollInterval = Duration(seconds: 5);
+  StreamSubscription<DeviceStateEvent>? _sub;
+  StreamSubscription<bool>? _connSub;
+  bool _wasConnected = false;
 
   JblStatus? get status => _status;
   List<JblRadio> get radios => _radios;
@@ -108,19 +119,64 @@ class JblService extends ChangeNotifier {
     );
   }
 
-  // ── Polling ────────────────────────────────────────────────────────────────
+  // ── Seed + push por socket (F13, reemplaza el poll de 5s) ────────────────────
 
-  /// Idempotente: cancela un timer previo, hace un refresh inmediato y luego
-  /// poll cada _pollInterval.
+  /// Idempotente: cancela una suscripción previa, hace un SEED inmediato
+  /// (getJblStatus — necesario porque canCommand depende de `online` y el
+  /// socket sólo manda deltas parciales) y se suscribe a device:state-changed.
   void startPolling() {
-    _pollTimer?.cancel();
+    _sub?.cancel();
+    _connSub?.cancel();
     refresh();
-    _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
+    _sub = _socket.onDeviceChanged.listen(_onDeviceEvent);
+    // Re-seed en reconexión: los device:state-changed emitidos durante el gap
+    // NO se replayean, así que sin esto el estado AV queda congelado tras un
+    // background→foreground (frecuente en iOS). Espejo de DevicesService.
+    _connSub = _socket.onConnectionChanged.listen((connected) {
+      if (connected && !_wasConnected) refresh();
+      _wasConnected = connected;
+    });
   }
 
   void stopPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = null;
+    _sub?.cancel();
+    _sub = null;
+    _connSub?.cancel();
+    _connSub = null;
+  }
+
+  /// Aplica un delta parcial de dev_jbl re-armando el estado campo por campo con
+  /// fallback al previo (copyWith no puede volver un campo a null; el backend
+  /// OMITE del delta los campos que no cambian, así que el fallback es correcto).
+  void _onDeviceEvent(DeviceStateEvent ev) {
+    if (ev.deviceId != kJblDeviceId) return;
+    final s = _status;
+    if (s == null) return; // el seed aún no llegó; refresh() reconciliará
+    final st = ev.state;
+    if (st == null || st.isEmpty) return;
+    // Volumen del socket viene 0-100 (UPnP nativo) → reescala a la escala DISPLAY
+    // de la barra igual que el backend (volume-scale.ts: round(upnp/3), factor 3
+    // MEDIDO — NO 100/kJblVolMax; UPnP 33 ⇒ display 11). Con *31/100 el push
+    // mostraba un número distinto al seed REST (toDeviceVolume) para el mismo vol.
+    final int? nextVolume = !st.containsKey('volume')
+        ? s.volume
+        : (st['volume'] == null
+            ? s.volume
+            : ((st['volume'] as num) / 3).round().clamp(0, kJblVolMax));
+    _status = JblStatus(
+      online: st.containsKey('reachable') ? st['reachable'] != false : s.online,
+      ip: s.ip,
+      name: s.name,
+      volume: nextVolume,
+      muted: st.containsKey('muted') && st['muted'] is bool
+          ? st['muted'] as bool
+          : s.muted,
+      power: st.containsKey('on') ? (st['on'] == true ? 'on' : 'off') : s.power,
+      source: st.containsKey('mediaInput') ? st['mediaInput'] as String? : s.source,
+      transport: s.transport,
+      nightMode: s.nightMode,
+    );
+    _safeNotify();
   }
 
   // ── Lectura ──────────────────────────────────────────────────────────────
@@ -345,7 +401,8 @@ class JblService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _pollTimer?.cancel();
+    _sub?.cancel();
+    _connSub?.cancel();
     super.dispose();
   }
 }

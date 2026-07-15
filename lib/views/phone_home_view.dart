@@ -42,11 +42,11 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     _socket.connect(widget.config);
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
-    _jbl = JblService(config: widget.config);
-    _tv = TvService(config: widget.config);
+    _jbl = JblService(config: widget.config, socket: _socket);
+    _tv = TvService(config: widget.config, socket: _socket);
     // El home muestra las cards del soundbar y el TV y está siempre vivo →
-    // arrancamos el polling una sola vez para que las cards se mantengan frescas
-    // toda la sesión.
+    // seed + suscripción al socket una sola vez (F13: sin timer; dev_jbl/dev_tv
+    // empujan device:state-changed) para que las cards se mantengan frescas.
     _jbl.startPolling();
     _tv.startPolling();
   }

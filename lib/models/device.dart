@@ -17,6 +17,16 @@ class DeviceState {
   final double? minTemp; // mínimo del setpoint (DP113)
   final double? maxTemp; // máximo del setpoint (DP112)
 
+  // ── Bloque MEDIA (F8/F13) — dispositivos AV: JBL Bar (dev_jbl), Samsung TV
+  // (dev_tv). Escala del backend: volume 0-100 (NO 0-31; la vista JBL reescala).
+  // Se OMITEN (null) si el device no reporta un valor confiable.
+  final int? volume; // 0-100 (escala backend/normalizada)
+  final bool? muted;
+  final String? mediaInput; // fuente/entrada activa (JBL source, TV input)
+  final String? mediaState; // 'playing' | 'paused' | 'stopped'
+  final String? mediaApp; // app activa (TV)
+  final String? mediaChannel; // canal actual (TV)
+
   DeviceState({
     this.on = false,
     this.bri = 0,
@@ -33,6 +43,12 @@ class DeviceState {
     this.systemMode,
     this.minTemp,
     this.maxTemp,
+    this.volume,
+    this.muted,
+    this.mediaInput,
+    this.mediaState,
+    this.mediaApp,
+    this.mediaChannel,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -54,6 +70,12 @@ class DeviceState {
       systemMode: json['systemMode'] as String?,
       minTemp: (json['minTemp'] as num?)?.toDouble(),
       maxTemp: (json['maxTemp'] as num?)?.toDouble(),
+      volume: (json['volume'] as num?)?.toInt(),
+      muted: json['muted'] is bool ? json['muted'] as bool : null,
+      mediaInput: json['mediaInput'] as String?,
+      mediaState: json['mediaState'] as String?,
+      mediaApp: json['mediaApp'] as String?,
+      mediaChannel: json['mediaChannel'] as String?,
     );
   }
 
@@ -77,6 +99,12 @@ class DeviceState {
     String? systemMode,
     double? minTemp,
     double? maxTemp,
+    int? volume,
+    bool? muted,
+    String? mediaInput,
+    String? mediaState,
+    String? mediaApp,
+    String? mediaChannel,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -94,6 +122,12 @@ class DeviceState {
       systemMode: systemMode ?? this.systemMode,
       minTemp: minTemp ?? this.minTemp,
       maxTemp: maxTemp ?? this.maxTemp,
+      volume: volume ?? this.volume,
+      muted: muted ?? this.muted,
+      mediaInput: mediaInput ?? this.mediaInput,
+      mediaState: mediaState ?? this.mediaState,
+      mediaApp: mediaApp ?? this.mediaApp,
+      mediaChannel: mediaChannel ?? this.mediaChannel,
     );
   }
 }
@@ -213,9 +247,16 @@ class Device {
     return null;
   }
 
+  /// Dispositivo AV canónico (dev_jbl/dev_tv): capability 'volume' o
+  /// 'media_playback'. Su estado lo renderiza Jbl/TvService (control dedicado),
+  /// NO las grillas de luces/sensores — por eso DevicesService los excluye de
+  /// esos getters para que no aparezcan como tiles fantasma.
+  bool get isMediaDevice =>
+      capabilities.contains('volume') || capabilities.contains('media_playback');
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
-    if (isThermostat || isLock) return false;
+    if (isThermostat || isLock || isMediaDevice) return false;
     final t = type.toLowerCase();
     return t.contains('light') ||
         t.contains('bulb') ||

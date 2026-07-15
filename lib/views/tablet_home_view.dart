@@ -58,11 +58,11 @@ class _TabletHomeViewState extends State<TabletHomeView> {
     _socket.connect(widget.config);
     _devices = DevicesService(config: widget.config, socket: _socket);
     _devices.refresh();
-    _jbl = JblService(config: widget.config);
-    _tv = TvService(config: widget.config);
-    // Polling continuo (como el phone): las cards de TV/JBL viven ahora en la
-    // home (lista), así que el estado debe estar siempre fresco, no sólo cuando
-    // se abre su pantalla dedicada.
+    _jbl = JblService(config: widget.config, socket: _socket);
+    _tv = TvService(config: widget.config, socket: _socket);
+    // Seed + suscripción al socket (como el phone): las cards de TV/JBL viven en
+    // la home (lista), así que el estado debe estar siempre fresco. F13: sin
+    // timer; dev_jbl/dev_tv empujan device:state-changed.
     _jbl.startPolling();
     _tv.startPolling();
     _ui.load();

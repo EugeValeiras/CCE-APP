@@ -73,10 +73,13 @@ class DevicesService extends ChangeNotifier {
   // Listas visibles: excluyen devices marcados como hidden en backend.
   // _byId sigue con todo para lookups internos (WS, comandos sobre grupos, etc.).
   List<Device> get all => _byId.values.where((d) => !d.hidden).toList();
+  // dev_jbl/dev_tv ahora existen en /merged (F13) y entran a _byId para que el
+  // historial y los comandos genéricos los resuelvan; se EXCLUYEN de las listas
+  // de UI (su control lo renderiza Jbl/TvService), de ahí el !isMediaDevice.
   List<Device> get lights =>
-      all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat).toList();
+      all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat && !d.isMediaDevice).toList();
   List<Device> get sensors =>
-      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock).toList();
+      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice).toList();
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
   List<Device> get locks => all.where((d) => d.isLock).toList();
   FloorPlansData? get floorPlans => _floorPlans;

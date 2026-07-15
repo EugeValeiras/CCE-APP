@@ -169,7 +169,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _hasMore = true;
     });
     try {
-      final page = await _api.getEvents(limit: 150);
+      // DUP-5: cada cambio se persiste 2× (internal binding-level +
+      // websocket canónico). Filtramos channel=websocket para deduplicar: es el
+      // canal durable donde emitAndRecord graba device:state-changed,
+      // automation:executed y alarm:* (shape ya soportado por _RunKey/accepts).
+      // Sin esto la apertura de una puerta aparece 2 veces.
+      // NOTA (DUP-5): device-discovered se graba SOLO en channel='internal' (no
+      // tiene emitAndRecord websocket), así que con este filtro NO aparece en el
+      // historial. Es intencional; si se quisiera conservar habría que emitirlo
+      // también por websocket o dedupar por (eventName+globalId+ventana).
+      final page = await _api.getEvents(limit: 150, channel: 'websocket');
       if (!mounted) return;
       setState(() {
         _items.addAll(page.items);
@@ -187,7 +196,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (_loading || !_hasMore || _cursor == null) return;
     setState(() => _loading = true);
     try {
-      final page = await _api.getEvents(limit: 150, cursor: _cursor);
+      // Mismo canal que _refresh (DUP-5): dedup internal+websocket.
+      final page =
+          await _api.getEvents(limit: 150, cursor: _cursor, channel: 'websocket');
       if (!mounted) return;
       setState(() {
         _items.addAll(page.items);

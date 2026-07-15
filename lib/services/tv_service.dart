@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 import '../models/tv_status.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
+import 'socket_service.dart';
+
+/// Id canónico del TV en /merged (F8/F13): emite device:state-changed al socket
+/// con deltas parciales (on/volume/muted/mediaInput/mediaState/mediaApp/mediaChannel).
+const String kTvDeviceId = 'dev_tv';
 
 /// Tope del control de volumen del TV: 0-100, escala nativa de SmartThings/
 /// Tizen (a diferencia del JBL, acá NO hay reescalado de display).
@@ -45,12 +50,14 @@ abstract final class TvApps {
   static const String youtube = 'youtube';
 }
 
-/// Estado del Samsung TV con polling controlable (5s). El TV NO emite por
-/// socket: el estado se obtiene por polling de getTvStatus.
+/// Estado del Samsung TV con PUSH por socket (F13). dev_tv emite
+/// device:state-changed con deltas parciales; el service hace un SEED inicial
+/// (getTvStatus, que además trae inputs/modos/disabled que el socket NO emite) y
+/// luego escucha el socket — sin Timer.periodic.
 ///
-/// El shell (tablet/phone) posee el ciclo de polling: arranca/para según la
-/// tab/pantalla visible. La screen NO arranca polling en su initState (solo un
-/// refresh de cortesía one-shot).
+/// El shell (tablet/phone) posee el ciclo: [startPolling] hace el seed +
+/// suscripción, [stopPolling] cancela la suscripción (nombres conservados para
+/// no tocar los call-sites). La screen NO arranca nada en su initState.
 ///
 /// Separación `_error` vs `online:false` (idéntica a JblService):
 ///  - `_error != null` ⟺ excepción real del propio getTvStatus (red caída /
@@ -60,8 +67,11 @@ abstract final class TvApps {
 ///    responde). GET /tv/status NUNCA tira por TV inalcanzable.
 class TvService extends ChangeNotifier {
   final ApiService _api;
+  final SocketService _socket;
 
-  TvService({required ServerConfig config}) : _api = ApiService(config);
+  TvService({required ServerConfig config, required SocketService socket})
+      : _api = ApiService(config),
+        _socket = socket;
 
   TvStatus? _status;
   bool _loading = false;
@@ -69,8 +79,9 @@ class TvService extends ChangeNotifier {
 
   bool _disposed = false;
   bool _refreshing = false;
-  Timer? _pollTimer;
-  static const _pollInterval = Duration(seconds: 5);
+  StreamSubscription<DeviceStateEvent>? _sub;
+  StreamSubscription<bool>? _connSub;
+  bool _wasConnected = false;
 
   TvStatus? get status => _status;
   bool get loading => _loading;
@@ -110,19 +121,72 @@ class TvService extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  // ── Polling ────────────────────────────────────────────────────────────────
+  // ── Seed + push por socket (F13, reemplaza el poll de 5s) ────────────────────
 
-  /// Idempotente: cancela un timer previo, hace un refresh inmediato y luego
-  /// poll cada _pollInterval.
+  /// Idempotente: cancela una suscripción previa, hace un SEED inmediato
+  /// (getTvStatus — necesario porque canCommand depende de `online` y porque el
+  /// seed trae inputs/modos/disabled que el socket NO emite) y se suscribe a
+  /// device:state-changed.
   void startPolling() {
-    _pollTimer?.cancel();
+    _sub?.cancel();
+    _connSub?.cancel();
     refresh();
-    _pollTimer = Timer.periodic(_pollInterval, (_) => refresh());
+    _sub = _socket.onDeviceChanged.listen(_onDeviceEvent);
+    // Re-seed en reconexión: los device:state-changed emitidos durante el gap
+    // NO se replayean, así que sin esto el estado AV queda congelado tras un
+    // background→foreground (frecuente en iOS). Espejo de DevicesService.
+    _connSub = _socket.onConnectionChanged.listen((connected) {
+      if (connected && !_wasConnected) refresh();
+      _wasConnected = connected;
+    });
   }
 
   void stopPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = null;
+    _sub?.cancel();
+    _sub = null;
+    _connSub?.cancel();
+    _connSub = null;
+  }
+
+  /// Aplica un delta parcial de dev_tv: pisa SÓLO on/volume/muted/input/app/
+  /// playback/channel desde el socket y PRESERVA del estado previo los campos
+  /// ricos que device:state-changed NO emite (channelName, inputs[], comandos
+  /// soportados, modos de imagen/sonido, disabled[]) — ésos vienen del seed
+  /// GET /tv/status. Se re-arma campo por campo (copyWith no puede volver a
+  /// null; el backend OMITE del delta lo que no cambió → fallback correcto).
+  /// Volumen 0-100 passthrough (el TV NO reescala, a diferencia del JBL).
+  void _onDeviceEvent(DeviceStateEvent ev) {
+    if (ev.deviceId != kTvDeviceId) return;
+    final s = _status;
+    if (s == null) return; // el seed aún no llegó; refresh() reconciliará
+    final st = ev.state;
+    if (st == null || st.isEmpty) return;
+    _status = TvStatus(
+      online: st.containsKey('reachable') ? st['reachable'] != false : s.online,
+      power: st.containsKey('on') ? (st['on'] == true ? 'on' : 'off') : s.power,
+      // Guard de null igual que JBL: un delta con volume:null NO debe borrar el
+      // display previo (hoy el provider solo emite campos definidos, pero blinda
+      // ante cambios de contrato del socket).
+      volume: st['volume'] == null ? s.volume : (st['volume'] as num).toInt(),
+      muted: st.containsKey('muted') && st['muted'] is bool
+          ? st['muted'] as bool
+          : s.muted,
+      channel:
+          st.containsKey('mediaChannel') ? st['mediaChannel'] as String? : s.channel,
+      channelName: s.channelName,
+      input: st.containsKey('mediaInput') ? st['mediaInput'] as String? : s.input,
+      inputs: s.inputs,
+      app: st.containsKey('mediaApp') ? st['mediaApp'] as String? : s.app,
+      playback:
+          st.containsKey('mediaState') ? st['mediaState'] as String? : s.playback,
+      supportedPlaybackCommands: s.supportedPlaybackCommands,
+      pictureMode: s.pictureMode,
+      supportedPictureModes: s.supportedPictureModes,
+      soundMode: s.soundMode,
+      supportedSoundModes: s.supportedSoundModes,
+      disabled: s.disabled,
+    );
+    _safeNotify();
   }
 
   // ── Lectura ──────────────────────────────────────────────────────────────
@@ -499,7 +563,8 @@ class TvService extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _pollTimer?.cancel();
+    _sub?.cancel();
+    _connSub?.cancel();
     super.dispose();
   }
 }
