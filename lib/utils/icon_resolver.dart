@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/device.dart';
+import '../theme/mdi.dart';
 
 /// Resuelve el ícono de un device — del lightIcons configurado en el dashboard
 /// (nombre MDI, id `icons0:<prefix>:<name>` con SVG vendoreado, o emoji), o un
@@ -24,12 +24,12 @@ class IconResolver {
   }
 
   /// MDI por nombre: primero el mapa curado, luego el set COMPLETO de MDI
-  /// (MdiIcons.fromString) — así cualquier ícono mdi del dashboard resuelve.
+  /// (Mdi.byName, vendoreado) — así cualquier ícono mdi del dashboard resuelve.
   static IconData? _mdiByName(String name) {
     final n = _normalize(name);
     final mapped = _mdiMap[n];
     if (mapped != null) return mapped;
-    return MdiIcons.fromString(_kebabToCamel(n));
+    return Mdi.byName[n] ?? Mdi.byName[_kebabToCamel(n)];
   }
 
   /// Un id parece identificador de ícono (no emoji/texto) si es ascii kebab.
@@ -103,111 +103,111 @@ class IconResolver {
 
     // Sensors
     if (device.isContactSensor) {
-      return (device.sensor?.contact == true) ? MdiIcons.doorOpen : MdiIcons.door;
+      return (device.sensor?.contact == true) ? Mdi.doorOpen : Mdi.door;
     }
     if (device.isMotionSensor) {
-      return (device.sensor?.motion == true) ? MdiIcons.motionSensor : MdiIcons.motionSensorOff;
+      return (device.sensor?.motion == true) ? Mdi.motionSensor : Mdi.motionSensorOff;
     }
-    if (device.sensor?.temperature != null) return MdiIcons.thermometer;
-    if (device.sensor?.humidity != null) return MdiIcons.waterPercent;
+    if (device.sensor?.temperature != null) return Mdi.thermometer;
+    if (device.sensor?.humidity != null) return Mdi.waterPercent;
 
     // Switches / buttons
     if (t.contains('button') || t.contains('switch') || t.contains('remote') || n.contains('button')) {
-      return MdiIcons.gestureTapButton;
+      return Mdi.gestureTapButton;
     }
 
     // Plugs / outlets
     if (t.contains('plug') || t.contains('outlet') || t.contains('on/off') || n.contains('enchufe')) {
-      return MdiIcons.powerSocket;
+      return Mdi.powerSocket;
     }
 
     // Name hints
     if (n.contains('velador') || n.contains('mesita') || n.contains('lamp') || n.contains('table')) {
-      return MdiIcons.lampOutline;
+      return Mdi.lampOutline;
     }
     if (n.contains('piso') || n.contains('floor')) {
-      return MdiIcons.floorLamp;
+      return Mdi.floorLamp;
     }
     if (n.contains('techo') || n.contains('ceiling') || n.contains('plafón') || n.contains('plafon')) {
-      return MdiIcons.ceilingLight;
+      return Mdi.ceilingLight;
     }
     if (n.contains('dicroica') || n.contains('spot')) {
-      return MdiIcons.spotlightBeam;
+      return Mdi.spotlightBeam;
     }
     if (n.contains('tira') || n.contains('strip')) {
-      return MdiIcons.ledStrip;
+      return Mdi.ledStrip;
     }
 
     // Light default
-    if (t.contains('color') || t.contains('rgb')) return MdiIcons.lightbulbOn;
-    if (t.contains('dimmable')) return MdiIcons.lightbulb;
-    return MdiIcons.lightbulbOutline;
+    if (t.contains('color') || t.contains('rgb')) return Mdi.lightbulbOn;
+    if (t.contains('dimmable')) return Mdi.lightbulb;
+    return Mdi.lightbulbOutline;
   }
 }
 
 /// Manual mapping of the most commonly-configured CCE icon names to MDI IconData.
 /// Covers ~60 icons that cover most home-automation use cases.
 final Map<String, IconData> _mdiMap = {
-  'lightbulb': MdiIcons.lightbulb,
-  'lightbulb-outline': MdiIcons.lightbulbOutline,
-  'lightbulb-on': MdiIcons.lightbulbOn,
-  'lightbulb-on-outline': MdiIcons.lightbulbOnOutline,
-  'lightbulb-multiple': MdiIcons.lightbulbMultiple,
-  'lightbulb-group': MdiIcons.lightbulbGroup,
-  'ceiling-light': MdiIcons.ceilingLight,
-  'ceiling-light-outline': MdiIcons.ceilingLightOutline,
-  'floor-lamp': MdiIcons.floorLamp,
-  'floor-lamp-outline': MdiIcons.floorLampOutline,
-  'lamp': MdiIcons.lamp,
-  'lamps': MdiIcons.lamps,
-  'lamp-outline': MdiIcons.lampOutline,
-  'desk-lamp': MdiIcons.deskLamp,
-  'wall-sconce': MdiIcons.wallSconce,
-  'wall-sconce-flat': MdiIcons.wallSconceFlat,
-  'wall-sconce-round': MdiIcons.wallSconceRound,
-  'track-light': MdiIcons.trackLight,
-  'string-lights': MdiIcons.stringLights,
-  'spotlight': MdiIcons.spotlight,
-  'spotlight-beam': MdiIcons.spotlightBeam,
-  'led-strip': MdiIcons.ledStrip,
-  'led-strip-variant': MdiIcons.ledStripVariant,
-  'power-socket': MdiIcons.powerSocket,
-  'power-socket-eu': MdiIcons.powerSocketEu,
-  'power-socket-us': MdiIcons.powerSocketUs,
-  'power-plug': MdiIcons.powerPlug,
-  'power-plug-outline': MdiIcons.powerPlugOutline,
-  'dial-switch': MdiIcons.dipSwitch,
-  'light-switch': MdiIcons.lightSwitch,
-  'toggle-switch': MdiIcons.toggleSwitch,
-  'gesture-tap-button': MdiIcons.gestureTapButton,
-  'gesture-tap': MdiIcons.gestureTap,
-  'remote': MdiIcons.remote,
-  'door': MdiIcons.door,
-  'door-open': MdiIcons.doorOpen,
-  'door-closed': MdiIcons.doorClosed,
-  'door-closed-lock': MdiIcons.doorClosedLock,
-  'window-open': MdiIcons.windowOpen,
-  'window-closed': MdiIcons.windowClosed,
-  'motion-sensor': MdiIcons.motionSensor,
-  'motion-sensor-off': MdiIcons.motionSensorOff,
-  'thermometer': MdiIcons.thermometer,
-  'water-percent': MdiIcons.waterPercent,
-  'shield': MdiIcons.shield,
-  'shield-outline': MdiIcons.shieldOutline,
-  'shield-home': MdiIcons.shieldHome,
-  'fan': MdiIcons.fan,
-  'television': MdiIcons.television,
-  'air-conditioner': MdiIcons.airConditioner,
-  'coffee': MdiIcons.coffee,
-  'sofa': MdiIcons.sofa,
-  'bed': MdiIcons.bed,
-  'bathtub': MdiIcons.bathtub,
-  'stove': MdiIcons.stove,
-  'fridge': MdiIcons.fridge,
-  'desk': MdiIcons.desk,
-  'chair-rolling': MdiIcons.chairRolling,
-  'garage': MdiIcons.garage,
-  'garage-open': MdiIcons.garageOpen,
-  'home': MdiIcons.home,
-  'home-outline': MdiIcons.homeOutline,
+  'lightbulb': Mdi.lightbulb,
+  'lightbulb-outline': Mdi.lightbulbOutline,
+  'lightbulb-on': Mdi.lightbulbOn,
+  'lightbulb-on-outline': Mdi.lightbulbOnOutline,
+  'lightbulb-multiple': Mdi.lightbulbMultiple,
+  'lightbulb-group': Mdi.lightbulbGroup,
+  'ceiling-light': Mdi.ceilingLight,
+  'ceiling-light-outline': Mdi.ceilingLightOutline,
+  'floor-lamp': Mdi.floorLamp,
+  'floor-lamp-outline': Mdi.floorLampOutline,
+  'lamp': Mdi.lamp,
+  'lamps': Mdi.lamps,
+  'lamp-outline': Mdi.lampOutline,
+  'desk-lamp': Mdi.deskLamp,
+  'wall-sconce': Mdi.wallSconce,
+  'wall-sconce-flat': Mdi.wallSconceFlat,
+  'wall-sconce-round': Mdi.wallSconceRound,
+  'track-light': Mdi.trackLight,
+  'string-lights': Mdi.stringLights,
+  'spotlight': Mdi.spotlight,
+  'spotlight-beam': Mdi.spotlightBeam,
+  'led-strip': Mdi.ledStrip,
+  'led-strip-variant': Mdi.ledStripVariant,
+  'power-socket': Mdi.powerSocket,
+  'power-socket-eu': Mdi.powerSocketEu,
+  'power-socket-us': Mdi.powerSocketUs,
+  'power-plug': Mdi.powerPlug,
+  'power-plug-outline': Mdi.powerPlugOutline,
+  'dial-switch': Mdi.dipSwitch,
+  'light-switch': Mdi.lightSwitch,
+  'toggle-switch': Mdi.toggleSwitch,
+  'gesture-tap-button': Mdi.gestureTapButton,
+  'gesture-tap': Mdi.gestureTap,
+  'remote': Mdi.remote,
+  'door': Mdi.door,
+  'door-open': Mdi.doorOpen,
+  'door-closed': Mdi.doorClosed,
+  'door-closed-lock': Mdi.doorClosedLock,
+  'window-open': Mdi.windowOpen,
+  'window-closed': Mdi.windowClosed,
+  'motion-sensor': Mdi.motionSensor,
+  'motion-sensor-off': Mdi.motionSensorOff,
+  'thermometer': Mdi.thermometer,
+  'water-percent': Mdi.waterPercent,
+  'shield': Mdi.shield,
+  'shield-outline': Mdi.shieldOutline,
+  'shield-home': Mdi.shieldHome,
+  'fan': Mdi.fan,
+  'television': Mdi.television,
+  'air-conditioner': Mdi.airConditioner,
+  'coffee': Mdi.coffee,
+  'sofa': Mdi.sofa,
+  'bed': Mdi.bed,
+  'bathtub': Mdi.bathtub,
+  'stove': Mdi.stove,
+  'fridge': Mdi.fridge,
+  'desk': Mdi.desk,
+  'chair-rolling': Mdi.chairRolling,
+  'garage': Mdi.garage,
+  'garage-open': Mdi.garageOpen,
+  'home': Mdi.home,
+  'home-outline': Mdi.homeOutline,
 };

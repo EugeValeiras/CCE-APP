@@ -12,6 +12,7 @@ import '../models/server_config.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/light_color.dart';
 import 'api_service.dart';
+import 'app_messenger.dart';
 import 'socket_service.dart';
 
 class DevicesService extends ChangeNotifier {
@@ -196,17 +197,28 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Aviso global de comando fallido (snackbar sin BuildContext, con
+  /// anti-spam en [showAppError]). El flujo OK no muestra nada.
+  void _notifyCommandError(String name) =>
+      showAppError('No se pudo controlar «$name»');
+
   Future<void> toggleLight(Device d) async {
-    final next = !d.state.on;
+    // Snapshot COMPLETO del estado previo: DeviceState es inmutable, así el
+    // revert restaura exactamente (incluye campos que copyWith(null) no
+    // podría limpiar, como colormode). Mismo patrón para bri/color/ct.
+    final prev = d.state;
+    final next = !prev.on;
     // Optimistic update
     d.state = d.state.copyWith(on: next);
     notifyListeners();
     try {
       await _api.setDeviceState(d.id, {'on': next});
     } catch (e) {
-      // Revert on error
-      d.state = d.state.copyWith(on: !next);
+      // Revert on error + aviso
+      debugPrint('toggleLight error: $e');
+      d.state = prev;
       notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
@@ -222,21 +234,31 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Brillo, optimista con revert al estado previo si el PUT falla (mismo
+  /// patrón que el termostato) + snackbar global.
   Future<void> setBrightness(Device d, int bri) async {
     final clamped = bri.clamp(0, 254);
     final wantOn = clamped > 0;
+    final prev = d.state;
     d.state = d.state.copyWith(bri: clamped, on: wantOn);
     notifyListeners();
     try {
       await _api.setDeviceState(d.id, {'bri': clamped, 'on': wantOn});
     } catch (e) {
       debugPrint('setBrightness error: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
+  /// Color HS, optimista con revert + snackbar (patrón del termostato). El
+  /// snapshot completo restaura también mode/colormode previos (que copyWith
+  /// con null no podría limpiar).
   Future<void> setColor(Device d, {required int hue, required int sat}) async {
     final clampedHue = hue.clamp(0, 65535);
     final clampedSat = sat.clamp(0, 254);
+    final prev = d.state;
     // colormode: 'hs' explícito: pisa un xy/ct stale para que el tile pinte
     // el color elegido al instante (copyWith con ?? no puede limpiarlo).
     d.state = d.state.copyWith(hue: clampedHue, sat: clampedSat, on: true, mode: 'colour', colormode: 'hs');
@@ -245,11 +267,16 @@ class DevicesService extends ChangeNotifier {
       await _api.setDeviceState(d.id, {'hue': clampedHue, 'sat': clampedSat, 'on': true});
     } catch (e) {
       debugPrint('setColor error: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
+  /// Temperatura de color, optimista con revert + snackbar (ver [setColor]).
   Future<void> setCt(Device d, int ct) async {
     final clamped = ct.clamp(153, 500);
+    final prev = d.state;
     // colormode: 'ct' explícito: pisa un xy/hs stale (ver nota en copyWith).
     d.state = d.state.copyWith(ct: clamped, on: true, mode: 'white', colormode: 'ct');
     notifyListeners();
@@ -257,6 +284,9 @@ class DevicesService extends ChangeNotifier {
       await _api.setDeviceState(d.id, {'ct': clamped, 'on': true});
     } catch (e) {
       debugPrint('setCt error: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
@@ -287,6 +317,7 @@ class DevicesService extends ChangeNotifier {
       debugPrint('setTargetTemp error: $e');
       d.state = d.state.copyWith(targetTemp: prev);
       notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
@@ -302,6 +333,7 @@ class DevicesService extends ChangeNotifier {
       debugPrint('setThermostatPower error: $e');
       d.state = d.state.copyWith(on: prev);
       notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
@@ -317,22 +349,33 @@ class DevicesService extends ChangeNotifier {
       debugPrint('setTempMode error: $e');
       d.state = d.state.copyWith(tempMode: prev);
       notifyListeners();
+      _notifyCommandError(displayName(d));
     }
   }
 
+  /// Prende/apaga el grupo, optimista luz por luz. Las luces cuyo PUT falló
+  /// se revierten al estado previo y se avisa UNA vez con el nombre del grupo.
   Future<void> setGroupOn(LightGroup g, bool on) async {
     final ids = g.lightIds.where((id) => _byId.containsKey(id)).toList();
+    final prev = {for (final id in ids) id: _byId[id]!.state};
     for (final id in ids) {
       final d = _byId[id]!;
       d.state = d.state.copyWith(on: on);
     }
     notifyListeners();
+    var anyFailed = false;
     for (final id in ids) {
       try {
         await _api.setDeviceState(id, {'on': on});
       } catch (e) {
         debugPrint('setGroupOn error on $id: $e');
+        _byId[id]!.state = prev[id]!;
+        anyFailed = true;
       }
+    }
+    if (anyFailed) {
+      notifyListeners();
+      _notifyCommandError(g.name);
     }
   }
 
@@ -564,7 +607,10 @@ class DevicesService extends ChangeNotifier {
         allOk = false;
       }
     }
-    if (!allOk) notifyListeners();
+    if (!allOk) {
+      notifyListeners();
+      _notifyCommandError(room.name);
+    }
     return allOk;
   }
 

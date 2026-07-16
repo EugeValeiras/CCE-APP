@@ -24,7 +24,7 @@ class SceneCard extends StatelessWidget {
 
   final String name;
   final List<Color> colors; // swatch hasta 5 (HueScene.colors)
-  final Widget? icon; // para CceScene (icon name -> MdiIcons)
+  final Widget? icon; // para CceScene (icon name -> Mdi)
   final bool active; // borde blanco + check
   final bool isSmart; // badge "auto"
   final bool busy; // spinner mientras aplica

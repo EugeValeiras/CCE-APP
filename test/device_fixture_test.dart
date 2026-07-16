@@ -3,9 +3,10 @@
 // sanitizado) sin romper para NINGUNA entrada.
 //
 // AISLADO A PROPÓSITO: importa SOLO models/device.dart (+ dart:convert/io y
-// flutter_test). NUNCA main.dart, para no arrastrar la dep rota
-// (material_design_icons) y quedar CORRECTO aunque `flutter test` completo sea
-// no-bloqueante en el gate por widget_test.dart.
+// flutter_test). El aislamiento nació para esquivar la dep rota
+// material_design_icons (hoy eliminada: fuente MDI vendoreada en
+// lib/theme/mdi.dart) y se conserva porque un test de contrato de parseo no
+// tiene por qué arrastrar el árbol de widgets.
 import 'dart:convert';
 import 'dart:io';
 

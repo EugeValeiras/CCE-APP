@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models/server_config.dart';
+import 'services/app_messenger.dart';
 import 'theme/cce_theme.dart';
 import 'views/alarm_view.dart';
 import 'views/phone_home_view.dart';
@@ -26,6 +27,9 @@ class CCEApp extends StatelessWidget {
     return MaterialApp(
       title: 'CCE Home',
       debugShowCheckedModeBanner: false,
+      // Messenger global: permite snackbars sin BuildContext desde services
+      // (ej. "No se pudo controlar «X»" cuando un comando de luz falla).
+      scaffoldMessengerKey: appMessengerKey,
       theme: CceTheme.dark(),
       home: const _AppEntry(),
     );

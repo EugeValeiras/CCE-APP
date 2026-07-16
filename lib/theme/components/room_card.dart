@@ -48,7 +48,7 @@ class RoomCard extends StatefulWidget {
 
   final String title;
 
-  /// Glyph fijo (Icon(MdiIcons...) o CceIcon). EmbossedGlyph lo recolorea vía
+  /// Glyph fijo (Icon(Mdi...) o CceIcon). EmbossedGlyph lo recolorea vía
   /// IconTheme — sirve para Material/CceIcon, NO para un SvgPicture de icons0.
   final Widget? icon;
 

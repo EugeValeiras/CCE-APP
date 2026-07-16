@@ -1,7 +1,7 @@
 name: cce_app
 description: "CCE Home - Alarm Control"
 publish_to: 'none'
-version: 1.65.0+183
+version: 1.66.0+183
 
 environment:
   sdk: ^3.11.4
@@ -18,7 +18,6 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   flutter_svg: ^2.0.10+1
   flutter_colorpicker: ^1.1.0
-  material_design_icons_flutter: ^7.0.7296
   image_picker: ^1.1.2
   speech_to_text: ^7.0.0
   flutter_markdown: ^0.7.4+1
@@ -33,3 +32,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sounds/
+  fonts:
+    # Fuente MDI vendoreada (ex material_design_icons_flutter 7.0.7296):
+    # los codepoints viven en lib/theme/mdi.dart (clase Mdi).
+    - family: MDI
+      fonts:
+        - asset: assets/fonts/materialdesignicons-webfont.ttf

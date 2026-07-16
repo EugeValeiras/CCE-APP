@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../services/devices_service.dart';
 import '../theme/components/scene_card.dart';
 import '../theme/components/section_header.dart';
+import '../theme/mdi.dart';
 
 /// Sección "Mis escenas": grilla de escenas Hue nativas + escenas CCE.
 /// [room] == null = "Toda la casa" (todas las Hue + CCE con planId == null).
@@ -58,7 +58,7 @@ class _ScenesSectionState extends State<ScenesSection> {
     }
   }
 
-  /// Ícono de una escena CCE: nombre mdi (kebab-case) → MdiIcons.
+  /// Ícono de una escena CCE: nombre mdi (kebab-case) → Mdi (vendoreado).
   Widget? _cceIcon(CceScene s) {
     final raw = s.icon?.trim();
     if (raw == null || raw.isEmpty) {
@@ -67,7 +67,7 @@ class _ScenesSectionState extends State<ScenesSection> {
     var name = raw.toLowerCase();
     if (name.startsWith('mdi:')) name = name.substring(4);
     if (name.startsWith('mdi-')) name = name.substring(4);
-    // kebab-case → camelCase para MdiIcons.fromString.
+    // kebab-case → camelCase para el lookup en Mdi.byName.
     final parts = name.split('-').where((p) => p.isNotEmpty).toList();
     final camel = parts.isEmpty
         ? name
@@ -76,7 +76,7 @@ class _ScenesSectionState extends State<ScenesSection> {
                 .skip(1)
                 .map((p) => p[0].toUpperCase() + p.substring(1))
                 .join();
-    final data = MdiIcons.fromString(camel);
+    final data = Mdi.byName[camel];
     return Icon(data ?? Icons.auto_awesome);
   }
 

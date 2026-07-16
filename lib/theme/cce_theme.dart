@@ -16,7 +16,7 @@ abstract final class CceTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: CceColors.bg,
       canvasColor: CceColors.bg,
-      // Relieve neumorfico app-wide para TODO Icon(Icons.*)/Icon(MdiIcons.*)
+      // Relieve neumorfico app-wide para TODO Icon(Icons.*)/Icon(Mdi.*)
       // que no fije shadows propios (Icon usa `widget.shadows ?? iconTheme`).
       // Mismos tokens que el ghost de CceIcon -> Material y SVG convergen.
       iconTheme: const IconThemeData(

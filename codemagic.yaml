@@ -54,16 +54,15 @@ workflows:
       - name: Flutter analyze
         script: flutter analyze --no-fatal-infos
 
-      # flutter test NO bloquea el build (señal, no gate): hoy la dependencia
-      # material_design_icons_flutter 7.x no compila el test target contra la
-      # versión de Flutter (class _MdiIconData extends IconData, que es `final`),
-      # falla independientemente de nuestro código. El IPA sí compila la dep.
-      # El analyze de arriba SÍ es gate duro. Volver a bloquear cuando se saque
-      # ese blocker (bump de la dep o mover a Icons nativos).
-      - name: Flutter test (no bloqueante)
+      # flutter test es GATE DURO otra vez: el blocker histórico era la dep
+      # material_design_icons_flutter 7.x (su _MdiIconData extendía IconData,
+      # que es `final`, y el test target no compilaba). Se resolvió VENDOREANDO
+      # la fuente MDI (assets/fonts/materialdesignicons-webfont.ttf + codepoints
+      # en lib/theme/mdi.dart) y eliminando la dep. Si falla, el build cae.
+      - name: Flutter test
         script: |
           if [ -d test ] && ls test/*_test.dart >/dev/null 2>&1; then
-            flutter test || echo "⚠️ flutter test falló (no bloqueante) — ver log arriba"
+            flutter test
           else
             echo "Sin tests en test/ — se omite flutter test"
           fi

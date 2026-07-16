@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-
 import '../../models/event_record.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
 import 'event_grouping.dart';
 
@@ -42,7 +41,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     final name = (p['automationName'] ?? 'Alarma').toString();
     final msg = (p['message'] ?? '').toString();
     return EventPresentation(
-      icon: Icon(MdiIcons.alarmLight, size: 22),
+      icon: Icon(Mdi.alarmLight, size: 22),
       color: CceColors.danger,
       title: 'Alarma: $name',
       subtitle: msg.isEmpty ? null : msg,
@@ -52,7 +51,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   if (e.eventName == 'alarm:armed-changed') {
     final armed = p['armed'] == true;
     return EventPresentation(
-      icon: Icon(armed ? MdiIcons.shield : MdiIcons.shieldOutline, size: 22),
+      icon: Icon(armed ? Mdi.shield : Mdi.shieldOutline, size: 22),
       color: armed ? CceColors.danger : CceColors.ok,
       title: armed ? 'Alarma activada' : 'Alarma desactivada',
     );
@@ -112,7 +111,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       return EventPresentation(
         icon: open
             ? const CceIcon(CceIcons.doorOpen, size: 20)
-            : Icon(MdiIcons.doorClosed, size: 22),
+            : Icon(Mdi.doorClosed, size: 22),
         color: open ? CceColors.contact : CceColors.textSecondary,
         title: title,
       );
@@ -121,7 +120,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       final motion = sensor['motion'] == true;
       return EventPresentation(
         icon: Icon(
-          motion ? MdiIcons.motionSensor : MdiIcons.motionSensorOff,
+          motion ? Mdi.motionSensor : Mdi.motionSensorOff,
           size: 22,
         ),
         color: motion ? CceColors.motion : CceColors.textSecondary,
@@ -141,7 +140,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     if (sensor['temperature'] is num) {
       final t = (sensor['temperature'] as num).toDouble();
       return EventPresentation(
-        icon: Icon(MdiIcons.thermometer, size: 22),
+        icon: Icon(Mdi.thermometer, size: 22),
         color: _tempColor,
         title: '$name: ${t.toStringAsFixed(1)}°',
       );
@@ -149,7 +148,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     if (sensor['humidity'] is num) {
       final h = (sensor['humidity'] as num).toDouble();
       return EventPresentation(
-        icon: Icon(MdiIcons.waterPercent, size: 22),
+        icon: Icon(Mdi.waterPercent, size: 22),
         color: CceColors.info,
         title: '$name: ${h.toStringAsFixed(0)}%',
       );
@@ -163,7 +162,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       if (on == true) {
         final pct = bri is num ? (bri / 254 * 100).round() : null;
         return EventPresentation(
-          icon: Icon(MdiIcons.lightbulbOn, size: 22),
+          icon: Icon(Mdi.lightbulbOn, size: 22),
           color: CceColors.warm,
           title: pct != null
               ? '$name: encendido al $pct%'
@@ -171,14 +170,14 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
         );
       }
       return EventPresentation(
-        icon: Icon(MdiIcons.lightbulbOutline, size: 22),
+        icon: Icon(Mdi.lightbulbOutline, size: 22),
         color: CceColors.textTertiary,
         title: '$name: apagado',
       );
     }
     if (bri is num) {
       return EventPresentation(
-        icon: Icon(MdiIcons.brightness6, size: 22),
+        icon: Icon(Mdi.brightness6, size: 22),
         color: CceColors.warm,
         title: '$name → ${(bri / 254 * 100).round()}%',
       );
@@ -189,13 +188,13 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   final raw = rawDeviceId(e);
   if (raw.isEmpty) {
     return EventPresentation(
-      icon: Icon(MdiIcons.information, size: 22),
+      icon: Icon(Mdi.information, size: 22),
       color: CceColors.textTertiary,
       title: e.eventName,
     );
   }
   return EventPresentation(
-    icon: Icon(MdiIcons.information, size: 22),
+    icon: Icon(Mdi.information, size: 22),
     color: CceColors.textTertiary,
     title: 'Evento de $name',
     subtitle: e.eventName,

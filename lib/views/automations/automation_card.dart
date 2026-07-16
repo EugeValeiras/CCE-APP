@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:material_design_icons_flutter/material_design_icons_flutter.dart';
-
 import '../../models/automation.dart';
 import '../../services/automations_service.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
+import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
 import 'automation_phrases.dart';
 import 'run_automation.dart';
@@ -59,7 +58,7 @@ Widget automationIcon(String? icon, {double size = 24, Color? color}) {
   return CceIcon(CceIcons.automations, size: size, color: color);
 }
 
-/// kebab-case → camelCase → MdiIcons (patrón de scenes_section).
+/// kebab-case → camelCase → Mdi.byName (patrón de scenes_section).
 IconData? _mdiFromString(String name) {
   final lower = name.toLowerCase();
   final parts = lower.split('-').where((p) => p.isNotEmpty).toList();
@@ -67,7 +66,7 @@ IconData? _mdiFromString(String name) {
       ? lower
       : parts.first +
           parts.skip(1).map((p) => p[0].toUpperCase() + p.substring(1)).join();
-  return MdiIcons.fromString(camel);
+  return Mdi.byName[camel];
 }
 
 /// Card de automatización: ícono 44 en círculo color-de-trigger, nombre,
