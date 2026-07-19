@@ -236,49 +236,61 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   }
 
   /// Card para un ítem destacado; null si el ítem ya no resuelve (se saltea
-  /// sin romper — el editor lo muestra igual para poder quitarlo).
-  Widget? _featuredCard(FeaturedItem item) {
+  /// sin romper — el editor lo muestra igual para poder quitarlo). [trailing]
+  /// reemplaza el control derecho (modo edición: + / −).
+  Widget? _featuredCard(FeaturedItem item, {Widget? trailing}) {
     final service = widget.service;
     switch (item.kind) {
       case FeaturedKind.tv:
         final tv = widget.tv;
-        return tv == null ? null : TvHomeCard(service: tv, neo: true);
+        return tv == null ? null : TvHomeCard(service: tv, neo: true, trailing: trailing);
       case FeaturedKind.jbl:
         final jbl = widget.jbl;
-        return jbl == null ? null : SoundbarHomeCard(service: jbl, neo: true);
+        return jbl == null
+            ? null
+            : SoundbarHomeCard(service: jbl, neo: true, trailing: trailing);
       case FeaturedKind.thermostat:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || !d.isThermostat)
             ? null
-            : ThermostatHomeCard(service: service, device: d, neo: true);
+            : ThermostatHomeCard(
+                service: service, device: d, neo: true, trailing: trailing);
       case FeaturedKind.vacuum:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || !d.isVacuum)
             ? null
-            : VacuumHomeCard(service: service, device: d, neo: true);
+            : VacuumHomeCard(
+                service: service, device: d, neo: true, trailing: trailing);
       case FeaturedKind.light:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden)
             ? null
-            : LightHomeCard(service: service, device: d);
+            : LightHomeCard(service: service, device: d, trailing: trailing);
       case FeaturedKind.button:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden || !d.isSwitch)
             ? null
-            : ButtonHomeCard(service: service, device: d);
+            : ButtonHomeCard(service: service, device: d, trailing: trailing);
       case FeaturedKind.scene:
         final s = service.scenes.firstWhereOrNull((x) => x.id == item.id);
-        return s == null ? null : SceneHomeCard(service: service, scene: s);
+        return s == null
+            ? null
+            : SceneHomeCard(service: service, scene: s, trailing: trailing);
       case FeaturedKind.hueScene:
         final s = service.hueScenes.firstWhereOrNull((x) => x.id == item.id);
-        return s == null ? null : SceneHomeCard(service: service, hueScene: s);
+        return s == null
+            ? null
+            : SceneHomeCard(service: service, hueScene: s, trailing: trailing);
       case FeaturedKind.automation:
         final a =
             _automations.automations.firstWhereOrNull((x) => x.id == item.id);
         return a == null
             ? null
             : AutomationHomeCard(
-                service: _automations, devices: service, automation: a);
+                service: _automations,
+                devices: service,
+                automation: a,
+                trailing: trailing);
     }
   }
 
@@ -420,35 +432,28 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 ),
               );
 
-          // Badge circular superpuesto (estilo edición iOS). [onTap] null =
-          // decorativo (el tap lo maneja el contenedor).
-          Widget badge(IconData icon, Color color, VoidCallback? onTap) {
-            final visual = Container(
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                border: Border.all(color: CceColors.surface, width: 2),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x66000000), blurRadius: 6),
-                ],
-              ),
-              child: Icon(icon, size: 15, color: Colors.white),
-            );
-            if (onTap == null) return visual;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onTap,
-              // Padding = hit-area ~44pt manteniendo el badge chico.
-              child: Padding(padding: const EdgeInsets.all(9), child: visual),
-            );
-          }
+          // Botón redondo − / + que ocupa el LUGAR del control de la card
+          // (switch/flecha/▶). Decorativo: el tap real lo maneja el overlay
+          // (selected) o la card completa (agregar).
+          Widget editControl(IconData icon, Color color) => Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x55000000), blurRadius: 5),
+                  ],
+                ),
+                child: Icon(icon, size: 18, color: Colors.white),
+              );
 
           // CARD REAL de la home, inerte (IgnorePointer: en el editor no se
-          // togglea ni navega) + badge de acción superpuesto.
+          // togglea ni navega), con el − en el lugar del control. Una franja
+          // derecha invisible captura el tap de quitar.
           Widget selectedTile(FeaturedItem item, int index) {
-            final card = _featuredCard(item);
+            final card = _featuredCard(item,
+                trailing: editControl(Icons.remove, CceColors.danger));
             return Padding(
               key: ValueKey(item.encode()),
               padding: const EdgeInsets.only(bottom: 12),
@@ -460,14 +465,20 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                       child:
                           IgnorePointer(child: card ?? stalePlaceholder(item)),
                     ),
+                    // Zona de tap del − (franja derecha, alto completo).
                     Positioned(
                       top: 0,
+                      bottom: 0,
                       right: 0,
-                      child: badge(Icons.close, CceColors.danger, () {
-                        HapticFeedback.selectionClick();
-                        sel.remove(item);
-                        persist(setSheet);
-                      }),
+                      width: 64,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          sel.remove(item);
+                          persist(setSheet);
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -494,24 +505,13 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     },
                     child: Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: Stack(
-                        children: [
-                          RepaintBoundary(
-                            child: IgnorePointer(
-                                child:
-                                    _featuredCard(item) ?? stalePlaceholder(item)),
-                          ),
-                          Positioned(
-                            top: 0,
-                            right: 0,
-                            // Decorativo: agrega el tap de la card completa.
-                            child: Padding(
-                              padding: const EdgeInsets.all(9),
-                              child:
-                                  badge(Icons.add, CceColors.accent, null),
-                            ),
-                          ),
-                        ],
+                      child: RepaintBoundary(
+                        child: IgnorePointer(
+                          child: _featuredCard(item,
+                                  trailing: editControl(
+                                      Icons.add, CceColors.accent)) ??
+                              stalePlaceholder(item),
+                        ),
                       ),
                     ),
                   ),

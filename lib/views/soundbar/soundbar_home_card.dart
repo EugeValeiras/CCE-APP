@@ -22,6 +22,10 @@ class SoundbarHomeCard extends StatefulWidget {
   /// (en tablet el control se muestra inline en el panel derecho).
   final VoidCallback? onOpen;
 
+  /// Override del control derecho (modo edición del editor de Destacados):
+  /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
+  final Widget? trailing;
+
   /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
   /// solo escucha a su JblService). null ⇒ la pantalla sin header.
   const SoundbarHomeCard({
@@ -29,6 +33,7 @@ class SoundbarHomeCard extends StatefulWidget {
     required this.service,
     this.neo = false,
     this.onOpen,
+    this.trailing,
   });
 
   @override
@@ -168,7 +173,9 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (online)
+              if (widget.trailing != null)
+                widget.trailing!
+              else if (online)
                 CceSwitch(
                   value: on,
                   accent: CceColors.jblOrange,

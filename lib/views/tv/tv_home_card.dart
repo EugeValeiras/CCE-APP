@@ -24,6 +24,10 @@ class TvHomeCard extends StatefulWidget {
   /// — la tablet no tiene swipe-back para volver).
   final VoidCallback? onOpen;
 
+  /// Override del control derecho (modo edición del editor de Destacados):
+  /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
+  final Widget? trailing;
+
   /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
   /// solo escucha a su TvService). null ⇒ la pantalla sin header.
   const TvHomeCard({
@@ -31,6 +35,7 @@ class TvHomeCard extends StatefulWidget {
     required this.service,
     this.neo = false,
     this.onOpen,
+    this.trailing,
   });
 
   @override
@@ -171,7 +176,9 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (online)
+              if (widget.trailing != null)
+                widget.trailing!
+              else if (online)
                 // Mandamos el estado EXPLÍCITO del switch (PUT /tv/power {on:v}):
                 // desde la home el isOn cacheado puede estar stale/"unknown",
                 // así que setPower garantiza la dirección correcta.

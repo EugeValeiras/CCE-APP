@@ -31,12 +31,17 @@ class VacuumHomeCard extends StatelessWidget {
   /// Si se provee, al tocar la card se llama esto EN VEZ de pushear la pantalla.
   final VoidCallback? onOpen;
 
+  /// Override del control derecho (modo edición del editor de Destacados):
+  /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
+  final Widget? trailing;
+
   const VacuumHomeCard({
     super.key,
     required this.service,
     required this.device,
     this.neo = false,
     this.onOpen,
+    this.trailing,
   });
 
   @override
@@ -148,7 +153,9 @@ class VacuumHomeCard extends StatelessWidget {
               // está pausada (no 'clean': arrancaría una limpieza nueva pisando
               // p.ej. un cleanRooms en curso), limpiar cuando está quieta.
               // Fuera de línea → chevron.
-              if (online)
+              if (trailing != null)
+                trailing!
+              else if (online)
                 CceNeoSvgIconButton(
                   svg: active
                       ? CceIcons.pause

@@ -36,7 +36,11 @@ class LightHomeCard extends StatelessWidget {
     required this.service,
     required this.device,
     this.neo = true,
+    this.trailing,
   });
+
+  /// Override del control derecho (editor de Destacados): reemplaza el switch.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +129,9 @@ class LightHomeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (online)
+              if (trailing != null)
+                trailing!
+              else if (online)
                 CceSwitch(
                   value: on,
                   accent: CceColors.warm,
@@ -153,7 +159,11 @@ class ButtonHomeCard extends StatefulWidget {
     required this.service,
     required this.device,
     this.neo = true,
+    this.trailing,
   });
+
+  /// Override del control derecho (editor de Destacados).
+  final Widget? trailing;
 
   @override
   State<ButtonHomeCard> createState() => _ButtonHomeCardState();
@@ -268,7 +278,9 @@ class _ButtonHomeCardState extends State<ButtonHomeCard> {
               const SizedBox(width: 8),
               // Botón simple online → ▶ dispara el click configurado. Dial/
               // switch → chevron (elegir la tecla es de su pantalla).
-              if (online && pressButton && !d.isMultiButton)
+              if (widget.trailing != null)
+                widget.trailing!
+              else if (online && pressButton && !d.isMultiButton)
                 SizedBox(
                   width: 44,
                   height: 44,
@@ -315,8 +327,12 @@ class SceneHomeCard extends StatefulWidget {
     this.scene,
     this.hueScene,
     this.neo = true,
+    this.trailing,
   }) : assert((scene != null) ^ (hueScene != null),
             'SceneHomeCard: pasar scene O hueScene');
+
+  /// Override del control derecho (editor de Destacados): reemplaza el ▶.
+  final Widget? trailing;
 
   @override
   State<SceneHomeCard> createState() => _SceneHomeCardState();
@@ -394,6 +410,9 @@ class _SceneHomeCardState extends State<SceneHomeCard> {
           ),
           const SizedBox(width: 8),
           // Aplicar: mismo look que el ▶ compacto de automatizaciones.
+          if (widget.trailing != null)
+            widget.trailing!
+          else
           SizedBox(
             width: 44,
             height: 44,
@@ -433,7 +452,11 @@ class AutomationHomeCard extends StatelessWidget {
     required this.devices,
     required this.automation,
     this.neo = true,
+    this.trailing,
   });
+
+  /// Override del control derecho (editor de Destacados): reemplaza el ▶.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -507,8 +530,11 @@ class AutomationHomeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              RunAutomationButton(
-                  automation: a, service: service, compact: true),
+              if (trailing != null)
+                trailing!
+              else
+                RunAutomationButton(
+                    automation: a, service: service, compact: true),
             ],
           ),
         );

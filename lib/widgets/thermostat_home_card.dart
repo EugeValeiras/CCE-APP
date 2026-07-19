@@ -35,12 +35,17 @@ class ThermostatHomeCard extends StatelessWidget {
   /// tiene swipe-back para volver).
   final VoidCallback? onOpen;
 
+  /// Override del control derecho (modo edición del editor de Destacados):
+  /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
+  final Widget? trailing;
+
   const ThermostatHomeCard({
     super.key,
     required this.service,
     required this.device,
     this.neo = false,
     this.onOpen,
+    this.trailing,
   });
 
   bool _isCool(DeviceState s) {
@@ -187,7 +192,9 @@ class ThermostatHomeCard extends StatelessWidget {
               const SizedBox(width: 8),
               // Power rápido: mandamos el estado EXPLÍCITO (setThermostatPower)
               // con revert optimista en el service. Fuera de línea → chevron.
-              if (online)
+              if (trailing != null)
+                trailing!
+              else if (online)
                 CceSwitch(
                   value: on,
                   accent: cool ? CceColors.info : CceColors.warm,
