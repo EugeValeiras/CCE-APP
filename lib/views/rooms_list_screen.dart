@@ -11,6 +11,7 @@ import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_card.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
 import '../utils/room_icon.dart';
@@ -197,41 +198,71 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   List<FeaturedItem> _effectiveFeatured(Device? thermostat, Device? vacuum) =>
       _featured ?? _defaultFeatured(thermostat, vacuum);
 
-  /// Sección completa (header con lápiz + cards). El header se muestra siempre
-  /// que haya ALGO agregable — con la lista vacía queda el lápiz para volver a
-  /// agregar (si no, la sección sería irrecuperable).
+  /// Sección completa. Entrada a la edición: LONG-PRESS sobre cualquier card
+  /// (mismo gesto que el reorder de habitaciones). Sin cards (lista vacía o
+  /// todo stale) se muestra un placeholder con el mismo formato de card que
+  /// invita a editar — así la sección nunca es irrecuperable.
   List<Widget> _featuredSection(Device? thermostat, Device? vacuum) {
+    void openEditor() {
+      HapticFeedback.mediumImpact();
+      _openFeaturedEditor(thermostat, vacuum);
+    }
+
     final items = _effectiveFeatured(thermostat, vacuum);
     final cards = <Widget>[];
     for (final item in items) {
       final card = _featuredCard(item);
       if (card == null) continue; // ítem stale (device/escena borrados)
       if (cards.isNotEmpty) cards.add(const SizedBox(height: 12));
-      cards.add(RepaintBoundary(child: card));
+      // Long-press abre el editor; los taps siguen siendo de la card (su
+      // CceNeoPress no registra long-press cuando no lo usa).
+      cards.add(GestureDetector(
+        onLongPress: openEditor,
+        child: RepaintBoundary(child: card),
+      ));
     }
     return [
       const SizedBox(height: 20),
-      Row(
-        children: [
-          Expanded(child: _sectionLabel('Destacados')),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () {
-              HapticFeedback.selectionClick();
-              _openFeaturedEditor(thermostat, vacuum);
-            },
-            // Hit-area ≥44pt (HIG); el glyph queda chico pero el tap es cómodo.
-            child: const SizedBox(
-              width: 44,
-              height: 36,
-              child: Icon(Icons.edit_outlined,
-                  size: 18, color: CceColors.textTertiary),
-            ),
-          ),
-        ],
-      ),
+      _sectionLabel('Destacados'),
       const SizedBox(height: 10),
-      ...cards,
+      if (cards.isEmpty)
+        CceCard(
+          onTap: openEditor,
+          onLongPress: openEditor,
+          radius: CceRadii.hueCard,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: CceColors.neoBase,
+          neo: true,
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 48,
+                height: 48,
+                child: Icon(Icons.edit_outlined,
+                    size: 26, color: CceColors.textTertiary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Sin destacados',
+                        style: CceText.title.copyWith(fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tocá para agregar dispositivos, luces, escenas y automatizaciones',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.caption,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        )
+      else
+        ...cards,
     ];
   }
 
@@ -432,20 +463,21 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 ),
               );
 
-          // Botón redondo − / + que ocupa el LUGAR del control de la card
-          // (switch/flecha/▶). Decorativo: el tap real lo maneja el overlay
-          // (selected) o la card completa (agregar).
-          Widget editControl(IconData icon, Color color) => Container(
-                width: 30,
-                height: 30,
+          // Botón − / + que ocupa el LUGAR del control de la card: "de goma"
+          // neumórfica, el MISMO material que las teclas de la app (círculo
+          // neoBase raised, glyph en el color estándar de ícono — réplica
+          // visual de CceNeoIconButton). Decorativo: el tap real lo maneja el
+          // overlay (quitar) o la card completa (agregar).
+          Widget editControl(IconData icon) => Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: color,
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x55000000), blurRadius: 5),
-                  ],
+                  color: CceColors.neoBase,
+                  boxShadow: CceShadows.neo(blur: 8, offset: 3),
                 ),
-                child: Icon(icon, size: 18, color: Colors.white),
+                child: Icon(icon, size: 20, color: CceColors.neoText),
               );
 
           // CARD REAL de la home, inerte (IgnorePointer: en el editor no se
@@ -453,7 +485,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           // derecha invisible captura el tap de quitar.
           Widget selectedTile(FeaturedItem item, int index) {
             final card = _featuredCard(item,
-                trailing: editControl(Icons.remove, CceColors.danger));
+                trailing: editControl(Icons.remove));
             return Padding(
               key: ValueKey(item.encode()),
               padding: const EdgeInsets.only(bottom: 12),
@@ -508,8 +540,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                       child: RepaintBoundary(
                         child: IgnorePointer(
                           child: _featuredCard(item,
-                                  trailing: editControl(
-                                      Icons.add, CceColors.accent)) ??
+                                  trailing: editControl(Icons.add)) ??
                               stalePlaceholder(item),
                         ),
                       ),
