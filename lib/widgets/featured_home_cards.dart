@@ -15,7 +15,10 @@ import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
 import '../views/automations/automation_card.dart' show automationIcon, triggerColor;
 import '../views/automations/run_automation.dart';
+import '../views/dial_switch_screen.dart';
 import '../views/light_color_screen.dart';
+import '../views/single_button_screen.dart';
+import '../views/switch_detail_screen.dart';
 
 /// Row-cards para la sección "Destacados" editable de la home. Todas espejan
 /// la anatomía de [ThermostatHomeCard]: CceCard neo > glyph 48 + título/estado
@@ -127,6 +130,164 @@ class LightHomeCard extends StatelessWidget {
                   value: on,
                   accent: CceColors.warm,
                   onChanged: (_) => service.toggleLight(d),
+                )
+              else
+                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Botón/switch destacado: abre su pantalla; el botón simple dispara ──────
+
+class ButtonHomeCard extends StatefulWidget {
+  final DevicesService service;
+  final Device device;
+  final bool neo;
+
+  const ButtonHomeCard({
+    super.key,
+    required this.service,
+    required this.device,
+    this.neo = true,
+  });
+
+  @override
+  State<ButtonHomeCard> createState() => _ButtonHomeCardState();
+}
+
+class _ButtonHomeCardState extends State<ButtonHomeCard> {
+  bool _busy = false;
+
+  /// Mismo criterio que SensorTile: botón de 1 tecla = lastKey reportado o
+  /// type 'button' (dispara press, NO es un toggle de relé).
+  bool _isPressButton(Device d) =>
+      d.sensor?.lastKey != null || d.type.toLowerCase().contains('button');
+
+  Widget _screenFor(Device d, DevicesService service) {
+    if (d.isMultiButton) return DialSwitchScreen(device: d, service: service);
+    if (_isPressButton(d)) {
+      return SingleButtonScreen(device: d, service: service);
+    }
+    return SwitchDetailScreen(device: d, service: service);
+  }
+
+  Future<void> _simulateClick(Device d) async {
+    if (_busy) return;
+    HapticFeedback.selectionClick();
+    setState(() => _busy = true);
+    final ok = await widget.service.simulateButton(d, key: 0);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo simular el botón')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final service = widget.service;
+    return AnimatedBuilder(
+      animation: service,
+      builder: (context, _) {
+        final d = service.byId(widget.device.id) ?? widget.device;
+        final online = d.state.reachable;
+        final pressButton = _isPressButton(d);
+        final String sub;
+        if (!online) {
+          sub = 'Fuera de línea';
+        } else if (d.isMultiButton) {
+          sub = 'Switch · ${d.outletCount} botones';
+        } else {
+          sub = pressButton ? 'Botón' : 'Switch';
+        }
+
+        return CceCard(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => _screenFor(d, service),
+            ));
+          },
+          radius: widget.neo ? CceRadii.hueCard : CceRadii.card,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: widget.neo ? CceColors.neoBase : null,
+          neo: widget.neo,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: EmbossedGlyph(
+                    size: 28,
+                    color: online
+                        ? CceColors.textSecondary
+                        : CceColors.neoTextSub,
+                    highlight: CceEmboss.highlight.color,
+                    shadow: CceEmboss.shadow.color,
+                    child: IconResolver.widget(
+                      d,
+                      configuredIcon: service.iconFor(d.id),
+                      customIcons: service.customIcons,
+                      displayName: service.displayName(d),
+                      size: 26,
+                      color: online
+                          ? CceColors.textSecondary
+                          : CceColors.neoTextSub,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      service.displayName(d),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.title.copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      sub,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Botón simple online → ▶ dispara el click configurado. Dial/
+              // switch → chevron (elegir la tecla es de su pantalla).
+              if (online && pressButton && !d.isMultiButton)
+                SizedBox(
+                  width: 44,
+                  height: 44,
+                  child: _busy
+                      ? const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: CceColors.textSecondary),
+                          ),
+                        )
+                      : IconButton(
+                          onPressed: () => _simulateClick(d),
+                          icon: CceIcon(CceIcons.play,
+                              size: 20, color: CceColors.textSecondary),
+                          tooltip: 'Disparar click',
+                        ),
                 )
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),

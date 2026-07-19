@@ -21,6 +21,10 @@ void main() {
         FeaturedItem.decode('automation:auto-7'),
         const FeaturedItem(FeaturedKind.automation, 'auto-7'),
       );
+      expect(
+        FeaturedItem.decode('button:dev_dial'),
+        const FeaturedItem(FeaturedKind.button, 'dev_dial'),
+      );
     });
 
     test('id con dos puntos internos sobrevive el round-trip', () {

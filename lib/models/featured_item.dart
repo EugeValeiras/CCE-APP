@@ -5,7 +5,7 @@
 /// Modelo PURO (sin Flutter) para testear encode/decode standalone.
 library;
 
-enum FeaturedKind { tv, jbl, thermostat, vacuum, light, scene, hueScene, automation }
+enum FeaturedKind { tv, jbl, thermostat, vacuum, light, button, scene, hueScene, automation }
 
 class FeaturedItem {
   final FeaturedKind kind;

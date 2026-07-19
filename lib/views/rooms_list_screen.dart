@@ -261,6 +261,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         return (d == null || d.hidden)
             ? null
             : LightHomeCard(service: service, device: d);
+      case FeaturedKind.button:
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return (d == null || d.hidden || !d.isSwitch)
+            ? null
+            : ButtonHomeCard(service: service, device: d);
       case FeaturedKind.scene:
         final s = service.scenes.firstWhereOrNull((x) => x.id == item.id);
         return s == null ? null : SceneHomeCard(service: service, scene: s);
@@ -288,6 +293,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       case FeaturedKind.thermostat:
       case FeaturedKind.vacuum:
       case FeaturedKind.light:
+      case FeaturedKind.button:
         final d = item.id != null ? service.byId(item.id!) : null;
         return d != null ? service.displayName(d) : '(ya no existe)';
       case FeaturedKind.scene:
@@ -315,6 +321,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         FeaturedKind.thermostat => 'Termostato',
         FeaturedKind.vacuum => 'Robot',
         FeaturedKind.light => 'Luz',
+        FeaturedKind.button => 'Botón',
         FeaturedKind.scene => 'Escena',
         FeaturedKind.hueScene => 'Escena Hue',
         FeaturedKind.automation => 'Automatización',
@@ -326,6 +333,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     final kind = _kindLabel(item.kind);
     switch (item.kind) {
       case FeaturedKind.light:
+      case FeaturedKind.button:
         final room = widget.service.rooms
             .firstWhereOrNull((r) => r.deviceIds.contains(item.id))
             ?.name;
@@ -378,6 +386,12 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           ].where((i) => !selected.contains(i)).toList();
           final lights = [
             for (final d in service.lights) FeaturedItem(FeaturedKind.light, d.id),
+          ].where((i) => !selected.contains(i)).toList();
+          // Botones/switches (dial 4 teclas, botón simple, relés): viven en
+          // sensors con isSwitch — no son luces ni sensores pasivos.
+          final buttons = [
+            for (final d in service.sensors.where((d) => d.isSwitch))
+              FeaturedItem(FeaturedKind.button, d.id),
           ].where((i) => !selected.contains(i)).toList();
           final scenes = <FeaturedItem>[
             for (final s in service.scenes) FeaturedItem(FeaturedKind.scene, s.id),
@@ -543,6 +557,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                       ),
                     addGroup('Dispositivos', devices),
                     addGroup('Luces', lights),
+                    addGroup('Botones', buttons),
                     addGroup('Escenas', scenes),
                     addGroup('Automatizaciones', autos),
                   ],
