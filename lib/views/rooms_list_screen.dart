@@ -1,7 +1,11 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/device.dart';
+import '../models/featured_item.dart';
 import '../models/room_ref.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
@@ -13,6 +17,7 @@ import '../utils/room_icon.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
 import '../widgets/temperature_sensor_picker_sheet.dart';
+import '../widgets/featured_home_cards.dart';
 import '../widgets/thermostat_home_card.dart';
 import '../widgets/vacuum_home_card.dart';
 import 'room_detail_screen.dart';
@@ -54,6 +59,16 @@ class RoomsListScreen extends StatefulWidget {
 class _RoomsListScreenState extends State<RoomsListScreen> {
   static const String _orderKey = 'home.roomOrder';
   static const String _tempSensorKey = 'home.tempSensorId';
+  static const String _featuredKey = 'home.featured';
+
+  /// Lista EDITABLE de Destacados (orden = orden de render). null = el usuario
+  /// nunca editó → default dinámico (TV → JBL → termostato → robot), idéntico
+  /// al comportamiento histórico.
+  List<FeaturedItem>? _featured;
+
+  /// Automatizaciones para las cards destacadas y el editor. Se crea acá (el
+  /// shell no lo provee) reusando config+devices de DevicesService.
+  late final AutomationsService _automations;
 
   /// Fuente de verdad del orden interactivo: lista de RoomRef.id. Estable
   /// (no se regenera con cada notify del service). El build deriva la lista
@@ -68,8 +83,46 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   @override
   void initState() {
     super.initState();
+    _automations =
+        AutomationsService(config: widget.service.config, devices: widget.service);
     _loadOrder();
     _loadTempSensor();
+    _loadFeatured();
+  }
+
+  @override
+  void dispose() {
+    _automations.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFeatured() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_featuredKey);
+      // `_featured == null`: si el usuario YA editó antes de que resuelva este
+      // await (primer acceso a prefs puede ser lento), no pisar su edición.
+      if (raw != null && mounted && _featured == null) {
+        setState(() => _featured = _dedupe(FeaturedItem.decodeList(raw)));
+      }
+    } catch (_) {}
+  }
+
+  /// Dedupe preservando orden: entradas repetidas en prefs (o agregadas dos
+  /// veces) romperían las keys del ReorderableListView del editor.
+  static List<FeaturedItem> _dedupe(List<FeaturedItem> items) {
+    final seen = <FeaturedItem>{};
+    return [
+      for (final i in items)
+        if (seen.add(i)) i,
+    ];
+  }
+
+  Future<void> _saveFeatured(List<FeaturedItem> items) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_featuredKey, FeaturedItem.encodeList(items));
+    } catch (_) {}
   }
 
   Future<void> _loadOrder() async {
@@ -129,11 +182,388 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     return out;
   }
 
+  // ── Destacados editable ───────────────────────────────────────────────────
+
+  /// Default histórico cuando el usuario nunca editó: TV → JBL → termostato →
+  /// robot (los que existan).
+  List<FeaturedItem> _defaultFeatured(Device? thermostat, Device? vacuum) => [
+        if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+        if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
+        if (thermostat != null)
+          FeaturedItem(FeaturedKind.thermostat, thermostat.id),
+        if (vacuum != null) FeaturedItem(FeaturedKind.vacuum, vacuum.id),
+      ];
+
+  List<FeaturedItem> _effectiveFeatured(Device? thermostat, Device? vacuum) =>
+      _featured ?? _defaultFeatured(thermostat, vacuum);
+
+  /// Sección completa (header con lápiz + cards). El header se muestra siempre
+  /// que haya ALGO agregable — con la lista vacía queda el lápiz para volver a
+  /// agregar (si no, la sección sería irrecuperable).
+  List<Widget> _featuredSection(Device? thermostat, Device? vacuum) {
+    final items = _effectiveFeatured(thermostat, vacuum);
+    final cards = <Widget>[];
+    for (final item in items) {
+      final card = _featuredCard(item);
+      if (card == null) continue; // ítem stale (device/escena borrados)
+      if (cards.isNotEmpty) cards.add(const SizedBox(height: 12));
+      cards.add(RepaintBoundary(child: card));
+    }
+    return [
+      const SizedBox(height: 20),
+      Row(
+        children: [
+          Expanded(child: _sectionLabel('Destacados')),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              _openFeaturedEditor(thermostat, vacuum);
+            },
+            // Hit-area ≥44pt (HIG); el glyph queda chico pero el tap es cómodo.
+            child: const SizedBox(
+              width: 44,
+              height: 36,
+              child: Icon(Icons.edit_outlined,
+                  size: 18, color: CceColors.textTertiary),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      ...cards,
+    ];
+  }
+
+  /// Card para un ítem destacado; null si el ítem ya no resuelve (se saltea
+  /// sin romper — el editor lo muestra igual para poder quitarlo).
+  Widget? _featuredCard(FeaturedItem item) {
+    final service = widget.service;
+    switch (item.kind) {
+      case FeaturedKind.tv:
+        final tv = widget.tv;
+        return tv == null ? null : TvHomeCard(service: tv, neo: true);
+      case FeaturedKind.jbl:
+        final jbl = widget.jbl;
+        return jbl == null ? null : SoundbarHomeCard(service: jbl, neo: true);
+      case FeaturedKind.thermostat:
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return (d == null || !d.isThermostat)
+            ? null
+            : ThermostatHomeCard(service: service, device: d, neo: true);
+      case FeaturedKind.vacuum:
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return (d == null || !d.isVacuum)
+            ? null
+            : VacuumHomeCard(service: service, device: d, neo: true);
+      case FeaturedKind.light:
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return (d == null || d.hidden)
+            ? null
+            : LightHomeCard(service: service, device: d);
+      case FeaturedKind.scene:
+        final s = service.scenes.firstWhereOrNull((x) => x.id == item.id);
+        return s == null ? null : SceneHomeCard(service: service, scene: s);
+      case FeaturedKind.hueScene:
+        final s = service.hueScenes.firstWhereOrNull((x) => x.id == item.id);
+        return s == null ? null : SceneHomeCard(service: service, hueScene: s);
+      case FeaturedKind.automation:
+        final a =
+            _automations.automations.firstWhereOrNull((x) => x.id == item.id);
+        return a == null
+            ? null
+            : AutomationHomeCard(
+                service: _automations, devices: service, automation: a);
+    }
+  }
+
+  /// Nombre legible de un ítem para el editor.
+  String _featuredName(FeaturedItem item) {
+    final service = widget.service;
+    switch (item.kind) {
+      case FeaturedKind.tv:
+        return 'Samsung TV';
+      case FeaturedKind.jbl:
+        return 'JBL Soundbar';
+      case FeaturedKind.thermostat:
+      case FeaturedKind.vacuum:
+      case FeaturedKind.light:
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return d != null ? service.displayName(d) : '(ya no existe)';
+      case FeaturedKind.scene:
+        return service.scenes
+                .firstWhereOrNull((x) => x.id == item.id)
+                ?.name ??
+            '(escena borrada)';
+      case FeaturedKind.hueScene:
+        return service.hueScenes
+                .firstWhereOrNull((x) => x.id == item.id)
+                ?.name ??
+            '(escena borrada)';
+      case FeaturedKind.automation:
+        return _automations.automations
+                .firstWhereOrNull((x) => x.id == item.id)
+                ?.name ??
+            '(automatización borrada)';
+    }
+  }
+
+  /// Etiqueta corta del tipo (chip del editor).
+  String _kindLabel(FeaturedKind k) => switch (k) {
+        FeaturedKind.tv => 'TV',
+        FeaturedKind.jbl => 'JBL',
+        FeaturedKind.thermostat => 'Termostato',
+        FeaturedKind.vacuum => 'Robot',
+        FeaturedKind.light => 'Luz',
+        FeaturedKind.scene => 'Escena',
+        FeaturedKind.hueScene => 'Escena Hue',
+        FeaturedKind.automation => 'Automatización',
+      };
+
+  /// Subtítulo del editor: tipo + habitación cuando aplica ('Luz · Living',
+  /// 'Escena Hue · Dormitorio') — desambigua homónimos en listas largas.
+  String _featuredContext(FeaturedItem item) {
+    final kind = _kindLabel(item.kind);
+    switch (item.kind) {
+      case FeaturedKind.light:
+        final room = widget.service.rooms
+            .firstWhereOrNull((r) => r.deviceIds.contains(item.id))
+            ?.name;
+        return room != null ? '$kind · $room' : kind;
+      case FeaturedKind.hueScene:
+        final room = widget.service.hueScenes
+            .firstWhereOrNull((x) => x.id == item.id)
+            ?.roomName;
+        return room != null ? '$kind · $room' : kind;
+      default:
+        return kind;
+    }
+  }
+
+  void _openFeaturedEditor(Device? thermostat, Device? vacuum) {
+    final service = widget.service;
+    // Copia local editable; el default se materializa al abrir el editor.
+    final sel = List<FeaturedItem>.of(_effectiveFeatured(thermostat, vacuum));
+
+    void persist(StateSetter setSheet) {
+      setSheet(() {});
+      setState(() => _featured = List.of(sel));
+      _saveFeatured(sel);
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: CceColors.surface,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+      ),
+      // AnimatedBuilder: los grupos "Agregar" dependen de los services (p.ej.
+      // automatizaciones que terminan de cargar con el sheet abierto).
+      builder: (sheetCtx) => AnimatedBuilder(
+        animation: Listenable.merge([service, _automations]),
+        builder: (context, _) => StatefulBuilder(
+          builder: (context, setSheet) {
+          // Candidatos = todo lo agregable que NO está ya en la lista.
+          final selected = sel.toSet();
+          final devices = <FeaturedItem>[
+            if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+            if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
+            for (final d in service.thermostats)
+              FeaturedItem(FeaturedKind.thermostat, d.id),
+            for (final d in service.vacuums)
+              FeaturedItem(FeaturedKind.vacuum, d.id),
+          ].where((i) => !selected.contains(i)).toList();
+          final lights = [
+            for (final d in service.lights) FeaturedItem(FeaturedKind.light, d.id),
+          ].where((i) => !selected.contains(i)).toList();
+          final scenes = <FeaturedItem>[
+            for (final s in service.scenes) FeaturedItem(FeaturedKind.scene, s.id),
+            for (final s in service.hueScenes)
+              FeaturedItem(FeaturedKind.hueScene, s.id),
+          ].where((i) => !selected.contains(i)).toList();
+          final autos = [
+            for (final a in _automations.automations)
+              FeaturedItem(FeaturedKind.automation, a.id),
+          ].where((i) => !selected.contains(i)).toList();
+
+          // Drag EXPLÍCITO desde el handle (buildDefaultDragHandles:false):
+          // el ícono de agarre arrastra de una, sin long-press engañoso.
+          Widget selectedTile(FeaturedItem item, int index) => Container(
+                key: ValueKey(item.encode()),
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(left: 4, right: 4),
+                decoration: BoxDecoration(
+                  color: CceColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(CceRadii.control),
+                ),
+                child: Row(
+                  children: [
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: const SizedBox(
+                        width: 44,
+                        height: 52,
+                        child: Icon(Icons.drag_handle,
+                            size: 20, color: CceColors.textTertiary),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_featuredName(item),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  color: CceColors.textPrimary,
+                                  fontWeight: FontWeight.w600)),
+                          Text(_featuredContext(item),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: CceText.caption
+                                  .copyWith(fontSize: 11.5)),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        sel.remove(item);
+                        persist(setSheet);
+                      },
+                      child: const SizedBox(
+                        width: 44,
+                        height: 52,
+                        child: Icon(Icons.close,
+                            size: 18, color: CceColors.textTertiary),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+          Widget addGroup(String title, List<FeaturedItem> items) {
+            if (items.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 14),
+                Text(title.toUpperCase(), style: CceText.section),
+                const SizedBox(height: 4),
+                for (final item in items)
+                  // Fila COMPLETA tappable (canon TemperatureSensorPickerSheet);
+                  // el + queda como affordance visual.
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (sel.contains(item)) return; // anti doble-tap
+                      HapticFeedback.selectionClick();
+                      sel.add(item);
+                      persist(setSheet);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_featuredName(item),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        color: CceColors.textSecondary)),
+                                Text(_featuredContext(item),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: CceText.caption
+                                        .copyWith(fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Icon(Icons.add_circle_outline,
+                                size: 20, color: CceColors.accent),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }
+
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.8),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Editar Destacados', style: CceText.title),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Arrastrá el ⠿ para ordenar, ✕ para quitar y tocá para '
+                      'agregar. Podés destacar dispositivos, luces, escenas y '
+                      'automatizaciones.',
+                      style: CceText.caption,
+                    ),
+                    const SizedBox(height: 14),
+                    if (sel.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Sin destacados — agregá desde abajo.',
+                            style: CceText.caption),
+                      )
+                    else
+                      ReorderableListView(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        onReorderStart: (_) => HapticFeedback.mediumImpact(),
+                        onReorder: (oldI, newI) {
+                          if (newI > oldI) newI -= 1;
+                          sel.insert(newI, sel.removeAt(oldI));
+                          persist(setSheet);
+                        },
+                        children: [
+                          for (var i = 0; i < sel.length; i++)
+                            selectedTile(sel[i], i),
+                        ],
+                      ),
+                    addGroup('Dispositivos', devices),
+                    addGroup('Luces', lights),
+                    addGroup('Escenas', scenes),
+                    addGroup('Automatizaciones', autos),
+                  ],
+                ),
+              ),
+            ),
+          );
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.service;
     return AnimatedBuilder(
-      animation: service,
+      // merge: las cards/editor de Destacados también dependen de
+      // AutomationsService (sin esto, una automatización destacada no aparece
+      // hasta que un evento ajeno de DevicesService fuerce rebuild).
+      animation: Listenable.merge([service, _automations]),
       builder: (context, _) {
         if (service.loading && service.all.isEmpty) {
           // Mientras no haya datos seguimos mostrando "Preparando tu hogar"
@@ -237,55 +667,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                             onTap: _openTempSensorPicker,
                           ),
                         ),
-                        // Grupo "destacados" (dispositivos dedicados): solo se
-                        // muestra el encabezado si hay al menos un dispositivo.
-                        // Orden: TV → JBL → Termostato (gap 12 entre cada uno).
-                        if (widget.tv != null ||
-                            widget.jbl != null ||
-                            thermostat != null ||
-                            vacuum != null) ...[
-                          const SizedBox(height: 20),
-                          _sectionLabel('Destacados'),
-                          const SizedBox(height: 10),
-                          if (widget.tv != null)
-                            RepaintBoundary(
-                              child: TvHomeCard(
-                                  service: widget.tv!,
-                                  neo: true),
-                            ),
-                          if (widget.tv != null && widget.jbl != null)
-                            const SizedBox(height: 12),
-                          if (widget.jbl != null)
-                            RepaintBoundary(
-                              child: SoundbarHomeCard(
-                                  service: widget.jbl!,
-                                  neo: true),
-                            ),
-                          if ((widget.tv != null || widget.jbl != null) &&
-                              thermostat != null)
-                            const SizedBox(height: 12),
-                          if (thermostat != null)
-                            RepaintBoundary(
-                              child: ThermostatHomeCard(
-                                service: service,
-                                device: thermostat,
-                                neo: true,
-                              ),
-                            ),
-                          if ((widget.tv != null ||
-                                  widget.jbl != null ||
-                                  thermostat != null) &&
-                              vacuum != null)
-                            const SizedBox(height: 12),
-                          if (vacuum != null)
-                            RepaintBoundary(
-                              child: VacuumHomeCard(
-                                service: service,
-                                device: vacuum,
-                                neo: true,
-                              ),
-                            ),
-                        ],
+                        // Grupo "destacados" EDITABLE: lista persistida de
+                        // ítems (devices dedicados, luces, escenas y
+                        // automatizaciones). Sin edición previa reproduce el
+                        // default histórico TV → JBL → Termostato → Robot.
+                        ..._featuredSection(thermostat, vacuum),
                         // Grupo "habitaciones": encabezado de la grilla
                         // arrastrable.
                         const SizedBox(height: 20),
