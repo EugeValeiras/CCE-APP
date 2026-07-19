@@ -14,6 +14,7 @@ import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
+import '../widgets/vacuum_tile.dart';
 import '../widgets/media_device_tile.dart';
 import '../widgets/room_temperature_header.dart';
 import '../widgets/scenes_section.dart';
@@ -268,7 +269,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     final sensorIds = _applyOrder(
             devices
                 .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isVacuum)
                 .toList(),
             _sensorOrder)
         .map((d) => d.id)
@@ -402,7 +403,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final sensors = _applyOrder(
             devices
                 .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
+                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isVacuum)
                 .toList(),
             _sensorOrder);
         // Cerraduras del room → sección propia (no reordenable, fija al final).
@@ -435,6 +436,46 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final Color masterAccent =
             (widget.room != null ? service.statsFor(widget.room!).tint : null) ??
                 CceColors.warm;
+
+        // Sección "Robot": fija (como Cerraduras) — solo si el room tiene
+        // asignado un robot aspiradora.
+        final vacuums = devices.where((d) => d.isVacuum).toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+        final vacuumSlivers = <Widget>[
+          if (vacuums.isNotEmpty) ...[
+            const SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverToBoxAdapter(
+                child: SectionHeader(title: 'Robot'),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverGrid(
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: TileSize.medium.maxTileExtent,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  mainAxisExtent: TileSize.medium.sensorTileHeight,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) => ListenableBuilder(
+                    listenable: service,
+                    builder: (ctx, _) {
+                      final d = service.byId(vacuums[i].id) ?? vacuums[i];
+                      return VacuumTile(
+                          device: d,
+                          service: service,
+                          size: TileSize.medium,
+                          neo: true);
+                    },
+                  ),
+                  childCount: vacuums.length,
+                ),
+              ),
+            ),
+          ],
+        ];
 
         // Sección "Cerraduras": fija después de las secciones reordenables.
         final lockSlivers = <Widget>[
@@ -696,6 +737,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   ),
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
+                ...vacuumSlivers,
                 // Una room de plano solo-con-TV/JBL ya no es "vacía".
                 if (devices.isEmpty && !hasTv && !hasJbl)
                   const SliverFillRemaining(

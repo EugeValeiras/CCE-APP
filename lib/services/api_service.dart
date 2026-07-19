@@ -35,6 +35,35 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
   }
 
+  /// Invoca una acción de capability sobre un device (POST
+  /// /devices/:id/actions/:verb) — el mismo endpoint que usa el Dashboard.
+  /// clean/pause/resume/dock van sin args; setCleanMode {mode},
+  /// cleanRooms {rooms: '7,3'}, setFanSpeed {level}. Lanza Exception con el
+  /// mensaje semántico del backend si la acción falla (≠2xx o success:false).
+  Future<void> invokeAction(String deviceId, String verb,
+      [Map<String, dynamic>? args]) async {
+    final response = await http
+        .post(
+          Uri.parse(
+              '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/actions/${Uri.encodeComponent(verb)}'),
+          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          body: jsonEncode(args ?? const <String, dynamic>{}),
+        )
+        .timeout(const Duration(seconds: 10));
+    Map<String, dynamic>? body;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) body = decoded;
+    } catch (_) {/* body no-JSON: lo cubre el status */}
+    final ok = response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        body?['success'] != false;
+    if (!ok) {
+      final msg = body?['error'] ?? body?['message'] ?? 'HTTP ${response.statusCode}';
+      throw Exception('$verb: $msg');
+    }
+  }
+
   /// Simula la pulsación de un botón de un switch/dial (POST
   /// /devices/:id/simulate-button) → dispara la acción configurada en el
   /// backend. key: 0=click, 1=doble, 2=long; outlet = botón (0-based).

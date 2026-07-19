@@ -14,6 +14,7 @@ import '../widgets/pulse_on_update.dart';
 import '../widgets/temperature_summary_card.dart';
 import '../widgets/temperature_sensor_picker_sheet.dart';
 import '../widgets/thermostat_home_card.dart';
+import '../widgets/vacuum_home_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
 import 'splash_view.dart';
@@ -149,6 +150,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         // al service y reresuelve por id.
         final thermostat =
             service.thermostats.isNotEmpty ? service.thermostats.first : null;
+        // Robot aspiradora destacado: mismo criterio que el termostato (vive en
+        // DevicesService, la card reresuelve por id).
+        final vacuum =
+            service.vacuums.isNotEmpty ? service.vacuums.first : null;
         return Scaffold(
           // Fondo de la app (matte oscuro, #101014): MÁS oscuro que las cards
           // (neoBase) para que el relieve se vea y las cards "floten". Antes el
@@ -237,7 +242,8 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                         // Orden: TV → JBL → Termostato (gap 12 entre cada uno).
                         if (widget.tv != null ||
                             widget.jbl != null ||
-                            thermostat != null) ...[
+                            thermostat != null ||
+                            vacuum != null) ...[
                           const SizedBox(height: 20),
                           _sectionLabel('Destacados'),
                           const SizedBox(height: 10),
@@ -263,6 +269,19 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                               child: ThermostatHomeCard(
                                 service: service,
                                 device: thermostat,
+                                neo: true,
+                              ),
+                            ),
+                          if ((widget.tv != null ||
+                                  widget.jbl != null ||
+                                  thermostat != null) &&
+                              vacuum != null)
+                            const SizedBox(height: 12),
+                          if (vacuum != null)
+                            RepaintBoundary(
+                              child: VacuumHomeCard(
+                                service: service,
+                                device: vacuum,
                                 neo: true,
                               ),
                             ),

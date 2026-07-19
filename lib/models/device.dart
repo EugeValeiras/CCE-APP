@@ -1,3 +1,21 @@
+/// Habitación reportada por el sidecar Roborock (capability vacuum_rooms).
+/// `segmentId` es el id numérico que consume el verbo cleanRooms.
+class VacuumRoom {
+  final String id;
+  final String name;
+  final int segmentId;
+
+  const VacuumRoom({required this.id, required this.name, required this.segmentId});
+
+  factory VacuumRoom.fromJson(Map<String, dynamic> json) {
+    return VacuumRoom(
+      id: (json['id'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+      segmentId: (json['segmentId'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class DeviceState {
   final bool on;
   final int bri;
@@ -27,6 +45,17 @@ class DeviceState {
   final String? mediaApp; // app activa (TV)
   final String? mediaChannel; // canal actual (TV)
 
+  // ── Bloque VACUUM (Roborock vía Matter RVC + sidecar) ──
+  // Matter emite vacuumState/cleanMode/cleanModes/battery; el sidecar (cuando
+  // tiene sesión) agrega rooms/fanSpeed/fanSpeeds (capability vacuum_rooms).
+  final String? vacuumState; // 'cleaning' | 'docked' | 'paused' | 'returning' | 'error' | 'stopped'
+  final String? cleanMode; // label REAL del robot, ej 'Auto, Vacuum and Mop'
+  final List<String>? cleanModes; // los modos soportados (labels reales)
+  final int? battery; // 0-100 (numérico; distinto de DeviceSensor.battery String)
+  final List<VacuumRoom>? rooms; // habitaciones nombradas (sidecar)
+  final String? fanSpeed; // potencia de succión activa (label real)
+  final List<String>? fanSpeeds; // potencias soportadas
+
   DeviceState({
     this.on = false,
     this.bri = 0,
@@ -49,6 +78,13 @@ class DeviceState {
     this.mediaState,
     this.mediaApp,
     this.mediaChannel,
+    this.vacuumState,
+    this.cleanMode,
+    this.cleanModes,
+    this.battery,
+    this.rooms,
+    this.fanSpeed,
+    this.fanSpeeds,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -76,6 +112,26 @@ class DeviceState {
       mediaState: json['mediaState'] as String?,
       mediaApp: json['mediaApp'] as String?,
       mediaChannel: json['mediaChannel'] as String?,
+      vacuumState: json['vacuumState'] as String?,
+      cleanMode: json['cleanMode'] as String?,
+      cleanModes: (json['cleanModes'] is List)
+          ? (json['cleanModes'] as List).map((m) => m.toString()).toList()
+          : null,
+      battery: (json['battery'] as num?)?.toInt(),
+      rooms: (json['rooms'] is List)
+          ? (json['rooms'] as List)
+              .whereType<Map>()
+              // Sin segmentId numérico la room no es accionable (cleanRooms
+              // manda segmentIds) y el default 0 colapsaría la selección de
+              // varias rooms en una sola key — se descarta al parsear.
+              .where((r) => r['segmentId'] is num)
+              .map((r) => VacuumRoom.fromJson(Map<String, dynamic>.from(r)))
+              .toList()
+          : null,
+      fanSpeed: json['fanSpeed'] as String?,
+      fanSpeeds: (json['fanSpeeds'] is List)
+          ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
+          : null,
     );
   }
 
@@ -105,6 +161,13 @@ class DeviceState {
     String? mediaState,
     String? mediaApp,
     String? mediaChannel,
+    String? vacuumState,
+    String? cleanMode,
+    List<String>? cleanModes,
+    int? battery,
+    List<VacuumRoom>? rooms,
+    String? fanSpeed,
+    List<String>? fanSpeeds,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -128,6 +191,13 @@ class DeviceState {
       mediaState: mediaState ?? this.mediaState,
       mediaApp: mediaApp ?? this.mediaApp,
       mediaChannel: mediaChannel ?? this.mediaChannel,
+      vacuumState: vacuumState ?? this.vacuumState,
+      cleanMode: cleanMode ?? this.cleanMode,
+      cleanModes: cleanModes ?? this.cleanModes,
+      battery: battery ?? this.battery,
+      rooms: rooms ?? this.rooms,
+      fanSpeed: fanSpeed ?? this.fanSpeed,
+      fanSpeeds: fanSpeeds ?? this.fanSpeeds,
     );
   }
 }
@@ -254,9 +324,13 @@ class Device {
   bool get isMediaDevice =>
       capabilities.contains('volume') || capabilities.contains('media_playback');
 
+  /// Robot aspiradora: capability 'vacuum' (Matter RVC / Roborock). Tiene tile
+  /// y pantalla dedicados; se excluye de luces/sensores como los media devices.
+  bool get isVacuum => capabilities.contains('vacuum');
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
-    if (isThermostat || isLock || isMediaDevice) return false;
+    if (isThermostat || isLock || isMediaDevice || isVacuum) return false;
     final t = type.toLowerCase();
     return t.contains('light') ||
         t.contains('bulb') ||

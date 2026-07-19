@@ -80,9 +80,10 @@ class DevicesService extends ChangeNotifier {
   List<Device> get lights =>
       all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat && !d.isMediaDevice).toList();
   List<Device> get sensors =>
-      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice).toList();
+      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice && !d.isVacuum).toList();
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
   List<Device> get locks => all.where((d) => d.isLock).toList();
+  List<Device> get vacuums => all.where((d) => d.isVacuum).toList();
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
@@ -231,6 +232,94 @@ class DevicesService extends ChangeNotifier {
     } catch (e) {
       debugPrint('simulateButton error: $e');
       return false;
+    }
+  }
+
+  // ── Vacuum (Roborock) — verbos de capability vía POST /actions/:verb ──
+  // Optimista con revert (mismo patrón que luces/termostato): el estado real
+  // llega igual por WS desde Matter, el optimismo solo evita el lag visual.
+
+  /// Revert seguro del optimista: restaura [prev] SOLO si el estado actual
+  /// sigue siendo el objeto optimista [applied]. Si en el medio llegó un push
+  /// WS (estado más fresco del robot), NO lo pisamos — el timeout del HTTP no
+  /// implica que el comando no haya llegado (ventana grande con Matter/sidecar).
+  void _revertVacuumIfUntouched(Device d, DeviceState prev, DeviceState applied) {
+    if (identical(d.state, applied)) {
+      d.state = prev;
+      notifyListeners();
+    }
+  }
+
+  /// Verbo simple de transporte: clean | pause | resume | dock.
+  Future<void> vacuumCommand(Device d, String verb) async {
+    const optimistic = {
+      'clean': 'cleaning',
+      'pause': 'paused',
+      'resume': 'cleaning',
+      'dock': 'returning',
+    };
+    final prev = d.state;
+    final next = optimistic[verb];
+    final applied =
+        next != null ? d.state.copyWith(vacuumState: next) : d.state;
+    if (next != null) {
+      d.state = applied;
+      notifyListeners();
+    }
+    try {
+      await _api.invokeAction(d.id, verb);
+    } catch (e) {
+      debugPrint('vacuumCommand($verb) error: $e');
+      _revertVacuumIfUntouched(d, prev, applied);
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// Cambia el modo de limpieza (label REAL del robot, ej 'Auto, Vacuum and Mop').
+  Future<void> setVacuumCleanMode(Device d, String mode) async {
+    final prev = d.state;
+    final applied = d.state.copyWith(cleanMode: mode);
+    d.state = applied;
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setCleanMode', {'mode': mode});
+    } catch (e) {
+      debugPrint('setVacuumCleanMode error: $e');
+      _revertVacuumIfUntouched(d, prev, applied);
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// Limpia habitaciones específicas (segmentIds del sidecar). Devuelve false
+  /// si falló para que la pantalla mantenga la selección y avise en contexto.
+  Future<bool> cleanVacuumRooms(Device d, List<int> segmentIds) async {
+    if (segmentIds.isEmpty) return false;
+    final prev = d.state;
+    final applied = d.state.copyWith(vacuumState: 'cleaning');
+    d.state = applied;
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'cleanRooms', {'rooms': segmentIds.join(',')});
+      return true;
+    } catch (e) {
+      debugPrint('cleanVacuumRooms error: $e');
+      _revertVacuumIfUntouched(d, prev, applied);
+      return false;
+    }
+  }
+
+  /// Potencia de succión (label real del robot, sidecar).
+  Future<void> setVacuumFanSpeed(Device d, String level) async {
+    final prev = d.state;
+    final applied = d.state.copyWith(fanSpeed: level);
+    d.state = applied;
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setFanSpeed', {'level': level});
+    } catch (e) {
+      debugPrint('setVacuumFanSpeed error: $e');
+      _revertVacuumIfUntouched(d, prev, applied);
+      _notifyCommandError(displayName(d));
     }
   }
 
@@ -792,8 +881,21 @@ class DevicesService extends ChangeNotifier {
         'systemMode': ev.state!['systemMode'] ?? d.state.systemMode,
         'minTemp': ev.state!['minTemp'] ?? d.state.minTemp,
         'maxTemp': ev.state!['maxTemp'] ?? d.state.maxTemp,
+        // Vacuum (Roborock): ídem — el push de Matter trae vacuumState/battery
+        // y sin estos campos el estado en vivo del robot se pisaría con null.
+        'vacuumState': ev.state!['vacuumState'] ?? d.state.vacuumState,
+        'cleanMode': ev.state!['cleanMode'] ?? d.state.cleanMode,
+        'cleanModes': ev.state!['cleanModes'] ?? d.state.cleanModes,
+        'battery': ev.state!['battery'] ?? d.state.battery,
+        'fanSpeed': ev.state!['fanSpeed'] ?? d.state.fanSpeed,
+        'fanSpeeds': ev.state!['fanSpeeds'] ?? d.state.fanSpeeds,
+        // OJO: rooms NO va acá — el fallback serían objetos VacuumRoom (no JSON
+        // crudo) y fromJson los descartaría. Se preserva vía copyWith abajo.
+        'rooms': ev.state!['rooms'],
       });
-      d.state = partial;
+      d.state = (partial.rooms == null && d.state.rooms != null)
+          ? partial.copyWith(rooms: d.state.rooms)
+          : partial;
       changed = true;
     }
     if (ev.sensor != null && ev.sensor!.isNotEmpty) {
