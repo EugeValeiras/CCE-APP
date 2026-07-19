@@ -403,63 +403,77 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               FeaturedItem(FeaturedKind.automation, a.id),
           ].where((i) => !selected.contains(i)).toList();
 
-          // Drag EXPLÍCITO desde el handle (buildDefaultDragHandles:false):
-          // el ícono de agarre arrastra de una, sin long-press engañoso.
-          Widget selectedTile(FeaturedItem item, int index) => Container(
-                key: ValueKey(item.encode()),
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.only(left: 4, right: 4),
+          // Fallback para ítems que ya no resuelven (escena/device borrados):
+          // fila simple con el nombre, para poder quitarlos igual.
+          Widget stalePlaceholder(FeaturedItem item) => Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 18),
                 decoration: BoxDecoration(
                   color: CceColors.surfaceHigh,
-                  borderRadius: BorderRadius.circular(CceRadii.control),
+                  borderRadius: BorderRadius.circular(CceRadii.hueCard),
                 ),
-                child: Row(
+                child: Text(
+                  '${_featuredName(item)} · ${_featuredContext(item)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: CceText.caption,
+                ),
+              );
+
+          // Badge circular superpuesto (estilo edición iOS). [onTap] null =
+          // decorativo (el tap lo maneja el contenedor).
+          Widget badge(IconData icon, Color color, VoidCallback? onTap) {
+            final visual = Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: Border.all(color: CceColors.surface, width: 2),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x66000000), blurRadius: 6),
+                ],
+              ),
+              child: Icon(icon, size: 15, color: Colors.white),
+            );
+            if (onTap == null) return visual;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              // Padding = hit-area ~44pt manteniendo el badge chico.
+              child: Padding(padding: const EdgeInsets.all(9), child: visual),
+            );
+          }
+
+          // CARD REAL de la home, inerte (IgnorePointer: en el editor no se
+          // togglea ni navega) + badge de acción superpuesto.
+          Widget selectedTile(FeaturedItem item, int index) {
+            final card = _featuredCard(item);
+            return Padding(
+              key: ValueKey(item.encode()),
+              padding: const EdgeInsets.only(bottom: 12),
+              child: ReorderableDelayedDragStartListener(
+                index: index,
+                child: Stack(
                   children: [
-                    ReorderableDragStartListener(
-                      index: index,
-                      child: const SizedBox(
-                        width: 44,
-                        height: 52,
-                        child: Icon(Icons.drag_handle,
-                            size: 20, color: CceColors.textTertiary),
-                      ),
+                    RepaintBoundary(
+                      child:
+                          IgnorePointer(child: card ?? stalePlaceholder(item)),
                     ),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_featuredName(item),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: CceColors.textPrimary,
-                                  fontWeight: FontWeight.w600)),
-                          Text(_featuredContext(item),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: CceText.caption
-                                  .copyWith(fontSize: 11.5)),
-                        ],
-                      ),
-                    ),
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () {
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: badge(Icons.close, CceColors.danger, () {
                         HapticFeedback.selectionClick();
                         sel.remove(item);
                         persist(setSheet);
-                      },
-                      child: const SizedBox(
-                        width: 44,
-                        height: 52,
-                        child: Icon(Icons.close,
-                            size: 18, color: CceColors.textTertiary),
-                      ),
+                      }),
                     ),
                   ],
                 ),
-              );
+              ),
+            );
+          }
 
           Widget addGroup(String title, List<FeaturedItem> items) {
             if (items.isEmpty) return const SizedBox.shrink();
@@ -468,10 +482,8 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               children: [
                 const SizedBox(height: 14),
                 Text(title.toUpperCase(), style: CceText.section),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 for (final item in items)
-                  // Fila COMPLETA tappable (canon TemperatureSensorPickerSheet);
-                  // el + queda como affordance visual.
                   GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {
@@ -481,30 +493,23 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                       persist(setSheet);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 7),
-                      child: Row(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Stack(
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(_featuredName(item),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                        color: CceColors.textSecondary)),
-                                Text(_featuredContext(item),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: CceText.caption
-                                        .copyWith(fontSize: 11)),
-                              ],
-                            ),
+                          RepaintBoundary(
+                            child: IgnorePointer(
+                                child:
+                                    _featuredCard(item) ?? stalePlaceholder(item)),
                           ),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Icon(Icons.add_circle_outline,
-                                size: 20, color: CceColors.accent),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            // Decorativo: agrega el tap de la card completa.
+                            child: Padding(
+                              padding: const EdgeInsets.all(9),
+                              child:
+                                  badge(Icons.add, CceColors.accent, null),
+                            ),
                           ),
                         ],
                       ),
@@ -527,9 +532,8 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     const Text('Editar Destacados', style: CceText.title),
                     const SizedBox(height: 4),
                     Text(
-                      'Arrastrá el ⠿ para ordenar, ✕ para quitar y tocá para '
-                      'agregar. Podés destacar dispositivos, luces, escenas y '
-                      'automatizaciones.',
+                      'Mantené apretada una card para reordenarla, tocá la ✕ '
+                      'para quitarla y tocá una de abajo para agregarla.',
                       style: CceText.caption,
                     ),
                     const SizedBox(height: 14),
