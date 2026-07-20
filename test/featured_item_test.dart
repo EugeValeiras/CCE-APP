@@ -25,6 +25,14 @@ void main() {
         FeaturedItem.decode('button:dev_dial'),
         const FeaturedItem(FeaturedKind.button, 'dev_dial'),
       );
+      expect(
+        FeaturedItem.decode('lock:dev_matheu'),
+        const FeaturedItem(FeaturedKind.lock, 'dev_matheu'),
+      );
+      expect(
+        FeaturedItem.decode('sensor:dev_motion'),
+        const FeaturedItem(FeaturedKind.sensor, 'dev_motion'),
+      );
     });
 
     test('id con dos puntos internos sobrevive el round-trip', () {

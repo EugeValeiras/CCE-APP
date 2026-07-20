@@ -16,6 +16,9 @@ import '../utils/icon_resolver.dart';
 import '../views/automations/automation_card.dart' show automationIcon, triggerColor;
 import '../views/automations/run_automation.dart';
 import '../views/dial_switch_screen.dart';
+import '../views/lock_screen.dart';
+import '../views/sensor_detail_screen.dart';
+import '../views/thermometer_screen.dart';
 import '../views/light_color_screen.dart';
 import '../views/single_button_screen.dart';
 import '../views/switch_detail_screen.dart';
@@ -303,6 +306,261 @@ class _ButtonHomeCardState extends State<ButtonHomeCard> {
                 )
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Cerradura destacada: estado trabada/destrabada ────────────────────────
+
+class LockHomeCard extends StatelessWidget {
+  final DevicesService service;
+  final Device device;
+  final bool neo;
+
+  const LockHomeCard({
+    super.key,
+    required this.service,
+    required this.device,
+    this.neo = true,
+    this.trailing,
+  });
+
+  /// Override del control derecho (editor de Destacados: − / +).
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: service,
+      builder: (context, _) {
+        final d = service.byId(device.id) ?? device;
+        final online = d.state.reachable;
+        // Convención del provider: state.on = trabada.
+        final locked = d.state.on;
+        final accent = !online
+            ? CceColors.textTertiary
+            : (locked ? CceColors.ok : const Color(0xFFFF9F0A));
+        final sub = !online
+            ? 'Fuera de línea'
+            : (locked ? 'Trabada' : 'Destrabada');
+
+        return CceCard(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => LockScreen(device: d, service: service),
+            ));
+          },
+          radius: neo ? CceRadii.hueCard : CceRadii.card,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: neo ? CceColors.neoBase : null,
+          neo: neo,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: EmbossedGlyph(
+                    size: 28,
+                    color: online ? accent : CceColors.neoTextSub,
+                    highlight: CceEmboss.highlight.color,
+                    shadow: CceEmboss.shadow.color,
+                    child: CceIcon(
+                      locked ? CceIcons.lockLocked : CceIcons.lockUnlocked,
+                      size: 26,
+                      color: online ? accent : CceColors.neoTextSub,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      service.displayName(d),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.title.copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        StatusDot(
+                          online ? accent : CceColors.textTertiary,
+                          // Destrabada pulsa: es el estado que pide atención.
+                          pulse: online && !locked,
+                          semanticLabel: sub,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(sub,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: CceText.caption),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Sin acción rápida: destrabar es sensible y vive en su pantalla
+              // (con hold-to-confirm).
+              trailing ??
+                  const Icon(Icons.chevron_right,
+                      color: CceColors.textTertiary),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Sensor destacado: movimiento / abertura / termómetro ──────────────────
+
+class SensorHomeCard extends StatelessWidget {
+  final DevicesService service;
+  final Device device;
+  final bool neo;
+
+  const SensorHomeCard({
+    super.key,
+    required this.service,
+    required this.device,
+    this.neo = true,
+    this.trailing,
+  });
+
+  /// Override del control derecho (editor de Destacados: − / +).
+  final Widget? trailing;
+
+  /// Estado legible + acento por tipo de sensor.
+  ({String label, Color color, String glyph, bool alert}) _read(Device d) {
+    final s = d.sensor;
+    if (d.isMotionSensor) {
+      final active = s?.motion ?? false;
+      return (
+        label: active ? 'Movimiento' : 'Sin movimiento',
+        color: active ? CceColors.motion : CceColors.textSecondary,
+        glyph: active ? CceIcons.personStanding : CceIcons.footprints,
+        alert: active,
+      );
+    }
+    if (d.isContactSensor) {
+      final open = s?.contact ?? false;
+      return (
+        label: open ? 'Abierta' : 'Cerrada',
+        color: open ? CceColors.contact : CceColors.textSecondary,
+        glyph: open ? CceIcons.doorOpen : CceIcons.doorClosed,
+        alert: open,
+      );
+    }
+    // Termómetro / sensor genérico.
+    final t = s?.temperature;
+    final h = s?.humidity;
+    final parts = [
+      if (t != null) '${t.toStringAsFixed(1)}°',
+      if (h != null) '${h.round()}%',
+    ];
+    return (
+      label: parts.isEmpty ? 'Sin lectura' : parts.join(' · '),
+      color: t != null ? CceColors.warm : CceColors.textSecondary,
+      glyph: CceIcons.thermometer,
+      alert: false,
+    );
+  }
+
+  bool _isThermometer(Device d) =>
+      !d.isMotionSensor &&
+      !d.isContactSensor &&
+      (d.sensor?.temperature != null || d.sensor?.humidity != null);
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: service,
+      builder: (context, _) {
+        final d = service.byId(device.id) ?? device;
+        final online = d.state.reachable;
+        final r = _read(d);
+        final accent = online ? r.color : CceColors.textTertiary;
+
+        return CceCard(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => _isThermometer(d)
+                  ? ThermometerScreen(device: d, service: service)
+                  : SensorDetailScreen(device: d, service: service),
+            ));
+          },
+          radius: neo ? CceRadii.hueCard : CceRadii.card,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          color: neo ? CceColors.neoBase : null,
+          neo: neo,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: Center(
+                  child: EmbossedGlyph(
+                    size: 28,
+                    color: online && r.alert ? accent : CceColors.neoTextSub,
+                    highlight: CceEmboss.highlight.color,
+                    shadow: CceEmboss.shadow.color,
+                    child: CceIcon(r.glyph,
+                        size: 26,
+                        color:
+                            online && r.alert ? accent : CceColors.neoTextSub),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      service.displayName(d),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: CceText.title.copyWith(fontSize: 15),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        StatusDot(
+                          online ? accent : CceColors.textTertiary,
+                          pulse: online && r.alert,
+                          semanticLabel: r.label,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            online ? r.label : 'Fuera de línea',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: CceText.caption,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              trailing ??
+                  const Icon(Icons.chevron_right,
+                      color: CceColors.textTertiary),
             ],
           ),
         );
