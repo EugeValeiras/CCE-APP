@@ -579,6 +579,27 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         buildDefaultDragHandles: false,
+                        // Sin esto, el proxy de drag envuelve la card en un
+                        // Material OPACO cuadrado (la "placa" que aplasta el
+                        // layout). Transparente + leve escala: la card viaja
+                        // con su propio relieve (mismo criterio que la grilla
+                        // de habitaciones).
+                        proxyDecorator: (child, index, animation) {
+                          return AnimatedBuilder(
+                            animation: animation,
+                            builder: (context, _) {
+                              final t =
+                                  Curves.easeInOut.transform(animation.value);
+                              return Transform.scale(
+                                scale: 1.0 + 0.03 * t,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: child,
+                                ),
+                              );
+                            },
+                          );
+                        },
                         onReorderStart: (_) => HapticFeedback.mediumImpact(),
                         onReorder: (oldI, newI) {
                           if (newI > oldI) newI -= 1;
