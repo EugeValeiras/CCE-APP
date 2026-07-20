@@ -213,6 +213,8 @@ class DeviceSensor {
   // última tecla pulsada (0=click, 1=doble, 2=long).
   final int? outlets;
   final int? lastKey;
+  /// Epoch ms del último disparo reportado por el sensor (eWeLink trigTime).
+  final int? trigTime;
 
   DeviceSensor({
     this.temperature,
@@ -223,6 +225,7 @@ class DeviceSensor {
     this.brightness,
     this.outlets,
     this.lastKey,
+    this.trigTime,
   });
 
   factory DeviceSensor.fromJson(Map<String, dynamic> json) {
@@ -235,6 +238,13 @@ class DeviceSensor {
       brightness: json['brightness'] as String?,
       outlets: (json['outlets'] as num?)?.toInt(),
       lastKey: (json['lastKey'] as num?)?.toInt(),
+      // OJO: el backend manda trigTime como num o como String según el
+      // provider (el fixture dorado tiene ambos) — parseo defensivo.
+      trigTime: switch (json['trigTime']) {
+        final num n => n.toInt(),
+        final String s => int.tryParse(s),
+        _ => null,
+      },
     );
   }
 }

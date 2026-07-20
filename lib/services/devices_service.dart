@@ -912,6 +912,10 @@ class DevicesService extends ChangeNotifier {
         motion: (ev.sensor!['motion'] as bool?) ?? current?.motion,
         contact: (ev.sensor!['contact'] as bool?) ?? current?.contact,
         brightness: (ev.sensor!['brightness'] as String?) ?? current?.brightness,
+        outlets: (ev.sensor!['outlets'] as num?)?.toInt() ?? current?.outlets,
+        lastKey: (ev.sensor!['lastKey'] as num?)?.toInt() ?? current?.lastKey,
+        trigTime:
+            (ev.sensor!['trigTime'] as num?)?.toInt() ?? current?.trigTime,
       );
       changed = true;
     }

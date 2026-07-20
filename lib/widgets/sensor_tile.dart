@@ -9,6 +9,7 @@ import '../utils/icon_resolver.dart';
 import '../views/dial_switch_screen.dart';
 import '../views/single_button_screen.dart';
 import '../views/switch_detail_screen.dart';
+import '../views/sensor_detail_screen.dart';
 import '../views/thermometer_screen.dart';
 import 'pulse_on_update.dart';
 
@@ -231,7 +232,8 @@ class SensorTile extends StatelessWidget {
     //  - Resto de switches/relés → SwitchDetailScreen (toggle grande).
     //  - Termómetro (sensor con temp/humedad, NO contacto ni movimiento)
     //    → ThermometerScreen.
-    //  - Otros sensores (contacto/movimiento) → sin tap.
+    //  - Contacto / movimiento → SensorDetailScreen (estado + métricas +
+    //    historial real; eran los únicos devices sin pantalla propia).
     Widget? target;
     if (isSwitch) {
       final isButton = s?.lastKey != null ||
@@ -247,6 +249,8 @@ class SensorTile extends StatelessWidget {
         !device.isMotionSensor &&
         (s?.temperature != null || s?.humidity != null)) {
       target = ThermometerScreen(device: device, service: service);
+    } else if (device.isContactSensor || device.isMotionSensor) {
+      target = SensorDetailScreen(device: device, service: service);
     }
 
     if (target == null) return tile;
