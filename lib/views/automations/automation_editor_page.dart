@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/automation.dart';
@@ -88,15 +89,20 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
 
   Future<void> _createFlow() async {
     if (!mounted) return;
-    await showTriggerSheet(context, draft: draft, devices: widget.devices);
+    // Si el usuario cierra el sheet del disparador (swipe-down / Cancelar) NO
+    // se encadena el de acciones: aterriza en el editor vacio y decide.
+    final okTrigger =
+        await showTriggerSheet(context, draft: draft, devices: widget.devices);
     if (!mounted) return;
     setState(() {});
+    if (!okTrigger) return;
     await showActionsSheet(context,
         draft: draft, devices: widget.devices, config: widget.service.config);
     if (!mounted) return;
     setState(() {
-      if (_name.text.trim().isEmpty) {
-        // Sugerencia de nombre a partir de lo configurado.
+      // Sugerir nombre SOLO si lo configurado es valido: antes, cancelando
+      // ambos sheets, quedaba "Sensor sin configurar -> Sin acciones".
+      if (_name.text.trim().isEmpty && draft.validationError() == null) {
         final t = triggerPhrase(draft, widget.devices);
         final acts = actionsPhrase(draft, widget.devices);
         _name.text = '$t → $acts';
@@ -105,6 +111,51 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
       }
     });
     _nameFocus.requestFocus();
+  }
+
+  /// ¿El draft difiere de lo que se abrio? Para confirmar el descarte.
+  bool get _dirty {
+    const eq = DeepCollectionEquality();
+    final current = Map<String, dynamic>.of(draft.toJson());
+    current['name'] = _name.text.trim();
+    final original = Map<String, dynamic>.of(draft.original);
+    if (widget.isNew) {
+      // Nueva: sucia si toco algo (nombre, trigger o acciones).
+      return _name.text.trim().isNotEmpty ||
+          draft.actions.isNotEmpty ||
+          draft.trigger.type != 'manual';
+    }
+    original['name'] = (original['name'] as String?)?.trim() ?? '';
+    return !eq.equals(current, original);
+  }
+
+  /// Confirma el descarte de cambios (swipe-back o Cancelar).
+  Future<bool> _confirmDiscard() async {
+    if (!_dirty) return true;
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: CceColors.surface,
+        title: const Text('¿Descartar los cambios?', style: CceText.title),
+        content: const Text('Lo que configuraste se va a perder.',
+            style: CceText.caption),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Seguir editando'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: CceColors.danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Descartar'),
+          ),
+        ],
+      ),
+    );
+    return discard == true;
   }
 
   Future<void> _pickIcon() async {
@@ -261,7 +312,7 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
       builder: (dialogContext) => AlertDialog(
         backgroundColor: CceColors.surface,
         title: Text('¿Eliminar "${draft.name}"?', style: CceText.title),
-        content: const Text('Esta acción se puede deshacer desde la lista.',
+        content: const Text('Vas a poder deshacerlo unos segundos.',
             style: CceText.caption),
         actions: [
           TextButton(
@@ -281,7 +332,9 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
     );
     if (confirmed != true || !mounted) return;
     await widget.service.delete(draft.id);
-    if (mounted) Navigator.of(context).pop(true);
+    // 'deleted' → la lista muestra el SnackBar con DESHACER (antes el dialogo
+    // prometia un undo que nunca aparecia al borrar desde el editor).
+    if (mounted) Navigator.of(context).pop('deleted');
   }
 
   Widget _blockCard({
@@ -366,7 +419,17 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
     final validationError = draft.validationError();
     final condPhrase = conditionsPhrase(draft, widget.devices);
 
-    return Scaffold(
+    return PopScope(
+      // Sin esto, el swipe-back de iOS descartaba trigger+condiciones+acciones
+      // sin preguntar (el AppBar no tiene flecha, pero el gesto sigue activo).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (await _confirmDiscard() && mounted) {
+          if (context.mounted) Navigator.of(context).pop(false);
+        }
+      },
+      child: Scaffold(
       backgroundColor: CceColors.bg,
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -505,13 +568,42 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
           ),
           // Footer fijo.
           Container(
-            height: 64,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(
               color: CceColors.surface,
               border: Border(top: BorderSide(color: CceColors.stroke)),
             ),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              // Motivo por el que Guardar esta deshabilitado, JUNTO al boton:
+              // el mismo texto vive en el banner de arriba, fuera de pantalla
+              // cuando el usuario mira el footer.
+              if (validationError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline,
+                          size: 15, color: CceColors.warm),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          validationError,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: CceColors.warm,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              SizedBox(
+                height: 64,
+                child: Row(
               children: [
                 if (!widget.isNew)
                   TextButton.icon(
@@ -530,16 +622,24 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                 ),
                 const SizedBox(width: 10),
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  onPressed: () async {
+                    if (await _confirmDiscard() && context.mounted) {
+                      Navigator.of(context).pop(false);
+                    }
+                  },
                   child: const Text('Cancelar',
                       style: TextStyle(color: CceColors.textSecondary)),
                 ),
                 const SizedBox(width: 10),
                 _saveButton(validationError),
               ],
+                ),
+              ),
+              ],
             ),
           ),
         ],
+      ),
       ),
     );
   }

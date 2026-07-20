@@ -86,6 +86,29 @@ class _ActionsSheet extends StatefulWidget {
 class _ActionsSheetState extends State<_ActionsSheet> {
   Automation get draft => widget.draft;
 
+  /// Acciones personalizadas guardadas al pasar a modo escena/grupo. Antes se
+  /// hacia actions.clear() y se perdian sin aviso ni undo; ahora se restauran
+  /// solas al volver a "Personalizado".
+  List<AutomationAction>? _stashedActions;
+
+  /// Pasa a modo simple (escena/grupo) preservando las acciones custom.
+  void _stashActions() {
+    if (draft.actions.isNotEmpty) {
+      _stashedActions = List<AutomationAction>.of(draft.actions);
+    }
+    draft.actions.clear();
+  }
+
+  /// Vuelve a modo personalizado restaurando lo guardado (si el usuario no
+  /// agrego nada nuevo en el medio).
+  void _restoreActions() {
+    final stash = _stashedActions;
+    if (stash != null && draft.actions.isEmpty) {
+      draft.actions.addAll(stash);
+      _stashedActions = null;
+    }
+  }
+
   late bool _custom = draft.source == 'custom';
 
   // === Simple ===============================================================
@@ -183,7 +206,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
                   onTap: () => setState(() {
                     draft.source = 'scene';
                     draft.sourceId = s.id;
-                    draft.actions.clear();
+                    _stashActions();
                   }),
                 ),
             ],
@@ -206,7 +229,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
                     draft.source = 'hueScene';
                     draft.sourceId = s.id;
                     draft.sourceSmart = s.isSmart;
-                    draft.actions.clear();
+                    _stashActions();
                   }),
                 ),
             ],
@@ -237,7 +260,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
                       onTap: () => setState(() {
                         draft.source = 'group';
                         draft.sourceId = g.id;
-                        draft.actions.clear();
+                        _stashActions();
                       }),
                       child: Text(g.name, style: CceText.body),
                     ),
@@ -624,7 +647,10 @@ class _ActionsSheetState extends State<_ActionsSheet> {
                 // restaura sola al elegir; mientras tanto sigue 'custom'.
                 onChanged: (v) => setState(() {
                   _custom = v;
-                  if (v) draft.source = 'custom';
+                  if (v) {
+                    draft.source = 'custom';
+                    _restoreActions();
+                  }
                 }),
               ),
               _custom ? _customBody() : _simpleBody(),
@@ -645,13 +671,18 @@ class _EditorScaffold extends StatelessWidget {
     required this.title,
     required this.scroll,
     required this.children,
-    this.canApply = true,
+    required this.onApply,
   });
 
   final String title;
   final ScrollController scroll;
   final List<Widget> children;
-  final bool canApply;
+
+  /// Escribe los valores del editor en la acción. null = invalido (Listo
+  /// deshabilitado). UN SOLO camino de confirmacion: antes convivian un
+  /// "Listo" que popeaba SIN aplicar (descartaba todo en silencio) y un
+  /// "Aplicar" al pie que si escribia.
+  final VoidCallback? onApply;
 
   @override
   Widget build(BuildContext context) {
@@ -674,8 +705,12 @@ class _EditorScaffold extends StatelessWidget {
           children: [
             Expanded(child: Text(title, style: CceText.title)),
             FilledButton(
-              onPressed:
-                  canApply ? () => Navigator.of(context).pop(true) : null,
+              onPressed: onApply == null
+                  ? null
+                  : () {
+                      onApply!();
+                      Navigator.of(context).pop(true);
+                    },
               child: const Text('Listo'),
             ),
           ],
@@ -773,7 +808,7 @@ class _LightActionEditorState extends State<_LightActionEditor> {
     return _EditorScaffold(
       title: 'Acción de luz',
       scroll: widget.scroll,
-      canApply: valid,
+      onApply: valid ? _apply : null,
       children: [
         _editorLabel('Luz'),
         Wrap(
@@ -855,16 +890,6 @@ class _LightActionEditorState extends State<_LightActionEditor> {
             ),
           ],
         ],
-        const SizedBox(height: 18),
-        FilledButton(
-          onPressed: valid
-              ? () {
-                  _apply();
-                  Navigator.of(context).pop(true);
-                }
-              : null,
-          child: const Text('Aplicar'),
-        ),
       ],
     );
   }
@@ -897,7 +922,10 @@ class _GroupActionEditorState extends State<_GroupActionEditor> {
     return _EditorScaffold(
       title: 'Acción de grupo',
       scroll: widget.scroll,
-      canApply: valid,
+      onApply: valid
+          ? () => widget.action
+              .updateGroup(groupId: _groupId, groupAction: _groupAction)
+          : null,
       children: [
         _editorLabel('Grupo'),
         Wrap(
@@ -922,17 +950,6 @@ class _GroupActionEditorState extends State<_GroupActionEditor> {
             CceSegment(value: 'toggle', label: 'Alternar'),
           ],
           onChanged: (v) => setState(() => _groupAction = v),
-        ),
-        const SizedBox(height: 18),
-        FilledButton(
-          onPressed: valid
-              ? () {
-                  widget.action.updateGroup(
-                      groupId: _groupId, groupAction: _groupAction);
-                  Navigator.of(context).pop(true);
-                }
-              : null,
-          child: const Text('Aplicar'),
         ),
       ],
     );
@@ -992,6 +1009,13 @@ class _NotificationActionEditorState extends State<_NotificationActionEditor> {
     return _EditorScaffold(
       title: 'Aviso',
       scroll: widget.scroll,
+      onApply: _message.text.trim().isEmpty
+          ? null
+          : () => widget.action.updateNotification(
+                message: _message.text.trim(),
+                sound: _sound,
+                type: _type,
+              ),
       children: [
         _editorLabel('Mensaje'),
         TextField(
@@ -1058,20 +1082,6 @@ class _NotificationActionEditorState extends State<_NotificationActionEditor> {
               style: TextStyle(color: CceColors.textTertiary, fontSize: 12),
             ),
           ),
-        const SizedBox(height: 18),
-        FilledButton(
-          onPressed: _message.text.trim().isEmpty
-              ? null
-              : () {
-                  widget.action.updateNotification(
-                    message: _message.text.trim(),
-                    sound: _sound,
-                    type: _type,
-                  );
-                  Navigator.of(context).pop(true);
-                },
-          child: const Text('Aplicar'),
-        ),
       ],
     );
   }
@@ -1096,6 +1106,7 @@ class _AlarmActionEditorState extends State<_AlarmActionEditor> {
     return _EditorScaffold(
       title: 'Alarma',
       scroll: widget.scroll,
+      onApply: () => widget.action.updateAlarm(_alarmAction),
       children: [
         _editorLabel('Acción'),
         CceSegmented<String>(
@@ -1106,14 +1117,6 @@ class _AlarmActionEditorState extends State<_AlarmActionEditor> {
             CceSegment(value: 'toggle', label: 'Alternar'),
           ],
           onChanged: (v) => setState(() => _alarmAction = v),
-        ),
-        const SizedBox(height: 18),
-        FilledButton(
-          onPressed: () {
-            widget.action.updateAlarm(_alarmAction);
-            Navigator.of(context).pop(true);
-          },
-          child: const Text('Aplicar'),
         ),
       ],
     );
@@ -1177,7 +1180,15 @@ class _JblActionEditorState extends State<_JblActionEditor> {
     return _EditorScaffold(
       title: 'Música',
       scroll: widget.scroll,
-      canApply: _valid,
+      onApply: _valid
+          ? () => widget.action.updateJbl(
+                action: _jblAction,
+                onMode: _jblAction == 'on' ? _onMode : null,
+                radioName: _radioName,
+                volume: _jblAction == 'on' ? _volume : null,
+                nightMode: _jblAction == 'on' && _nightMode,
+              )
+          : null,
       children: [
         _editorLabel('Parlante'),
         CceSegmented<String>(
@@ -1272,22 +1283,6 @@ class _JblActionEditorState extends State<_JblActionEditor> {
             onChanged: (v) => setState(() => _nightMode = v),
           ),
         ],
-        const SizedBox(height: 18),
-        FilledButton(
-          onPressed: _valid
-              ? () {
-                  widget.action.updateJbl(
-                    action: _jblAction,
-                    onMode: _jblAction == 'on' ? _onMode : null,
-                    radioName: _radioName,
-                    volume: _jblAction == 'on' ? _volume : null,
-                    nightMode: _jblAction == 'on' && _nightMode,
-                  );
-                  Navigator.of(context).pop(true);
-                }
-              : null,
-          child: const Text('Aplicar'),
-        ),
       ],
     );
   }

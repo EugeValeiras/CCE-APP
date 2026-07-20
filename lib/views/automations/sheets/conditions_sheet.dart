@@ -102,26 +102,49 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
   String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  Future<void> _addTimeWindow() async {
+  TimeOfDay _parse(String? hhmm, TimeOfDay fallback) {
+    if (hhmm == null || !RegExp(r'^\d{2}:\d{2}$').hasMatch(hhmm)) {
+      return fallback;
+    }
+    return TimeOfDay(
+      hour: int.tryParse(hhmm.substring(0, 2))?.clamp(0, 23) ?? fallback.hour,
+      minute: int.tryParse(hhmm.substring(3))?.clamp(0, 59) ?? fallback.minute,
+    );
+  }
+
+  /// Agrega (index null) o EDITA una ventana horaria. Antes las condiciones
+  /// solo se podian crear y borrar: para corregir una hora habia que borrarla
+  /// y rehacerla.
+  Future<void> _editTimeWindow({int? index}) async {
+    final existing = index == null ? null : trigger.conditions[index];
     final from = await showTimePicker(
       context: context,
-      initialTime: const TimeOfDay(hour: 20, minute: 0),
+      initialTime:
+          _parse(existing?.fromTime, const TimeOfDay(hour: 20, minute: 0)),
       helpText: 'Desde',
     );
     if (from == null || !mounted) return;
     final to = await showTimePicker(
       context: context,
-      initialTime: const TimeOfDay(hour: 7, minute: 0),
+      initialTime:
+          _parse(existing?.toTime, const TimeOfDay(hour: 7, minute: 0)),
       helpText: 'Hasta',
     );
     if (to == null) return;
     setState(() {
-      trigger.conditions.add(AutomationCondition.timeWindow(
+      final cond = AutomationCondition.timeWindow(
         fromTime: _fmt(from),
         toTime: _fmt(to),
-      ));
+      );
+      if (index == null) {
+        trigger.conditions.add(cond);
+      } else {
+        trigger.conditions[index] = cond;
+      }
     });
   }
+
+  Future<void> _addTimeWindow() => _editTimeWindow();
 
   Widget _conditionRow(AutomationCondition c, int index) {
     // La condición lockOpenWay (método de apertura) se edita en el selector
@@ -154,7 +177,23 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
       );
     }
     final isTime = c.type == 'timeWindow';
-    return Container(
+    final isBrightness = c.type == 'sensor' && c.field == 'brightness';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: isTime
+          ? () => _editTimeWindow(index: index)
+          : isBrightness
+              // Luz ambiente: alterna oscuro ↔ con luz (los dos unicos valores).
+              ? () => setState(() {
+                    final next = c.value == 'darker' ? 'brighter' : 'darker';
+                    trigger.conditions[index] = AutomationCondition.sensor(
+                      sensorId: c.sensorId ?? '',
+                      field: 'brightness',
+                      value: next,
+                    );
+                  })
+              : null,
+      child: Container(
       height: 52,
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.only(left: 14, right: 4),
@@ -179,8 +218,8 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
             ),
           ),
           SizedBox(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
             child: IconButton(
               tooltip: 'Quitar condición',
               icon: const CceIcon(CceIcons.trash,
@@ -190,6 +229,7 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

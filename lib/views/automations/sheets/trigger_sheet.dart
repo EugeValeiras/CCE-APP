@@ -67,10 +67,26 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   @override
   void initState() {
     super.initState();
+    // Horario fijo sin hora (automatizacion legacy): el picker mostraba 19:30
+    // pero trigger.time seguia null y "Guardar" quedaba bloqueado sin motivo
+    // visible. Se siembra el valor que el picker ya esta mostrando.
+    if (trigger.type == 'schedule' &&
+        trigger.scheduleMode != 'interval' &&
+        trigger.time == null) {
+      final t = _initialTime();
+      trigger.time =
+          '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    }
     widget.devices.ezvizActors().then((a) {
       if (mounted) setState(() => _actors = a);
     });
   }
+
+  /// lastKey → nombre real de la pulsación (contrato del backend).
+  static const _pressKinds = {0: 'Click', 1: 'Doble click', 2: 'Mantener'};
+
+  String _pressLabel(dynamic v) =>
+      _pressKinds[(v as num?)?.toInt()] ?? 'Pulsación ${v ?? '?'}';
 
   static const _delaySteps = [0, 15, 30, 60, 120, 300, 600];
   static const _delayLabels = [
@@ -477,18 +493,21 @@ class _TriggerSheetState extends State<_TriggerSheet> {
               )
             else if (_captured.contains(t.sensorId))
               Text(
-                'Botón ${t.sensorValue} capturado ✓',
+                '${_pressLabel(t.sensorValue)} capturado ✓',
                 style: CceText.caption.copyWith(color: CceColors.ok),
               )
             else
-              Text('Botón ${t.sensorValue}', style: CceText.caption),
+              Text(_pressLabel(t.sensorValue), style: CceText.caption),
             const SizedBox(height: 8),
+            // Los valores de lastKey tienen nombre real (0=click, 1=doble,
+            // 2=mantener); "Botón 0/1/2" se confundia con el NUMERO de tecla
+            // de un dial de 4 botones (eso es sensorOutlet, abajo).
             Wrap(
               spacing: 8,
               children: [
-                for (var k = 0; k < 5; k++)
+                for (final k in _pressKinds.keys)
                   ChoiceChip(
-                    label: Text('Botón $k'),
+                    label: Text(_pressKinds[k]!),
                     selected: t.sensorValue == k,
                     showCheckmark: false,
                     onSelected: (_) => setState(() {
@@ -505,6 +524,35 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                   ),
               ],
             ),
+            // Dial/remote multi-tecla: QUÉ botón físico (sensorOutlet). Antes
+            // no se podia elegir desde la app (solo capturando en vivo).
+            if ((d?.outletCount ?? 1) > 1) ...[
+              const SizedBox(height: 12),
+              Text('QUÉ BOTÓN', style: CceText.section),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Cualquiera'),
+                    selected: t.sensorOutlet == null,
+                    showCheckmark: false,
+                    onSelected: (_) =>
+                        setState(() => t.sensorOutlet = null),
+                  ),
+                  for (var o = 0; o < d!.outletCount; o++)
+                    ChoiceChip(
+                      label: Text('Botón ${o + 1}'),
+                      selected: t.sensorOutlet == o,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() {
+                        t.sensorOutlet = o;
+                        _captured.remove(t.sensorId);
+                      }),
+                    ),
+                ],
+              ),
+            ],
           ],
         );
       case 'temperature':

@@ -59,13 +59,52 @@ class _AutomationsViewState extends State<AutomationsView> {
 
   Future<void> _openEditor(Automation? existing) async {
     final draft = existing?.copyForEdit() ?? Automation.blank();
-    await Navigator.of(context).push(
-      MaterialPageRoute<bool>(
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute<Object?>(
         builder: (_) => AutomationEditorPage(
           service: _service,
           devices: widget.devices,
           draft: draft,
           isNew: existing == null,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // El editor devuelve 'deleted' tras borrar: la lista ofrece el DESHACER
+    // que el dialogo del editor promete (el editor no tiene ScaffoldMessenger
+    // propio una vez que hace pop).
+    if (result == 'deleted') _showUndoDeleteSnackBar();
+  }
+
+  void _showUndoDeleteSnackBar() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Eliminada'),
+        duration: const Duration(seconds: 6),
+        action: SnackBarAction(
+          label: 'DESHACER',
+          onPressed: () => _service.undoDelete(),
+        ),
+      ),
+    );
+  }
+
+  /// Duplica: copia el raw con id nuevo, nombre " (copia)" y DESHABILITADA
+  /// (para que no dispare mientras se ajusta), y abre el editor con ese draft.
+  Future<void> _duplicate(Automation a) async {
+    final copy = Automation.fromJson({
+      ...a.toJson(),
+      'id': newAutomationId(),
+      'name': '${a.name} (copia)',
+      'enabled': false,
+    });
+    await Navigator.of(context).push(
+      MaterialPageRoute<Object?>(
+        builder: (_) => AutomationEditorPage(
+          service: _service,
+          devices: widget.devices,
+          draft: copy,
+          isNew: true,
         ),
       ),
     );
@@ -97,6 +136,12 @@ class _AutomationsViewState extends State<AutomationsView> {
               onTap: () => Navigator.of(sheetContext).pop('edit'),
             ),
             ListTile(
+              leading: const CceIcon(CceIcons.plus,
+                  size: 20, color: CceColors.textSecondary),
+              title: const Text('Duplicar', style: CceText.body),
+              onTap: () => Navigator.of(sheetContext).pop('duplicate'),
+            ),
+            ListTile(
               leading: const CceIcon(CceIcons.trash,
                   size: 20, color: CceColors.danger),
               title: const Text('Eliminar',
@@ -125,6 +170,8 @@ class _AutomationsViewState extends State<AutomationsView> {
         }
       case 'edit':
         await _openEditor(a);
+      case 'duplicate':
+        await _duplicate(a);
       case 'delete':
         setState(() => _confirmingDeleteId = a.id);
     }
@@ -134,16 +181,7 @@ class _AutomationsViewState extends State<AutomationsView> {
     setState(() => _confirmingDeleteId = null);
     await _service.delete(a.id);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Eliminada'),
-        duration: const Duration(seconds: 6),
-        action: SnackBarAction(
-          label: 'DESHACER',
-          onPressed: () => _service.undoDelete(),
-        ),
-      ),
-    );
+    _showUndoDeleteSnackBar();
   }
 
   Future<void> _toggleEnabled(Automation a, bool enabled) async {
@@ -156,15 +194,12 @@ class _AutomationsViewState extends State<AutomationsView> {
     }
   }
 
-  /// Orden dentro de cada sección: lastExecuted desc, sin dato alfabético.
-  int _compare(Automation a, Automation b) {
-    final la = _service.lastExecuted(a.id);
-    final lb = _service.lastExecuted(b.id);
-    if (la != null && lb != null) return lb.compareTo(la);
-    if (la != null) return -1;
-    if (lb != null) return 1;
-    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-  }
+  /// Orden dentro de cada sección: ALFABÉTICO estable. Antes era lastExecuted
+  /// desc, y como cada evento automation:executed notifica, las cards se
+  /// reordenaban en vivo bajo el dedo del usuario (en una casa con sensores
+  /// activos, constantemente). "Hace N min" sigue visible como metadato.
+  int _compare(Automation a, Automation b) =>
+      a.name.toLowerCase().compareTo(b.name.toLowerCase());
 
   Widget _newPill() {
     return InkWell(
@@ -194,6 +229,49 @@ class _AutomationsViewState extends State<AutomationsView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Fallo de carga: espejo del empty state pero con Reintentar (antes un
+  /// error de red se veia como "Sin automatizaciones" y sin pull-to-refresh).
+  Widget _errorState(String error) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 112,
+            height: 112,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: CceColors.danger.withValues(alpha: 0.12),
+            ),
+            child: const Icon(Icons.cloud_off_rounded,
+                size: 58, color: CceColors.danger),
+          ),
+          const SizedBox(height: 20),
+          const Text('No pudimos cargar tus automatizaciones',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: CceColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 360,
+            child: Text(error,
+                textAlign: TextAlign.center, style: CceText.caption),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.icon(
+            onPressed: () => _service.refresh(),
+            style: FilledButton.styleFrom(shape: const StadiumBorder()),
+            icon: const Icon(Icons.refresh, size: 18, color: Colors.white),
+            label: const Text('Reintentar'),
+          ),
+        ],
       ),
     );
   }
@@ -305,6 +383,10 @@ class _AutomationsViewState extends State<AutomationsView> {
                   strokeWidth: 2, color: CceColors.textTertiary),
             ),
           );
+        } else if (all.isEmpty && _service.error != null) {
+          // Fallo de red: NO mostrar "Sin automatizaciones" (invitaba a crear
+          // duplicados de las que no se pudieron cargar).
+          body = _errorState(_service.error!);
         } else if (all.isEmpty) {
           body = _emptyState();
         } else {
