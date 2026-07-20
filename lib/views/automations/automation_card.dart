@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../models/automation.dart';
 import '../../services/automations_service.dart';
 import '../../services/devices_service.dart';
@@ -37,7 +38,12 @@ Widget triggerIcon(Automation a, {double size = 20, Color? color}) {
 /// Render del ícono configurado de una automation. La API documenta
 /// `mdi:*`, `icons0:*` y emoji literal; NO existe resolver runtime de
 /// icons0, así que ese prefijo cae al fallback (rayo).
-Widget automationIcon(String? icon, {double size = 24, Color? color}) {
+/// [customIcons] = mapa 'icons0:<prefix>:<name>' → SVG que el Dashboard
+/// guarda en la config; sin él los favoritos icons0 caen al rayo genérico.
+Widget automationIcon(String? icon,
+    {double size = 24,
+    Color? color,
+    Map<String, String> customIcons = const {}}) {
   final raw = icon?.trim() ?? '';
   if (raw.startsWith('mdi:') || raw.startsWith('mdi-')) {
     final data = _mdiFromString(raw.substring(4));
@@ -45,6 +51,24 @@ Widget automationIcon(String? icon, {double size = 24, Color? color}) {
     return CceIcon(CceIcons.automations, size: size, color: color);
   }
   if (raw.startsWith('icons0:')) {
+    // SVG vendoreado por el Dashboard.
+    final svg = customIcons[raw];
+    if (svg != null && svg.contains('<svg')) {
+      return SvgPicture.string(
+        svg,
+        width: size,
+        height: size,
+        colorFilter: color != null
+            ? ColorFilter.mode(color, BlendMode.srcIn)
+            : null,
+      );
+    }
+    // icons0:mdi:<name> sin SVG cacheado → resolver por el catálogo MDI.
+    final parts = raw.split(':');
+    if (parts.length >= 3 && parts[1] == 'mdi') {
+      final data = _mdiFromString(parts.sublist(2).join(':'));
+      if (data != null) return Icon(data, size: size, color: color);
+    }
     return CceIcon(CceIcons.automations, size: size, color: color);
   }
   if (raw.isNotEmpty) {

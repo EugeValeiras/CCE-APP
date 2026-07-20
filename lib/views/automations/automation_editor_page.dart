@@ -7,6 +7,7 @@ import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
+import '../../theme/components/cce_switch.dart';
 import 'automation_card.dart' show automationIcon;
 import 'automation_phrases.dart';
 import 'run_automation.dart';
@@ -51,20 +52,6 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
   static const _emojiOptions = [
     '⚡', '💡', '🌙', '🌅', '🚪', '🔔', '🎵', '🏠',
     '🕖', '👋', '🎬', '🛋️', '🛏️', '📺', '🔒', '🍿',
-  ];
-  static const _mdiOptions = [
-    'mdi:lightning-bolt',
-    'mdi:lightbulb',
-    'mdi:weather-night',
-    'mdi:door',
-    'mdi:bell',
-    'mdi:music',
-    'mdi:home',
-    'mdi:clock-outline',
-    'mdi:gesture-tap',
-    'mdi:motion-sensor',
-    'mdi:sofa',
-    'mdi:television',
   ];
 
   @override
@@ -158,35 +145,53 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
     return discard == true;
   }
 
+  /// Íconos ofrecidos: los FAVORITOS que el usuario curó en el Dashboard
+  /// (config.favoriteIcons). Se completan con los emoji clásicos al final para
+  /// que nunca quede vacío, y el ícono actual del draft siempre está presente
+  /// aunque ya no figure entre los favoritos.
+  List<String> get _iconOptions {
+    final favs = widget.devices.favoriteIcons;
+    final current = draft.icon.trim();
+    return <String>[
+      if (current.isNotEmpty) current,
+      ...favs.where((f) => f != current),
+      ..._emojiOptions.where((e) => e != current && !favs.contains(e)),
+    ];
+  }
+
   Future<void> _pickIcon() async {
     final chosen = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: CceColors.surface,
+      backgroundColor: CceColors.neoBase,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius:
             BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
       ),
       builder: (sheetContext) {
+        // Celda neumórfica: elegido = HUNDIDO con acento; libre = elevado.
         Widget cell(String value) {
           final selected = draft.icon == value;
-          return InkWell(
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => Navigator.of(sheetContext).pop(value),
-            borderRadius: BorderRadius.circular(CceRadii.control),
             child: Container(
-              width: 48,
-              height: 48,
+              width: 52,
+              height: 52,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: selected
-                    ? CceColors.accent.withValues(alpha: 0.24)
-                    : CceColors.surfaceHigh,
+                color: CceColors.neoBase,
                 borderRadius: BorderRadius.circular(CceRadii.control),
-                border: Border.all(
-                  color: selected ? CceColors.accent : CceColors.stroke,
-                ),
+                boxShadow: selected
+                    ? CceShadows.neoInset(blur: 6, offset: 2)
+                    : CceShadows.neo(blur: 8, offset: 3),
               ),
-              child:
-                  automationIcon(value, size: 24, color: CceColors.textPrimary),
+              child: automationIcon(
+                value,
+                size: 26,
+                color: selected ? CceColors.accent : CceColors.neoText,
+                customIcons: widget.devices.customIcons,
+              ),
             ),
           );
         }
@@ -194,17 +199,19 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
         return SafeArea(
           child: ListView(
             shrinkWrap: true,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
             children: [
-              const Text('Ícono', style: CceText.title),
-              const SizedBox(height: 14),
+              Center(child: Text('Ícono', style: CceText.title)),
+              const SizedBox(height: 6),
+              Center(
+                child: Text('Tus favoritos del panel',
+                    style: CceText.caption),
+              ),
+              const SizedBox(height: 16),
               Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: [
-                  for (final e in _emojiOptions) cell(e),
-                  for (final m in _mdiOptions) cell(m),
-                ],
+                spacing: 12,
+                runSpacing: 12,
+                children: [for (final v in _iconOptions) cell(v)],
               ),
             ],
           ),
@@ -347,10 +354,11 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CceCard(
-        radius: CceRadii.card,
+        radius: CceRadii.hueCard,
         padding: const EdgeInsets.all(18),
         onTap: onTap,
-        border: true,
+        color: CceColors.neoBase,
+        neo: true,
         child: Row(
           children: [
             Container(
@@ -359,7 +367,13 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.18),
+                color: CceColors.neoBase,
+                gradient: CceGradients.convex(CceColors.neoBase),
+                boxShadow: [
+                  ...CceShadows.neo(blur: 8, offset: 3),
+                  BoxShadow(
+                      color: color.withValues(alpha: 0.35), blurRadius: 10),
+                ],
               ),
               child: IconTheme.merge(
                 data: IconThemeData(color: color, size: 20),
@@ -398,19 +412,49 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
         child = const SizedBox(
           width: 18,
           height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: CceColors.accent),
         );
       case _SaveState.done:
         // Check blanco sobre FilledButton accent: el relieve sobra -> flat.
         child = const CceIcon(CceIcons.check,
-            size: 20, color: Colors.white, emboss: false);
+            size: 20, color: CceColors.ok, emboss: false);
       case _SaveState.idle:
         child = const Text('Guardar');
     }
-    return FilledButton(
-      onPressed:
-          validationError == null && _saveState == _SaveState.idle ? _save : null,
-      child: child,
+    final enabled =
+        validationError == null && _saveState == _SaveState.idle;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: enabled ? _save : null,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        height: 42,
+        padding: const EdgeInsets.symmetric(horizontal: 22),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: CceColors.neoBase,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          // Habilitado = tecla elevada con halo del acento; deshabilitado =
+          // plano sin relieve (canon: disabled no sobresale).
+          boxShadow: enabled
+              ? [
+                  ...CceShadows.neo(blur: 8, offset: 3),
+                  BoxShadow(
+                      color: CceColors.accent.withValues(alpha: 0.35),
+                      blurRadius: 12),
+                ]
+              : const [],
+        ),
+        child: DefaultTextStyle(
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: enabled ? CceColors.accent : CceColors.neoTextSub,
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 
@@ -444,46 +488,75 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                 // Header: ícono 56 + nombre + habilitada.
                 Row(
                   children: [
-                    InkWell(
+                    // Botón de ícono: tecla neumórfica (antes: cuadrado plano
+                    // con borde, ajeno al material de la app).
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: _pickIcon,
-                      borderRadius: BorderRadius.circular(CceRadii.control),
                       child: Container(
                         width: 56,
                         height: 56,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: CceColors.surfaceHigh,
+                          color: CceColors.neoBase,
                           borderRadius:
                               BorderRadius.circular(CceRadii.control),
-                          border: Border.all(color: CceColors.stroke),
+                          boxShadow: CceShadows.neo(blur: 8, offset: 3),
                         ),
-                        child: automationIcon(draft.icon,
-                            size: 28, color: CceColors.textPrimary),
+                        child: automationIcon(
+                          draft.icon,
+                          size: 28,
+                          color: CceColors.neoText,
+                          customIcons: widget.devices.customIcons,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
+                    // Nombre: WELL hundido (el campo plano no pertenecía al
+                    // sistema; acá el texto "se escribe dentro" del material).
                     Expanded(
-                      child: TextField(
-                        controller: _name,
-                        focusNode: _nameFocus,
-                        style: CceText.title,
-                        decoration: const InputDecoration(
-                          hintText: 'Nombre de la automatización',
-                          border: InputBorder.none,
+                      child: Container(
+                        height: 56,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: CceColors.neoBase,
+                          borderRadius:
+                              BorderRadius.circular(CceRadii.control),
+                          boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
+                        ),
+                        child: TextField(
+                          controller: _name,
+                          focusNode: _nameFocus,
+                          style: CceText.title.copyWith(fontSize: 16),
+                          cursorColor: CceColors.accent,
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: 'Nombre',
+                            hintStyle:
+                                CceText.caption.copyWith(fontSize: 15),
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          onChanged: (_) => setState(() {}),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 12),
+                    // CceSwitch de la casa (antes: Switch.adaptive verde de iOS).
                     Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Switch.adaptive(
+                        CceSwitch(
                           value: draft.enabled,
-                          onChanged: (v) =>
-                              setState(() => draft.enabled = v),
+                          accent: CceColors.ok,
+                          onChanged: (v) => setState(() => draft.enabled = v),
                         ),
+                        const SizedBox(height: 4),
                         Text(
-                          draft.enabled ? 'Habilitada' : 'Deshabilitada',
+                          draft.enabled ? 'Activa' : 'Pausada',
                           style: const TextStyle(
                               color: CceColors.textTertiary, fontSize: 11),
                         ),
@@ -540,10 +613,9 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: CceColors.accent.withValues(alpha: 0.10),
+                    color: CceColors.neoBase,
                     borderRadius: BorderRadius.circular(CceRadii.control),
-                    border: Border.all(
-                        color: CceColors.accent.withValues(alpha: 0.35)),
+                    boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
                   ),
                   child: Text(
                     editorSummary(draft, widget.devices),
@@ -551,18 +623,6 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                         .copyWith(color: CceColors.textSecondary, height: 1.4),
                   ),
                 ),
-                if (validationError != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      validationError,
-                      style: const TextStyle(
-                        color: CceColors.warm,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -570,8 +630,11 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             decoration: const BoxDecoration(
-              color: CceColors.surface,
-              border: Border(top: BorderSide(color: CceColors.stroke)),
+              color: CceColors.neoBase,
+              boxShadow: [
+                BoxShadow(
+                    color: Color(0x59000000), blurRadius: 18, offset: Offset(0, -6)),
+              ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

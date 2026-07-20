@@ -28,6 +28,9 @@ class DevicesService extends ChangeNotifier {
   // Íconos vendoreados de icons0.dev: 'icons0:<prefix>:<name>' -> SVG completo
   // (mismo formato que guarda el dashboard en config.customIcons).
   Map<String, String> _customIcons = const {};
+  /// Íconos favoritos que el usuario curó en el Dashboard (config.favoriteIcons):
+  /// ids 'icons0:<prefix>:<name>' (SVG en customIcons) o ids del catálogo MDI.
+  List<String> _favoriteIcons = const [];
   Map<String, String> _lightNames = const {};
   Map<String, String> _automationNames = const {};
   List<ColorPreset> _colorPresets = const [];
@@ -88,6 +91,7 @@ class DevicesService extends ChangeNotifier {
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
   Map<String, String> get customIcons => _customIcons;
+  List<String> get favoriteIcons => _favoriteIcons;
   List<ColorPreset> get colorPresets => _colorPresets;
   List<CceScene> get scenes => _scenes;
   List<HueScene> get hueScenes => _hueScenes;
@@ -160,6 +164,10 @@ class DevicesService extends ChangeNotifier {
                   e.key.toString(): (e.value as Map)['svg'].toString()
             }
           : const {};
+      final rawFavs = cfg['favoriteIcons'];
+      _favoriteIcons = rawFavs is List
+          ? rawFavs.map((e) => e.toString()).toList()
+          : const [];
       final rawNames = cfg['lightNames'];
       _lightNames = rawNames is Map
           ? rawNames.map((k, v) => MapEntry(k.toString(), v.toString()))
