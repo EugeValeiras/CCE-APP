@@ -480,9 +480,9 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 child: Icon(icon, size: 20, color: CceColors.neoText),
               );
 
-          // CARD REAL de la home, inerte (IgnorePointer: en el editor no se
-          // togglea ni navega), con el − en el lugar del control. Una franja
-          // derecha invisible captura el tap de quitar.
+          // CARD REAL de la home, inerte (AbsorbPointer: hit-testea para que el
+          // long-press de reorder LLEGUE al drag listener, pero el subtree no
+          // recibe eventos). Franja derecha invisible captura el tap de quitar.
           Widget selectedTile(FeaturedItem item, int index) {
             final card = _featuredCard(item,
                 trailing: editControl(Icons.remove));
@@ -495,7 +495,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                   children: [
                     RepaintBoundary(
                       child:
-                          IgnorePointer(child: card ?? stalePlaceholder(item)),
+                          AbsorbPointer(child: card ?? stalePlaceholder(item)),
                     ),
                     // Zona de tap del − (franja derecha, alto completo).
                     Positioned(
@@ -538,7 +538,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: RepaintBoundary(
-                        child: IgnorePointer(
+                        child: AbsorbPointer(
                           child: _featuredCard(item,
                                   trailing: editControl(Icons.add)) ??
                               stalePlaceholder(item),
