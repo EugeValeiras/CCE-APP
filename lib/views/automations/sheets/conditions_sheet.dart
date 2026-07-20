@@ -124,6 +124,35 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
   }
 
   Widget _conditionRow(AutomationCondition c, int index) {
+    // La condición lockOpenWay (método de apertura) se edita en el selector
+    // "CON" del trigger de cerradura — acá se muestra informativa, sin trash
+    // (quitar el método = elegir "Cualquiera" en CUÁNDO).
+    if (c.type == 'sensor' && c.field == 'lockOpenWay') {
+      return Container(
+        height: 52,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: CceColors.surfaceHigh.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(CceRadii.control),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.fingerprint,
+                size: 18, color: CceColors.textTertiary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '${conditionPhrase(c, widget.devices)} — se edita en CUÁNDO',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CceText.caption,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     final isTime = c.type == 'timeWindow';
     return Container(
       height: 52,

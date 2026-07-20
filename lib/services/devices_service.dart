@@ -198,6 +198,10 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Personas conocidas de la cerradura (para el trigger "si entra X" del
+  /// editor de automatizaciones). Defensivo: [] ante fallo.
+  Future<List<String>> ezvizActors() => _api.getEzvizActors();
+
   /// Aviso global de comando fallido (snackbar sin BuildContext, con
   /// anti-spam en [showAppError]). El flujo OK no muestra nada.
   void _notifyCommandError(String name) =>

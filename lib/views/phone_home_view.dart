@@ -6,6 +6,7 @@ import '../services/tv_service.dart';
 import '../services/socket_service.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
+import 'automations/automations_view.dart';
 import 'history_screen.dart';
 import 'rooms_list_screen.dart';
 
@@ -78,6 +79,12 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
       )),
       onOpenAlarm: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
         builder: (_) => AlarmView(initialConfig: widget.config, neo: true),
+      )),
+      // Automatizaciones en el TELÉFONO: la misma AutomationsView de la
+      // tablet (lista + editor + crear). Trae su propio Scaffold; volver =
+      // swipe iOS (canon: sin AppBar), igual que AlarmView.
+      onOpenAutomations: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
+        builder: (_) => AutomationsView(devices: _devices, config: widget.config),
       )),
     );
   }

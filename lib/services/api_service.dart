@@ -860,6 +860,22 @@ class ApiService {
   // apertura remota el controller responde 501 → lo mapeamos a supported:false
   // (en vez de tirar), espejo del catchError(501) del dashboard.
 
+  /// Personas conocidas de la cerradura (actores de eventos) — para el trigger
+  /// "si entra X" del editor de automatizaciones. Defensivo: [] ante fallo.
+  Future<List<String>> getEzvizActors() async {
+    try {
+      final resp = await http
+          .get(Uri.parse('${config.baseUrl}/ezviz/actors'),
+              headers: ServerConfig.tokenHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body);
+      return data is List ? data.map((e) => e.toString()).toList() : const [];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Estado vivo de la cerradura (online/battery/locked). Tira ante status != 200
   /// (la pantalla cae al estado del merged device / muestra el error).
   Future<EzvizLockStatus> getLockStatus(String serial) async {

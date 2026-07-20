@@ -86,6 +86,22 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
         return 'Humedad de $name sube de $v%';
       }
       return 'Humedad de $name a $v%';
+    case 'lockActor':
+      return 'Entra ${t.sensorValue}';
+    case 'lockEventKind':
+      return t.sensorValue == 'doorbell'
+          ? 'Tocan el timbre'
+          : 'Alguien destraba $name';
+    case 'vacuumState':
+      switch (t.sensorValue) {
+        case 'cleaning':
+          return '$name empieza a limpiar';
+        case 'docked':
+          return '$name vuelve a la base';
+        case 'error':
+          return '$name en error';
+      }
+      return '$name: ${_num(t.sensorValue)}';
     default:
       return '$name: ${t.sensorField} ${_num(t.sensorValue)}';
   }
@@ -226,6 +242,16 @@ String conditionPhrase(AutomationCondition c, DevicesService devices) {
   if (c.field == 'brightness') {
     return c.value == 'brighter' ? 'si hay luz' : 'si está oscuro';
   }
+  if (c.field == 'lockOpenWay') {
+    const ways = {
+      'fingerprint': 'con huella',
+      'password': 'con clave',
+      'card': 'con tarjeta',
+      'remote': 'a distancia',
+      'face': 'con la cara',
+    };
+    return ways[c.value] ?? 'con ${c.value}';
+  }
   final name = _deviceName(devices, c.sensorId);
   return 'si $name: ${c.field ?? '?'} ${_num(c.value)}';
 }
@@ -284,6 +310,19 @@ String editorSummary(Automation a, DevicesService devices) {
                     first.sensorOperator == 'lte')
                 ? '$name baje de ${_num(first.sensorValue)}°'
                 : '$name supere los ${_num(first.sensorValue)}°';
+          case 'lockActor':
+            cuando = 'entre ${first.sensorValue}';
+          case 'lockEventKind':
+            cuando = first.sensorValue == 'doorbell'
+                ? 'toquen el timbre'
+                : 'alguien destrabe $name';
+          case 'vacuumState':
+            cuando = switch (first.sensorValue) {
+              'cleaning' => '$name empiece a limpiar',
+              'docked' => '$name vuelva a la base',
+              'error' => '$name entre en error',
+              _ => 'cambie $name',
+            };
           default:
             cuando = 'cambie $name';
         }

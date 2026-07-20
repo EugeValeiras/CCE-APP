@@ -11,7 +11,9 @@ import '../../../services/ui_settings_service.dart';
 import '../../../theme/cce_icons.dart';
 import '../../../theme/cce_tokens.dart';
 import '../../../theme/components/cce_segmented.dart';
+import '../../../widgets/lock_tile.dart';
 import '../../../widgets/sensor_tile.dart';
+import '../../../widgets/vacuum_tile.dart';
 
 /// Sheet CUÁNDO: tipo de trigger (Sensor / Horario / Manual) y su
 /// configuración. Muta `draft.trigger` directamente — el draft completo es
@@ -47,6 +49,29 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   String? _capturingDeviceId;
   final Set<String> _captured = {};
 
+  /// Personas conocidas de la cerradura (para "Entra <persona>"). Se cargan
+  /// una vez al abrir el sheet; [] = ocultar la opción de persona.
+  List<String> _actors = const [];
+
+  /// Métodos de apertura de la cerradura (sensor.lockOpenWay del push). El
+  /// value '' = cualquiera (sin condición). Espejo del Dashboard.
+  static const _openWays = [
+    ('', 'Cualquiera'),
+    ('fingerprint', 'Huella'),
+    ('password', 'Clave'),
+    ('card', 'Tarjeta'),
+    ('remote', 'Remoto'),
+    ('face', 'Cara'),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    widget.devices.ezvizActors().then((a) {
+      if (mounted) setState(() => _actors = a);
+    });
+  }
+
   static const _delaySteps = [0, 15, 30, 60, 120, 300, 600];
   static const _delayLabels = [
     'No',
@@ -60,6 +85,14 @@ class _TriggerSheetState extends State<_TriggerSheet> {
 
   @override
   void dispose() {
+    // Cinturón: si el usuario cambió el tipo de trigger o deseleccionó la
+    // cerradura por cualquier camino, ninguna lockOpenWay debe quedar colgada.
+    if (trigger.type != 'sensor') {
+      trigger.conditions.removeWhere(
+          (c) => c.type == 'sensor' && c.field == 'lockOpenWay');
+    } else {
+      _pruneOrphanLockConditions();
+    }
     _captureSub?.cancel();
     super.dispose();
   }
@@ -76,13 +109,24 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     final seen = <String>{};
     final out = <Device>[];
     for (final d in widget.devices.all) {
-      if (!d.isSensorDevice && !_isButtonDevice(d)) continue;
+      if (!d.isSensorDevice &&
+          !_isButtonDevice(d) &&
+          !d.isLock &&
+          !d.isVacuum) continue;
       if (seen.add(d.id)) out.add(d);
     }
     return out;
   }
 
   SensorTrigger _defaultTriggerFor(Device d) {
+    if (d.isLock) {
+      return SensorTrigger(
+          sensorId: d.id, sensorField: 'lockEventKind', sensorValue: 'unlock');
+    }
+    if (d.isVacuum) {
+      return SensorTrigger(
+          sensorId: d.id, sensorField: 'vacuumState', sensorValue: 'cleaning');
+    }
     if (_isButtonDevice(d)) {
       return SensorTrigger(
           sensorId: d.id, sensorField: 'lastKey', sensorValue: 0);
@@ -121,6 +165,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
           trigger.sensorTriggers.indexWhere((t) => t.sensorId == d.id);
       if (idx >= 0) {
         trigger.sensorTriggers.removeAt(idx);
+        _pruneOrphanLockConditions();
         if (_capturingDeviceId == d.id) {
           _captureSub?.cancel();
           _capturingDeviceId = null;
@@ -198,12 +243,24 @@ class _TriggerSheetState extends State<_TriggerSheet> {
           child: Stack(
             children: [
               Positioned.fill(
-                child: SensorTile(
-                  device: d,
-                  service: widget.devices,
-                  size: TileSize.small,
-                  interactive: false,
-                ),
+                child: d.isLock
+                    ? AbsorbPointer(
+                        child: LockTile(
+                            device: d,
+                            service: widget.devices,
+                            size: TileSize.small))
+                    : d.isVacuum
+                        ? AbsorbPointer(
+                            child: VacuumTile(
+                                device: d,
+                                service: widget.devices,
+                                size: TileSize.small))
+                        : SensorTile(
+                            device: d,
+                            service: widget.devices,
+                            size: TileSize.small,
+                            interactive: false,
+                          ),
               ),
               if (selected)
                 Positioned.fill(
@@ -240,12 +297,147 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     );
   }
 
+  /// Método de apertura activo para la cerradura [sensorId] ('' = cualquiera),
+  /// leído de la condición lockOpenWay del trigger (misma semántica que el
+  /// Dashboard: el método viaja como condición, el engine ya la evalúa).
+  /// Scoped por sensorId (sensorId null en la condición = legacy, matchea).
+  bool _isOpenWayCond(AutomationCondition c, String sensorId) =>
+      c.type == 'sensor' &&
+      c.field == 'lockOpenWay' &&
+      (c.sensorId == null || c.sensorId == sensorId);
+
+  String _lockOpenWayOf(String sensorId) {
+    for (final c in trigger.conditions) {
+      if (_isOpenWayCond(c, sensorId)) return (c.value as String?) ?? '';
+    }
+    return '';
+  }
+
+  void _setLockOpenWay(String sensorId, String way) {
+    trigger.conditions.removeWhere((c) => _isOpenWayCond(c, sensorId));
+    if (way.isNotEmpty) {
+      trigger.conditions.add(AutomationCondition.sensor(
+          sensorId: sensorId, field: 'lockOpenWay', value: way));
+    }
+  }
+
+  /// Purga condiciones lockOpenWay HUÉRFANAS (sin trigger de cerradura activo
+  /// para su sensorId). Sin esto, deseleccionar la cerradura o cambiar el tipo
+  /// de trigger dejaba una condición invisible que mataba la automatización en
+  /// silencio (el engine la evalúa contra undefined → nunca dispara).
+  void _pruneOrphanLockConditions() {
+    final lockIds = trigger.sensorTriggers
+        .where((t) =>
+            t.sensorField == 'lockEventKind' || t.sensorField == 'lockActor')
+        .map((t) => t.sensorId)
+        .toSet();
+    trigger.conditions.removeWhere((c) =>
+        c.type == 'sensor' &&
+        c.field == 'lockOpenWay' &&
+        !lockIds.contains(c.sensorId));
+  }
+
   Widget _triggerConfig(SensorTrigger t) {
     final d = widget.devices.byId(t.sensorId);
     final name = d != null ? widget.devices.displayName(d) : t.sensorId;
 
     Widget controls;
     switch (t.sensorField) {
+      // ── Cerradura: evento (destraba/timbre/entra persona) + método ──
+      case 'lockEventKind':
+      case 'lockActor':
+        final isActor = t.sensorField == 'lockActor';
+        final eventKey = isActor
+            ? 'actor'
+            : (t.sensorValue == 'doorbell' ? 'doorbell' : 'unlock');
+        final showWay = eventKey != 'doorbell';
+        controls = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Alguien destraba'),
+                  selected: eventKey == 'unlock',
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() {
+                    t.sensorField = 'lockEventKind';
+                    t.sensorValue = 'unlock';
+                  }),
+                ),
+                ChoiceChip(
+                  label: const Text('Tocan el timbre'),
+                  selected: eventKey == 'doorbell',
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() {
+                    t.sensorField = 'lockEventKind';
+                    t.sensorValue = 'doorbell';
+                    _setLockOpenWay(t.sensorId, ''); // timbre: sin método
+                  }),
+                ),
+                // El actor guardado SIEMPRE se muestra aunque la lista no
+                // haya cargado (API caída) o ya no figure — sin esto, editar
+                // un "Entra X" existente mostraba todo deseleccionado.
+                for (final actor in [
+                  if (isActor &&
+                      t.sensorValue is String &&
+                      !_actors.contains(t.sensorValue))
+                    t.sensorValue as String,
+                  ..._actors,
+                ])
+                  ChoiceChip(
+                    label: Text('Entra $actor'),
+                    selected: isActor && t.sensorValue == actor,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() {
+                      t.sensorField = 'lockActor';
+                      t.sensorValue = actor;
+                    }),
+                  ),
+              ],
+            ),
+            if (showWay) ...[
+              const SizedBox(height: 12),
+              Text('CON', style: CceText.section),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (way, label) in _openWays)
+                    ChoiceChip(
+                      label: Text(label),
+                      selected: _lockOpenWayOf(t.sensorId) == way,
+                      showCheckmark: false,
+                      onSelected: (_) =>
+                          setState(() => _setLockOpenWay(t.sensorId, way)),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        );
+      // ── Robot aspiradora: estado que dispara ──
+      case 'vacuumState':
+        controls = Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (v, label) in const [
+              ('cleaning', 'Empieza a limpiar'),
+              ('docked', 'Vuelve a la base'),
+              ('error', 'Error / atascada'),
+            ])
+              ChoiceChip(
+                label: Text(label),
+                selected: t.sensorValue == v,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => t.sensorValue = v),
+              ),
+          ],
+        );
       case 'motion':
         controls = CceSegmented<bool>(
           value: t.sensorValue == true,

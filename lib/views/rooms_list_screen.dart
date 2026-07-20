@@ -43,6 +43,7 @@ class RoomsListScreen extends StatefulWidget {
   final void Function(BuildContext)? onOpenHistory;
   final void Function(BuildContext)? onOpenAgent;
   final void Function(BuildContext)? onOpenAlarm;
+  final void Function(BuildContext)? onOpenAutomations;
   const RoomsListScreen({
     super.key,
     required this.service,
@@ -51,6 +52,7 @@ class RoomsListScreen extends StatefulWidget {
     this.onOpenHistory,
     this.onOpenAgent,
     this.onOpenAlarm,
+    this.onOpenAutomations,
   });
 
   @override
@@ -691,6 +693,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                   onOpenHistory: widget.onOpenHistory,
                   onOpenAgent: widget.onOpenAgent,
                   onOpenAlarm: widget.onOpenAlarm,
+                  onOpenAutomations: widget.onOpenAutomations,
                   alarmArmed: service.alarmArmed,
                   hostContext: context,
                 ),
@@ -877,6 +880,7 @@ class _ActionRail extends StatelessWidget {
   final void Function(BuildContext)? onOpenHistory;
   final void Function(BuildContext)? onOpenAgent;
   final void Function(BuildContext)? onOpenAlarm;
+  final void Function(BuildContext)? onOpenAutomations;
   final bool alarmArmed;
 
   /// Contexto del call-site original (el que usaban los IconButton sueltos):
@@ -887,6 +891,7 @@ class _ActionRail extends StatelessWidget {
     required this.onOpenHistory,
     required this.onOpenAgent,
     required this.onOpenAlarm,
+    required this.onOpenAutomations,
     required this.alarmArmed,
     required this.hostContext,
   });
@@ -927,6 +932,12 @@ class _ActionRail extends StatelessWidget {
           svg: CceIcons.agent,
           tooltip: 'Agente',
           onTap: () => onOpenAgent!(hostContext),
+        ),
+      if (onOpenAutomations != null)
+        _slot(
+          svg: CceIcons.automations,
+          tooltip: 'Automatizaciones',
+          onTap: () => onOpenAutomations!(hostContext),
         ),
       if (onOpenAlarm != null)
         _slot(
