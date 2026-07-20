@@ -19,7 +19,6 @@ import '../widgets/media_device_tile.dart';
 import '../widgets/room_temperature_header.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
-import '../widgets/thermostat_header_card.dart';
 import '../widgets/thermostat_tile.dart';
 
 class RoomDetailScreen extends StatefulWidget {
@@ -398,8 +397,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final thermostats =
             devices.where((d) => d.isThermostat).toList()
               ..sort((a, b) => a.name.compareTo(b.name));
-        final primaryThermostat =
-            thermostats.isNotEmpty ? thermostats.first : null;
+        // (El termostato ya no se renderiza aparte: RoomTemperatureHeader es
+        // el header único de clima y lo muestra con +/− si es lo elegido.)
         final sensors = _applyOrder(
             devices
                 .where((d) =>
@@ -718,23 +717,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                       ),
                     ),
                   ),
-                // Termostato del room: header fijo arriba del contenido,
-                // junto al lector de temperatura (no es sección reordenable).
-                if (primaryThermostat != null)
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                    sliver: SliverToBoxAdapter(
-                      child: ListenableBuilder(
-                        listenable: service,
-                        builder: (ctx, _) {
-                          final d = service.byId(primaryThermostat.id) ??
-                              primaryThermostat;
-                          return ThermostatHeaderCard(
-                              device: d, service: service, neo: true);
-                        },
-                      ),
-                    ),
-                  ),
+                // El termostato YA NO tiene card propia acá: RoomTemperatureHeader
+                // es el header ÚNICO de clima y lo renderiza con +/− cuando es
+                // lo elegido (antes se duplicaba la misma temperatura en dos
+                // cards, una encima de la otra).
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
                 ...vacuumSlivers,

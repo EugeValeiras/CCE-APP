@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
+import 'thermostat_header_card.dart';
 import 'temperature_sensor_picker_sheet.dart';
 import 'temperature_summary_card.dart';
 
@@ -13,6 +15,13 @@ import 'temperature_summary_card.dart';
 /// termómetro elegido para ambos form factors.
 /// La card resuelve sola el resto: >1 sensor → tappable (abre el picker
 /// filtrado a la room), 1 sensor → estática, 0 → se auto-oculta.
+/// Header ÚNICO de clima: muestra lo que el usuario eligió — un termómetro
+/// (lectura) o el TERMOSTATO (control con +/−). El selector se abre con
+/// LONG-PRESS (el tap queda para la acción propia de cada card: abrir el
+/// detalle del termostato).
+///
+/// Antes la room mostraba DOS cards (lectura + termostato) con la misma
+/// temperatura duplicada; ahora es una sola y la elige el usuario.
 class RoomTemperatureHeader extends StatefulWidget {
   final DevicesService service;
   final RoomRef? room;
@@ -98,15 +107,57 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
     _save(picked);
   }
 
+  /// Termostatos en el alcance (room o casa).
+  List<Device> get _thermostats {
+    final r = widget.room;
+    return widget.service.thermostats
+        .where((d) => r == null || r.deviceIds.contains(d.id))
+        .toList();
+  }
+
+  /// El termostato a mostrar como control, o null si corresponde la lectura.
+  ///
+  /// - Elegido explícitamente ⇒ ese.
+  /// - Sin elección previa y hay termostato en la room ⇒ el termostato (así la
+  ///   room sigue mostrando el control con +/− como antes, ahora como header
+  ///   ÚNICO en vez de duplicar la temperatura).
+  Device? get _selectedThermostat {
+    final list = _thermostats;
+    if (list.isEmpty) return null;
+    final id = _tempSensorId;
+    if (id != null) {
+      for (final d in list) {
+        if (d.id == id) return d;
+      }
+      return null; // eligió un termómetro
+    }
+    return widget.room == null ? null : list.first;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return TemperatureSummaryCard(
-      service: widget.service,
-      room: widget.room,
-      compact: widget.compact,
-      neo: widget.neo,
-      selectedSensorId: _tempSensorId,
-      onTap: _openPicker,
+    return AnimatedBuilder(
+      animation: widget.service,
+      builder: (context, _) {
+        final thermostat = _selectedThermostat;
+        if (thermostat != null) {
+          // Control con +/− accionable. Long-press abre el selector.
+          return ThermostatHeaderCard(
+            device: thermostat,
+            service: widget.service,
+            neo: widget.neo,
+            onLongPress: _openPicker,
+          );
+        }
+        return TemperatureSummaryCard(
+          service: widget.service,
+          room: widget.room,
+          compact: widget.compact,
+          neo: widget.neo,
+          selectedSensorId: _tempSensorId,
+          onLongPress: _openPicker,
+        );
+      },
     );
   }
 }

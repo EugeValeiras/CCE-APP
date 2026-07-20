@@ -27,6 +27,11 @@ class TemperatureSummaryCard extends StatelessWidget {
   /// dueño); el label con el nombre del termómetro sigue indicando "cuál veo".
   /// Default null ⇒ render y comportamiento idénticos al actual.
   final VoidCallback? onTap;
+
+  /// Long-press: abre el selector de termómetro/termostato. El TAP queda libre
+  /// (antes el tap abría el selector: se volvía imposible tocar la card sin
+  /// abrirlo).
+  final VoidCallback? onLongPress;
   const TemperatureSummaryCard({
     super.key,
     required this.service,
@@ -35,6 +40,7 @@ class TemperatureSummaryCard extends StatelessWidget {
     this.neo = false,
     this.selectedSensorId,
     this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -47,17 +53,15 @@ class TemperatureSummaryCard extends StatelessWidget {
             .toList();
     final tempSensors =
         scoped.where((s) => s.sensor?.temperature != null).toList();
-    // REGLA DEL DUEÑO: los termostatos entran al pool SOLO si además hay
-    // termómetros. Room con ÚNICAMENTE termostato ⇒ esta card devuelve shrink
-    // (ThermostatHeaderCard ya muestra esa temperatura; acá se duplicaría).
-    // Se agregan AL FINAL para no mover el fallback "primero" ni la
-    // persistencia del hero de la home (que históricamente solo conocía
-    // sensores). El picker (TemperatureSensorPickerSheet) espeja este pool.
-    if (tempSensors.isNotEmpty) {
-      tempSensors.addAll(service.thermostats
-          .where((d) => room == null || room!.deviceIds.contains(d.id))
-          .where((d) => d.state.currentTemp != null));
-    }
+    // Los termostatos entran al pool SIEMPRE (antes: solo si había
+    // termómetros, para no duplicar con ThermostatHeaderCard — ya no existe
+    // esa card aparte). Se agregan AL FINAL para no mover el fallback
+    // "primero" ni la persistencia histórica del hero. El picker espeja este
+    // pool. OJO: cuando el elegido ES un termostato, RoomTemperatureHeader
+    // renderiza el control con +/− y esta card ni se construye.
+    tempSensors.addAll(service.thermostats
+        .where((d) => room == null || room!.deviceIds.contains(d.id))
+        .where((d) => d.state.currentTemp != null));
     final humSensors =
         scoped.where((s) => s.sensor?.humidity != null).toList();
     if (tempSensors.isEmpty && humSensors.isEmpty) return const SizedBox.shrink();
@@ -80,7 +84,7 @@ class TemperatureSummaryCard extends StatelessWidget {
     // Card seleccionable: hay handler de tap Y más de un termómetro entre los
     // que elegir. Con un solo sensor el tap no aportaría nada → la card queda
     // estática y el render es el histórico.
-    final canPick = onTap != null && tempSensors.length > 1;
+    final canPick = onLongPress != null && tempSensors.length > 1;
     // Cuando es seleccionable, el label de temperatura pasa a ser el NOMBRE del
     // termómetro elegido (feedback de "cuál estoy viendo"); si no, "Temperatura".
     final tempLabel = canPick && primary != null
@@ -99,7 +103,8 @@ class TemperatureSummaryCard extends StatelessWidget {
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,
         neo: neo,
-        onTap: canPick ? onTap : null,
+        onTap: onTap,
+        onLongPress: canPick ? onLongPress : null,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [

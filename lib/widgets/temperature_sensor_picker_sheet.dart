@@ -59,14 +59,13 @@ class TemperatureSensorPickerSheet extends StatelessWidget {
             .toList();
         final available = <Device>[
           ...thermometers,
-          // Termostatos: solo si también hay termómetros (regla del dueño;
-          // ver TemperatureSummaryCard). Elegir el termostato como hero de
-          // una room DUPLICA la lectura junto a ThermostatHeaderCard —
-          // aceptado por ser una elección explícita del usuario.
-          if (thermometers.isNotEmpty)
-            ...service.thermostats
-                .where((d) => room == null || room!.deviceIds.contains(d.id))
-                .where((d) => d.state.currentTemp != null),
+          // Termostatos SIEMPRE disponibles: elegirlos ya no duplica nada
+          // (el header de clima es único y los renderiza con +/− en vez de la
+          // lectura). Antes se ofrecían solo si había termómetros porque
+          // convivían dos cards con la misma temperatura.
+          ...service.thermostats
+              .where((d) => room == null || room!.deviceIds.contains(d.id))
+              .where((d) => d.state.currentTemp != null),
         ];
         // Id efectivamente mostrado: el elegido si sigue disponible;
         // si no (o si nunca se eligió), el primero — idéntico al fallback de

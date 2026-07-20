@@ -25,12 +25,16 @@ class ThermostatHeaderCard extends StatelessWidget {
   /// null (teléfono), cae al `Navigator.push(ThermostatScreen)` de siempre.
   final VoidCallback? onOpen;
 
+  /// Long-press: abre el selector de qué mostrar en el header de clima.
+  final VoidCallback? onLongPress;
+
   const ThermostatHeaderCard({
     super.key,
     required this.device,
     required this.service,
     this.neo = false,
     this.onOpen,
+    this.onLongPress,
   });
 
   bool _isCool(DeviceState s) {
@@ -76,6 +80,7 @@ class ThermostatHeaderCard extends StatelessWidget {
         border: !neo,
         color: neo ? CceColors.neoBase : CceColors.surface,
         neo: neo,
+        onLongPress: onLongPress,
         onTap: onOpen ??
             () => Navigator.of(context).push(
                   MaterialPageRoute(
