@@ -914,6 +914,7 @@ class DevicesService extends ChangeNotifier {
         brightness: (ev.sensor!['brightness'] as String?) ?? current?.brightness,
         outlets: (ev.sensor!['outlets'] as num?)?.toInt() ?? current?.outlets,
         lastKey: (ev.sensor!['lastKey'] as num?)?.toInt() ?? current?.lastKey,
+        outlet: (ev.sensor!['outlet'] as num?)?.toInt() ?? current?.outlet,
         trigTime:
             (ev.sensor!['trigTime'] as num?)?.toInt() ?? current?.trigTime,
       );

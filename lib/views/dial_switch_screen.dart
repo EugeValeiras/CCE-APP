@@ -5,7 +5,11 @@ import 'package:flutter/services.dart';
 
 import '../models/device.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../utils/button_events.dart';
+import '../widgets/device_state_panel.dart';
+import '../widgets/event_history_section.dart';
 
 /// Pantalla del switch multi-botón (Hue Tap Dial / remote de 4 botones): un
 /// dial neumórfico oscuro dividido en 4 cuadrantes que se hunden al tocarlos.
@@ -67,47 +71,89 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.service.byId(widget.device.id) ?? widget.device;
-    final count = d.outletCount.clamp(1, 4);
     return Scaffold(
       backgroundColor: CceColors.neoBase,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.transparent,
-        title: Text(widget.service.displayName(d), style: CceText.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close, color: CceColors.textSecondary),
-            tooltip: 'Cerrar',
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _feedback ?? 'Tocá un botón',
-              style: CceText.display.copyWith(
-                fontSize: 22,
-                color:
-                    _feedback != null ? CceColors.warm : CceColors.textSecondary,
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: widget.service,
+          builder: (context, _) {
+            final d = widget.service.byId(widget.device.id) ?? widget.device;
+            final count = d.outletCount.clamp(1, 4);
+            final sensor = d.sensor;
+            final lastKey = sensor?.lastKey;
+            final lastOutlet = sensor?.outlet;
+            final live = _feedback != null;
+            // Feedback local si acaba de pulsar; si no, la última pulsación
+            // reportada por el device.
+            final label = _feedback ??
+                (lastKey != null
+                    ? (lastOutlet != null
+                        ? 'Botón ${lastOutlet + 1} · ${pressKindLabel(lastKey)}'
+                        : pressKindLabel(lastKey))
+                    : 'Tocá un botón');
+
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DeviceStatePanel(
+                    label: label,
+                    sublabel: widget.service.displayName(d),
+                    accent: live || lastKey != null
+                        ? CceColors.warm
+                        : CceColors.textTertiary,
+                    glowing: live,
+                    child: _dial(count),
+                  ),
+                  const SizedBox(height: 22),
+                  DeviceMetricsRow(metrics: [
+                    DeviceMetric(
+                      svg: CceIcons.batteryFull,
+                      iconColor: DeviceMetric.batteryColor(sensor?.battery),
+                      value:
+                          sensor?.battery != null ? '${sensor!.battery}%' : '—',
+                      label: 'BATERÍA',
+                    ),
+                    DeviceMetric(
+                      svg: CceIcons.handTap,
+                      iconColor: CceColors.textSecondary,
+                      value: '$count',
+                      label: 'BOTONES',
+                    ),
+                    DeviceMetric(
+                      svg: CceIcons.clock,
+                      iconColor: CceColors.textSecondary,
+                      value: lastPressValue(sensor?.trigTime),
+                      label: 'ÚLTIMA',
+                    ),
+                    DeviceMetric(
+                      svg: CceIcons.sensors,
+                      iconColor: d.state.reachable
+                          ? CceColors.ok
+                          : CceColors.textTertiary,
+                      value: d.state.reachable ? 'En línea' : 'Sin señal',
+                      label: 'ESTADO',
+                    ),
+                  ]),
+                  const SizedBox(height: 22),
+                  EventHistorySection(
+                    service: widget.service,
+                    historyId: historyIdOf(d),
+                    emptyLabel: 'Sin pulsaciones registradas',
+                    builder: (events) => buttonHistoryEntries(
+                      events,
+                      service: widget.service,
+                      outletCount: count,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const DeviceWordmark('CCE DIAL'),
+                ],
               ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Tocá para accionar · mantené para long-press',
-              style: TextStyle(color: CceColors.textTertiary, fontSize: 13),
-            ),
-            const SizedBox(height: 40),
-            _dial(count),
-            const SizedBox(height: 32),
-            Text(
-              d.type,
-              style: CceText.caption.copyWith(color: CceColors.textTertiary),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -117,8 +163,8 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
   /// dar profundidad (relieve dentro de relieve). El gap entre cuadrantes hace
   /// la cruz divisoria — sin painter encima que tape el tap.
   Widget _dial(int count) {
-    const well = 300.0;
-    const pad = 16.0;
+    const well = 210.0;
+    const pad = 12.0;
     return Container(
       width: well,
       height: well,
@@ -127,7 +173,7 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
         color: CceColors.neoBase,
         // Pozo: hundido profundo + un glow cálido tenue por fuera.
         boxShadow: [
-          ...CceShadows.neoInset(blur: 24, offset: 10, intensity: 1.2),
+          ...CceShadows.neoInset(blur: 20, offset: 8, intensity: 1.2),
           BoxShadow(
             color: CceColors.warm.withValues(
               alpha: _pressed != null ? 0.22 : 0.10,

@@ -5,13 +5,19 @@ import 'package:flutter/services.dart';
 
 import '../models/device.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../utils/button_events.dart';
+import '../widgets/device_state_panel.dart';
+import '../widgets/event_history_section.dart';
 
-/// Pantalla de un device de UN solo botón (eWeLink Button y similares): un
-/// botón neumórfico grande y redondo que se hunde al tocarlo. Tocarlo simula un
-/// click (key 0) y dispara la acción configurada en el backend; mantenerlo
-/// presionado simula long-press (key 2). Mismo feedback visual (Click /
-/// Mantenido) que [DialSwitchScreen], pero con un único cuadrante.
+/// Pantalla de un device de UN solo botón (eWeLink Button y similares).
+///
+/// Mismo molde que SensorDetailScreen/LockScreen: el botón grande sigue siendo
+/// el protagonista (tocar = click, doble tap = doble, mantener = long-press,
+/// todo vía simulateButton) pero ahora la pantalla también CUENTA el estado —
+/// última pulsación, batería, conexión — e incluye el HISTORIAL real de
+/// pulsaciones con la automatización que disparó cada una.
 class SingleButtonScreen extends StatefulWidget {
   final Device device;
   final DevicesService service;
@@ -27,7 +33,7 @@ class SingleButtonScreen extends StatefulWidget {
 
 class _SingleButtonScreenState extends State<SingleButtonScreen> {
   bool _pressed = false; // feedback visual (hundido)
-  String? _feedback; // 'Click' / 'Mantenido'
+  String? _feedback; // 'Click' / 'Doble click' / 'Mantenido'
   Timer? _flashTimer;
   Timer? _fbTimer;
 
@@ -37,6 +43,8 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
     _fbTimer?.cancel();
     super.dispose();
   }
+
+  Device get _device => widget.service.byId(widget.device.id) ?? widget.device;
 
   /// Hundido instantáneo al apoyar el dedo (no espera al backend).
   void _flash() {
@@ -49,10 +57,9 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
 
   Future<void> _press(int key) async {
     HapticFeedback.mediumImpact();
-    setState(() => _feedback =
-        key == 2 ? 'Mantenido' : (key == 1 ? 'Doble click' : 'Click'));
+    setState(() => _feedback = pressKindLabel(key));
     _fbTimer?.cancel();
-    _fbTimer = Timer(const Duration(milliseconds: 1100), () {
+    _fbTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _feedback = null);
     });
     final ok = await widget.service
@@ -66,56 +73,87 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.service.byId(widget.device.id) ?? widget.device;
     return Scaffold(
       backgroundColor: CceColors.neoBase,
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        backgroundColor: Colors.transparent,
-        title: Text(widget.service.displayName(d), style: CceText.title),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.close, color: CceColors.textSecondary),
-            tooltip: 'Cerrar',
-            onPressed: () => Navigator.of(context).pop(),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _feedback ?? 'Tocá el botón',
-              style: CceText.display.copyWith(
-                fontSize: 22,
-                color:
-                    _feedback != null ? CceColors.warm : CceColors.textSecondary,
+      body: SafeArea(
+        child: AnimatedBuilder(
+          animation: widget.service,
+          builder: (context, _) {
+            final d = _device;
+            final sensor = d.sensor;
+            final lastKey = sensor?.lastKey;
+            // Mientras hay feedback local mostramos ESO (respuesta inmediata);
+            // si no, la última pulsación reportada por el device.
+            final live = _feedback != null;
+            final label = _feedback ??
+                (lastKey != null ? pressKindLabel(lastKey) : 'Tocá el botón');
+
+            return SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DeviceStatePanel(
+                    label: label,
+                    sublabel: widget.service.displayName(d),
+                    accent: live || lastKey != null
+                        ? CceColors.warm
+                        : CceColors.textTertiary,
+                    glowing: live,
+                    child: _button(),
+                  ),
+                  const SizedBox(height: 22),
+                  DeviceMetricsRow(metrics: [
+                    DeviceMetric(
+                      svg: CceIcons.batteryFull,
+                      iconColor: DeviceMetric.batteryColor(sensor?.battery),
+                      value:
+                          sensor?.battery != null ? '${sensor!.battery}%' : '—',
+                      label: 'BATERÍA',
+                    ),
+                    DeviceMetric(
+                      svg: CceIcons.clock,
+                      iconColor: CceColors.textSecondary,
+                      value: lastPressValue(sensor?.trigTime),
+                      label: 'ÚLTIMA',
+                    ),
+                    DeviceMetric(
+                      svg: CceIcons.sensors,
+                      iconColor: d.state.reachable
+                          ? CceColors.ok
+                          : CceColors.textTertiary,
+                      value: d.state.reachable ? 'En línea' : 'Sin señal',
+                      label: 'ESTADO',
+                    ),
+                  ]),
+                  const SizedBox(height: 22),
+                  EventHistorySection(
+                    service: widget.service,
+                    historyId: historyIdOf(d),
+                    emptyLabel: 'Sin pulsaciones registradas',
+                    builder: (events) => buttonHistoryEntries(
+                      events,
+                      service: widget.service,
+                      outletCount: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  const DeviceWordmark('CCE BUTTON'),
+                ],
               ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Tocá · doble tap · mantené para long-press',
-              style: TextStyle(color: CceColors.textTertiary, fontSize: 13),
-            ),
-            const SizedBox(height: 40),
-            _button(),
-            const SizedBox(height: 32),
-            Text(
-              d.type,
-              style: CceText.caption.copyWith(color: CceColors.textTertiary),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
   }
 
-  /// El botón: un disco elevado dentro de un "pozo" circular hundido, para dar
-  /// profundidad (relieve dentro de relieve). Se hunde con glow cálido al tocar.
+  /// El botón: disco elevado dentro de un "pozo" circular hundido. Se hunde con
+  /// glow cálido al tocar. Acotado a 200 (antes 300) para convivir con el resto
+  /// de la pantalla sin empujar el historial fuera de vista.
   Widget _button() {
-    const well = 300.0;
-    const pad = 22.0;
+    const well = 200.0;
     return Container(
       width: well,
       height: well,
@@ -123,17 +161,15 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
         shape: BoxShape.circle,
         color: CceColors.neoBase,
         boxShadow: [
-          ...CceShadows.neoInset(blur: 24, offset: 10, intensity: 1.2),
+          ...CceShadows.neoInset(blur: 20, offset: 8, intensity: 1.2),
           BoxShadow(
-            color: CceColors.warm.withValues(
-              alpha: _pressed ? 0.22 : 0.10,
-            ),
-            blurRadius: 48,
+            color: CceColors.warm.withValues(alpha: _pressed ? 0.22 : 0.10),
+            blurRadius: 40,
             spreadRadius: 1,
           ),
         ],
       ),
-      padding: const EdgeInsets.all(pad),
+      padding: const EdgeInsets.all(18),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: (_) => _flash(),

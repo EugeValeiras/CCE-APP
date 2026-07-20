@@ -213,6 +213,8 @@ class DeviceSensor {
   // última tecla pulsada (0=click, 1=doble, 2=long).
   final int? outlets;
   final int? lastKey;
+  /// Botón físico del último evento en un device multi-tecla (0-based).
+  final int? outlet;
   /// Epoch ms del último disparo reportado por el sensor (eWeLink trigTime).
   final int? trigTime;
 
@@ -225,6 +227,7 @@ class DeviceSensor {
     this.brightness,
     this.outlets,
     this.lastKey,
+    this.outlet,
     this.trigTime,
   });
 
@@ -238,6 +241,7 @@ class DeviceSensor {
       brightness: json['brightness'] as String?,
       outlets: (json['outlets'] as num?)?.toInt(),
       lastKey: (json['lastKey'] as num?)?.toInt(),
+      outlet: (json['outlet'] as num?)?.toInt(),
       // OJO: el backend manda trigTime como num o como String según el
       // provider (el fixture dorado tiene ambos) — parseo defensivo.
       trigTime: switch (json['trigTime']) {
