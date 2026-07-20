@@ -40,6 +40,10 @@ Widget triggerIcon(Automation a, {double size = 20, Color? color}) {
 /// icons0, así que ese prefijo cae al fallback (rayo).
 /// [customIcons] = mapa 'icons0:<prefix>:<name>' → SVG que el Dashboard
 /// guarda en la config; sin él los favoritos icons0 caen al rayo genérico.
+/// Un valor "parece id de ícono" si es ascii kebab/snake (nunca un emoji).
+bool _looksLikeIconId(String s) =>
+    RegExp(r'^[a-z0-9][a-z0-9:_-]*$').hasMatch(s.toLowerCase());
+
 Widget automationIcon(String? icon,
     {double size = 24,
     Color? color,
@@ -72,6 +76,29 @@ Widget automationIcon(String? icon,
     return CceIcon(CceIcons.automations, size: size, color: color);
   }
   if (raw.isNotEmpty) {
+    // Logos de marca del catálogo del Dashboard.
+    if (raw == 'jbl-logo') {
+      return CceIcon(CceIcons.jbl, size: size, color: color);
+    }
+    if (raw == 'samsung-logo') {
+      return CceIcon(CceIcons.samsung, size: size, color: color);
+    }
+    // Glifos propios del catálogo del Dashboard (no existen en MDI).
+    if (raw == 'dial-switch') {
+      return CceIcon(CceIcons.dialSwitchGlyph, size: size, color: color);
+    }
+    if (raw == 'dimmer-switch') {
+      return CceIcon(CceIcons.dimmerSwitchGlyph, size: size, color: color);
+    }
+    // Id del catálogo (kebab ascii: 'lamp', 'dial-switch', 'ceiling-light'…):
+    // se resuelve por el set MDI vendoreado. SIN esto se caía al branch de
+    // emoji y el id se dibujaba como TEXTO ("lamp", "dial-switch").
+    if (_looksLikeIconId(raw)) {
+      final data = _mdiFromString(raw);
+      if (data != null) return Icon(data, size: size, color: color);
+      // Id desconocido: genérico, JAMÁS el id como texto.
+      return CceIcon(CceIcons.automations, size: size, color: color);
+    }
     // Emoji literal.
     return Text(
       raw,

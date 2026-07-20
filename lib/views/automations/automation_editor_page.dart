@@ -528,7 +528,15 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                         child: TextField(
                           controller: _name,
                           focusNode: _nameFocus,
-                          style: CceText.title.copyWith(fontSize: 16),
+                          // SIN embossShadows: el relieve de goma es para
+                          // TÍTULOS grabados, no para texto que se escribe —
+                          // sobre el input se veía como un blur sucio.
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.2,
+                            color: CceColors.textPrimary,
+                          ),
                           cursorColor: CceColors.accent,
                           decoration: InputDecoration(
                             isDense: true,
@@ -677,13 +685,14 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                         style: TextStyle(color: CceColors.danger)),
                   ),
                 const Spacer(),
-                Flexible(
-                  child: RunAutomationButton(
-                    automation: draft,
-                    service: widget.service,
-                  ),
+                // Compacto (▶ redondo): el botón ancho "Probar" se solapaba
+                // con "Cancelar" en teléfonos angostos.
+                RunAutomationButton(
+                  automation: draft,
+                  service: widget.service,
+                  compact: true,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 TextButton(
                   onPressed: () async {
                     if (await _confirmDiscard() && context.mounted) {
@@ -693,7 +702,7 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                   child: const Text('Cancelar',
                       style: TextStyle(color: CceColors.textSecondary)),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 _saveButton(validationError),
               ],
                 ),
