@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import '../models/color_preset.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
+import '../models/hue_room.dart';
 import '../models/light_group.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
@@ -36,6 +37,7 @@ class DevicesService extends ChangeNotifier {
   List<ColorPreset> _colorPresets = const [];
   List<CceScene> _scenes = const [];
   List<HueScene> _hueScenes = const [];
+  List<HueRoom> _hueRooms = const [];
   // Orden unificado de acciones por plano (compartido con el dashboard web):
   // planId -> ['scene:<id>', 'hueScene:<id>', 'group:<id>', ...].
   Map<String, List<String>> _actionOrder = const {};
@@ -95,6 +97,7 @@ class DevicesService extends ChangeNotifier {
   List<ColorPreset> get colorPresets => _colorPresets;
   List<CceScene> get scenes => _scenes;
   List<HueScene> get hueScenes => _hueScenes;
+  List<HueRoom> get hueRooms => _hueRooms;
   bool get loading => _loading;
   String? get error => _error;
   Device? byId(String id) => _byId[id];
@@ -127,6 +130,11 @@ class DevicesService extends ChangeNotifier {
       final hueScenesFuture = _api.getHueScenes().catchError((Object e) {
         debugPrint('getHueScenes error (degrada a []): $e');
         return <HueScene>[];
+      });
+      // Rooms Hue (con su estado on/off) en paralelo; degrada a [] si falla.
+      final hueRoomsFuture = _api.getHueRooms().catchError((Object e) {
+        debugPrint('getHueRooms error (degrada a []): $e');
+        return <HueRoom>[];
       });
       // Estado de alarma en paralelo; si falla mantiene el valor previo.
       final armedFuture = _api.getAlarmState().catchError((Object e) {
@@ -196,6 +204,7 @@ class DevicesService extends ChangeNotifier {
           : const [];
       _actionOrder = _parseActionOrder(cfg['actionOrder']);
       _hueScenes = await hueScenesFuture;
+      _hueRooms = await hueRoomsFuture;
       _alarmArmed = await armedFuture;
     } catch (e) {
       _error = 'Error cargando dispositivos';
@@ -733,6 +742,33 @@ class DevicesService extends ChangeNotifier {
     final roomId = room.hueRoomId;
     if (roomId == null) return const [];
     return _hueScenes.where((s) => s.roomId == roomId).toList();
+  }
+
+  /// Room de Hue vinculado a la sala (vía hueRoomId del plano); null si no hay
+  /// link o el bridge no lo reportó. Habilita el on/off del grupo entero.
+  HueRoom? hueRoomForRoom(RoomRef room) {
+    final roomId = room.hueRoomId;
+    if (roomId == null) return null;
+    for (final r in _hueRooms) {
+      if (r.id == roomId) return r;
+    }
+    return null;
+  }
+
+  /// Prende/apaga el room ENTERO de Hue (grouped_light) en una sola llamada.
+  /// Optimista con revert: no lanza (avisa con snackbar), igual que setGroupOn.
+  Future<void> setHueRoomOn(HueRoom r, bool on) async {
+    final prev = r.on;
+    r.on = on;
+    notifyListeners();
+    try {
+      await _api.setHueRoomState(r.id, on: on);
+    } catch (e) {
+      debugPrint('setHueRoomOn error: $e');
+      r.on = prev;
+      notifyListeners();
+      _notifyCommandError(r.name);
+    }
   }
 
   /// Escenas CCE de la sala — REGLA CONGELADA: solo planId == room.planId

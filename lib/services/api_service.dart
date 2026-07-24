@@ -9,6 +9,7 @@ import '../models/ezviz_lock.dart';
 import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
+import '../models/hue_room.dart';
 
 class ApiService {
   final ServerConfig config;
@@ -216,6 +217,41 @@ class ApiService {
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     return _parseHueScenes(resp.body);
+  }
+
+  /// Rooms de TODOS los bridges Hue (GET /hue/rooms), con su estado on/off
+  /// (any_on, igual que la app de Philips Hue). Degrada a [] si falla.
+  Future<List<HueRoom>> getHueRooms() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/hue/rooms'), headers: ServerConfig.tokenHeaders)
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! List) return const [];
+    return data
+        .whereType<Map>()
+        .map((r) => HueRoom.fromJson(Map<String, dynamic>.from(r)))
+        .toList();
+  }
+
+  /// Prende/apaga el room ENTERO de Hue (grouped_light) en una sola llamada
+  /// (PUT /hue/rooms/{id}/state). El backend rutea al bridge dueño por el id.
+  Future<void> setHueRoomState(String roomId, {required bool on}) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/hue/rooms/${Uri.encodeComponent(roomId)}/state'),
+          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          body: jsonEncode({'on': on}),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      String msg = 'Error ${resp.statusCode}';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) msg = data['error'].toString();
+      } catch (_) {}
+      throw Exception(msg);
+    }
   }
 
   /// Escenas Hue de un room (GET /hue/rooms/{roomId}/scenes).
