@@ -1,5 +1,6 @@
 import '../../models/automation.dart';
 import '../../services/devices_service.dart';
+import '../../utils/verb_labels.dart';
 
 /// Frases humanas en español para automatizaciones (cards, editor, filas).
 /// Todo sujeto → hecho, sin flechas ASCII, sin MAYÚSCULAS.
@@ -159,6 +160,9 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
         default:
           return 'Prender grupo $name';
       }
+    case AutomationActionKind.device:
+      final name = _deviceName(devices, act.deviceId);
+      return '$name: ${verbLabel(act.verb)}';
     case AutomationActionKind.notification:
       return 'Aviso: "${act.notificationMessage}"';
     case AutomationActionKind.alarm:
@@ -201,6 +205,8 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.group:
       final name = _groupName(devices, act.groupId);
       return '$name ${act.groupAction == 'off' ? 'off' : act.groupAction == 'toggle' ? 'alterna' : 'on'}';
+    case AutomationActionKind.device:
+      return '${_deviceName(devices, act.deviceId)} ${verbLabel(act.verb)}';
     case AutomationActionKind.notification:
       return 'aviso';
     case AutomationActionKind.alarm:

@@ -237,7 +237,7 @@ class AutomationCondition {
 }
 
 /// Tipo de acción para la UI (color del círculo, editor a abrir).
-enum AutomationActionKind { light, group, notification, alarm, jbl, advanced }
+enum AutomationActionKind { light, group, device, notification, alarm, jbl, advanced }
 
 class AutomationAction {
   AutomationAction.fromJson(Map<String, dynamic> json)
@@ -257,6 +257,23 @@ class AutomationAction {
         'on': 'group',
         'groupId': groupId,
         'groupAction': 'on',
+      });
+
+  /// Acción por CAPABILITY sobre cualquier device: POST /actions/:verb con args
+  /// (contrato del backend: on:'device' + deviceId + verb + args). Cubre
+  /// media/tv/vacuum/sound_mode/etc. El lightId sentinel permite N verbos por
+  /// device sin colisión.
+  factory AutomationAction.device(
+    String deviceId,
+    String verb, [
+    Map<String, dynamic> args = const {},
+  ]) =>
+      AutomationAction.blank({
+        'lightId': '__dev__${deviceId}__$verb',
+        'on': 'device',
+        'deviceId': deviceId,
+        'verb': verb,
+        if (args.isNotEmpty) 'args': args,
       });
 
   factory AutomationAction.notification() => AutomationAction.blank({
@@ -327,6 +344,12 @@ class AutomationAction {
 
   String get alarmAction => (raw['alarmAction'] as String?) ?? 'toggle';
 
+  /// Acción por capability (on:'device').
+  String get deviceId => (raw['deviceId'] ?? '').toString();
+  String get verb => (raw['verb'] ?? '').toString();
+  Map<String, dynamic> get args =>
+      raw['args'] is Map ? Map<String, dynamic>.from(raw['args'] as Map) : {};
+
   String get jblAction => (raw['jblAction'] as String?) ?? 'on';
   String? get jblOnMode => raw['jblOnMode'] as String?;
   String? get jblRadioName => raw['jblRadioName'] as String?;
@@ -343,6 +366,7 @@ class AutomationAction {
       return AutomationActionKind.alarm;
     }
     if (lightId == '__jbl__' || on == 'jbl') return AutomationActionKind.jbl;
+    if (on == 'device') return AutomationActionKind.device;
     if (lightId.startsWith('__group__') || on == 'group') {
       return AutomationActionKind.group;
     }
@@ -385,6 +409,19 @@ class AutomationAction {
     raw['on'] = 'group';
     raw['groupId'] = groupId;
     raw['groupAction'] = groupAction;
+    edited = true;
+  }
+
+  void updateDevice({
+    required String deviceId,
+    required String verb,
+    Map<String, dynamic> args = const {},
+  }) {
+    raw['deviceId'] = deviceId;
+    raw['verb'] = verb;
+    raw['on'] = 'device';
+    raw['lightId'] = '__dev__${deviceId}__$verb';
+    _setOrRemove('args', args.isEmpty ? null : args);
     edited = true;
   }
 

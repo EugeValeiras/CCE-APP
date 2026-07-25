@@ -7,6 +7,9 @@ import 'package:http/http.dart' as http;
 
 import '../../../models/automation.dart';
 import '../../../models/scene.dart';
+import '../../../models/capability.dart';
+import '../../../models/device.dart';
+import '../../../utils/verb_labels.dart';
 import '../../../models/server_config.dart';
 import '../../../services/devices_service.dart';
 import '../../../theme/cce_icons.dart';
@@ -40,6 +43,8 @@ Color _kindColor(AutomationActionKind kind) {
       return CceColors.warm;
     case AutomationActionKind.group:
       return CceColors.accent;
+    case AutomationActionKind.device:
+      return CceColors.info;
     case AutomationActionKind.notification:
       return CceColors.info;
     case AutomationActionKind.alarm:
@@ -57,6 +62,8 @@ Widget _kindIcon(AutomationActionKind kind, Color color) {
       return CceIcon(CceIcons.lights, size: 18, color: color);
     case AutomationActionKind.group:
       return CceIcon(CceIcons.room, size: 18, color: color);
+    case AutomationActionKind.device:
+      return Icon(Icons.tune, size: 18, color: color);
     case AutomationActionKind.notification:
       return Icon(Icons.notifications_outlined, size: 18, color: color);
     case AutomationActionKind.alarm:
@@ -307,6 +314,10 @@ class _ActionsSheetState extends State<_ActionsSheet> {
       case AutomationActionKind.group:
         applied = await _showActionEditor(
             (ctx, scroll) => _GroupActionEditor(
+                action: action, devices: widget.devices, scroll: scroll));
+      case AutomationActionKind.device:
+        applied = await _showActionEditor(
+            (ctx, scroll) => _DeviceActionEditor(
                 action: action, devices: widget.devices, scroll: scroll));
       case AutomationActionKind.notification:
         applied = await _showActionEditor(
@@ -561,6 +572,11 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               'Grupo',
               const CceIcon(CceIcons.room, size: 24, color: CceColors.accent),
               () => _editAction(AutomationAction.group(''), isNew: true),
+            ),
+            _addTile(
+              'Dispositivo',
+              const Icon(Icons.tune, size: 24, color: CceColors.info),
+              () => _editAction(AutomationAction.device('', ''), isNew: true),
             ),
             _addTile(
               'Aviso',
@@ -953,6 +969,200 @@ class _GroupActionEditorState extends State<_GroupActionEditor> {
         ),
       ],
     );
+  }
+}
+
+/// Acción por CAPABILITY sobre cualquier device: elegís device → verbo del
+/// catálogo (no sensitive) → args (enum/bool/número). Persiste {deviceId, verb,
+/// args} y se ejecuta por POST /actions/:verb (mismo contrato que el Dashboard).
+class _DeviceActionEditor extends StatefulWidget {
+  const _DeviceActionEditor({
+    required this.action,
+    required this.devices,
+    required this.scroll,
+  });
+
+  final AutomationAction action;
+  final DevicesService devices;
+  final ScrollController scroll;
+
+  @override
+  State<_DeviceActionEditor> createState() => _DeviceActionEditorState();
+}
+
+class _DeviceActionEditorState extends State<_DeviceActionEditor> {
+  late String _deviceId = widget.action.deviceId;
+  late String _verb = widget.action.verb;
+  late Map<String, dynamic> _args = Map<String, dynamic>.from(widget.action.args);
+
+  CapabilityCatalog get _cat => widget.devices.capabilityCatalog;
+
+  List<Device> get _actionableDevices => widget.devices.all.where((d) {
+        for (final cap in d.capabilities) {
+          final spec = _cat.specFor(cap);
+          if (spec != null && spec.actions.any((a) => !a.isSensitive)) {
+            return true;
+          }
+        }
+        return false;
+      }).toList();
+
+  List<CatalogActionSpec> _verbsFor(Device d) {
+    final out = <CatalogActionSpec>[];
+    for (final cap in d.capabilities) {
+      final spec = _cat.specFor(cap);
+      if (spec == null) continue;
+      for (final a in spec.actions) {
+        if (!a.isSensitive) out.add(a);
+      }
+    }
+    return out;
+  }
+
+  CatalogActionSpec? get _verbSpec {
+    final d = widget.devices.byId(_deviceId);
+    if (d == null) return null;
+    for (final a in _verbsFor(d)) {
+      if (a.verb == _verb) return a;
+    }
+    return null;
+  }
+
+  List<String> _resolveEnum(String ref, Device d) {
+    switch (ref) {
+      case 'VACUUM_CLEAN_MODES':
+        return d.state.cleanModes ?? const [];
+      case 'VACUUM_FAN_SPEEDS':
+        return d.state.fanSpeeds ?? const [];
+      case 'VACUUM_ROOMS':
+        return (d.state.rooms ?? const []).map((r) => r.name).toList();
+      default:
+        return _cat.enumValues(ref);
+    }
+  }
+
+  bool get _argsComplete {
+    final spec = _verbSpec;
+    if (spec == null) return false;
+    for (final a in spec.args) {
+      if (a.required && _args[a.name] == null) return false;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final devices = _actionableDevices;
+    final selected = widget.devices.byId(_deviceId);
+    final verbs = selected != null ? _verbsFor(selected) : <CatalogActionSpec>[];
+    final valid = _deviceId.isNotEmpty && _verb.isNotEmpty && _argsComplete;
+
+    return _EditorScaffold(
+      title: 'Acción de dispositivo',
+      scroll: widget.scroll,
+      onApply: valid
+          ? () => widget.action
+              .updateDevice(deviceId: _deviceId, verb: _verb, args: _args)
+          : null,
+      children: [
+        _editorLabel('Dispositivo'),
+        if (devices.isEmpty)
+          const Text('No hay dispositivos con acciones disponibles.',
+              style: CceText.caption)
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final d in devices)
+                ChoiceChip(
+                  label: Text(widget.devices.displayName(d)),
+                  selected: _deviceId == d.id,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() {
+                    _deviceId = d.id;
+                    _verb = '';
+                    _args = {};
+                  }),
+                ),
+            ],
+          ),
+        if (selected != null) ...[
+          _editorLabel('Acción'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in verbs)
+                ChoiceChip(
+                  label: Text(verbLabel(a.verb)),
+                  selected: _verb == a.verb,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() {
+                    _verb = a.verb;
+                    _args = _defaultArgs(a);
+                  }),
+                ),
+            ],
+          ),
+          ..._argControls(selected),
+        ],
+      ],
+    );
+  }
+
+  Map<String, dynamic> _defaultArgs(CatalogActionSpec spec) {
+    final out = <String, dynamic>{};
+    for (final a in spec.args) {
+      if (a.defaultValue != null) out[a.name] = a.defaultValue;
+    }
+    return out;
+  }
+
+  List<Widget> _argControls(Device d) {
+    final spec = _verbSpec;
+    if (spec == null || spec.args.isEmpty) return const [];
+    final widgets = <Widget>[];
+    for (final arg in spec.args) {
+      if (arg.type == 'boolean') {
+        widgets.add(_editorLabel(arg.name));
+        widgets.add(CceSegmented<bool>(
+          value: _args[arg.name] == true,
+          segments: const [
+            CceSegment(value: true, label: 'Sí'),
+            CceSegment(value: false, label: 'No'),
+          ],
+          onChanged: (v) => setState(() => _args[arg.name] = v),
+        ));
+      } else if (arg.enumRef != null) {
+        final opts = _resolveEnum(arg.enumRef!, d);
+        if (opts.isEmpty) continue;
+        widgets.add(_editorLabel(verbLabel(spec.verb)));
+        widgets.add(Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final o in opts)
+              ChoiceChip(
+                label: Text(o),
+                selected: _args[arg.name] == o,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _args[arg.name] = o),
+              ),
+          ],
+        ));
+      } else if (arg.type == 'number' && arg.min != null && arg.max != null) {
+        final v = (_args[arg.name] as num?)?.toDouble() ?? arg.min!.toDouble();
+        widgets.add(_editorLabel('${arg.name}  ·  ${v.round()}'));
+        widgets.add(Slider(
+          value: v.clamp(arg.min!.toDouble(), arg.max!.toDouble()),
+          min: arg.min!.toDouble(),
+          max: arg.max!.toDouble(),
+          onChanged: (nv) => setState(() => _args[arg.name] = nv.round()),
+        ));
+      }
+    }
+    return widgets;
   }
 }
 

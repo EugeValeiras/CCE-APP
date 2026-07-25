@@ -8,6 +8,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_switch.dart';
 import '../utils/capability_renderers.dart';
+import '../utils/verb_labels.dart';
 
 /// Vista unificada por capabilities: renderiza los controles de CUALQUIER
 /// device a partir de `device.capabilities` + el catálogo (GET /api/capabilities),
@@ -549,30 +550,8 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
     }
   }
 
-  String _verbLabel(String verb) => _verbLabels[verb] ?? verb;
+  String _verbLabel(String verb) => verbLabel(verb);
 }
-
-const Map<String, String> _verbLabels = {
-  'play': 'Play',
-  'pause': 'Pausa',
-  'stop': 'Stop',
-  'next': 'Siguiente',
-  'prev': 'Anterior',
-  'clean': 'Limpiar',
-  'resume': 'Reanudar',
-  'dock': 'Al dock',
-  'setCleanMode': 'Modo',
-  'setFanSpeed': 'Potencia',
-  'setInput': 'Entrada',
-  'launchApp': 'App',
-  'setChannel': 'Canal',
-  'channelUp': 'Canal +',
-  'channelDown': 'Canal -',
-  'modeTv': 'TV',
-  'modeRadio': 'Radio',
-  'playPause': 'Play/Pausa',
-  'setNightMode': 'Modo noche',
-};
 
 // ── Widgets auxiliares ─────────────────────────────────────────────────────
 

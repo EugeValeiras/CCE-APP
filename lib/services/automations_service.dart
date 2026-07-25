@@ -503,6 +503,14 @@ class AutomationsService extends ChangeNotifier {
                 }
               case AutomationActionKind.light:
                 await _applyLightAction(act);
+              case AutomationActionKind.device:
+                final dev = devices.byId(act.deviceId);
+                if (dev == null || act.verb.isEmpty) {
+                  warnings.add('Hay una acción de dispositivo sin configurar');
+                  degraded = true;
+                } else {
+                  await devices.invokeCapability(dev, act.verb, act.args);
+                }
               case AutomationActionKind.advanced:
                 if (act.on == 'bri_up' || act.on == 'bri_down') {
                   await _applyBriDelta(act);
