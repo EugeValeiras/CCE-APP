@@ -6,6 +6,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../views/lock_screen.dart';
+import '../views/unified_device_screen.dart';
 import 'pulse_on_update.dart';
 
 /// Tile de cerradura (capability 'lock', provider ezviz). Espejo de
@@ -172,6 +173,11 @@ class LockTile extends StatelessWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => LockScreen(device: device, service: service),
+        ),
+      ),
+      onLongPress: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UnifiedDeviceScreen(device: device, service: service),
         ),
       ),
       child: tile,

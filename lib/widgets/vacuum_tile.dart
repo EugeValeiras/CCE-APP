@@ -7,6 +7,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/vacuum_modes.dart';
 import '../views/vacuum_screen.dart';
+import '../views/unified_device_screen.dart';
 import 'pulse_on_update.dart';
 
 /// Tile del robot aspiradora (capability 'vacuum', Roborock vía Matter).
@@ -189,6 +190,11 @@ class VacuumTile extends StatelessWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => VacuumScreen(device: device, service: service),
+        ),
+      ),
+      onLongPress: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UnifiedDeviceScreen(device: device, service: service),
         ),
       ),
       child: tile,
