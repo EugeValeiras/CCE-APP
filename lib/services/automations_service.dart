@@ -480,6 +480,25 @@ class AutomationsService extends ChangeNotifier {
                 ok: false, warning: 'La automatización no tiene grupo');
           }
           await _applyGroup(sid, a.sourceAction);
+        case 'hueRoom':
+          final sid = a.sourceId;
+          if (sid == null) {
+            return const RunResult(
+                ok: false, warning: 'La automatización no tiene room');
+          }
+          final resp = await http
+              .put(
+                Uri.parse(
+                    '${config.baseUrl}/hue/rooms/${Uri.encodeComponent(sid)}/state'),
+                headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+                body: jsonEncode({'on': a.sourceAction != 'off'}),
+              )
+              .timeout(_timeout);
+          if (resp.statusCode != 200 && resp.statusCode != 201) {
+            return RunResult(
+                ok: false,
+                warning: 'No se pudo cambiar el room (${resp.statusCode})');
+          }
         default: // custom
           for (final act in a.actions) {
             switch (act.kind) {

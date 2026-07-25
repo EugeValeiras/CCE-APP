@@ -20,6 +20,14 @@ String _groupName(DevicesService devices, String? id) {
   return 'grupo';
 }
 
+String _hueRoomName(DevicesService devices, String? id) {
+  if (id == null) return 'de Hue';
+  for (final r in devices.hueRooms) {
+    if (r.id == id) return r.name;
+  }
+  return 'de Hue';
+}
+
 String _sceneName(DevicesService devices, Automation a) {
   if (a.source == 'scene') {
     for (final s in devices.scenes) {
@@ -350,6 +358,9 @@ String editorSummary(Automation a, DevicesService devices) {
     case 'group':
       entonces =
           '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el grupo ${_groupName(devices, a.sourceId)}';
+    case 'hueRoom':
+      entonces =
+          '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el room ${_hueRoomName(devices, a.sourceId)}';
     default:
       entonces = a.actions.isEmpty
           ? '(sin acciones todavía)'

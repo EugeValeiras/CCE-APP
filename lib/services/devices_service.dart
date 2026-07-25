@@ -1014,10 +1014,33 @@ class DevicesService extends ChangeNotifier {
     d.lastEventAt = DateTime.now();
     debugPrint('[DevicesService] Applied: ${d.id} on=${d.state.on} bri=${d.state.bri} motion=${d.sensor?.motion} contact=${d.sensor?.contact}');
     notifyListeners();
+    // Estado del room de Hue casi en tiempo real: si cambió una luz Hue,
+    // re-derivamos any_on del bridge (debounced para coalescer ráfagas de una
+    // escena). El estado real (any_on) lo computa el backend en GET /hue/rooms.
+    if (ev.state != null &&
+        _hueRooms.isNotEmpty &&
+        d.bindingIds.any((b) => b.startsWith('hue_'))) {
+      _refreshHueRoomsSoon();
+    }
+  }
+
+  Timer? _hueRoomsDebounce;
+
+  void _refreshHueRoomsSoon() {
+    _hueRoomsDebounce?.cancel();
+    _hueRoomsDebounce = Timer(const Duration(milliseconds: 900), () async {
+      try {
+        _hueRooms = await _api.getHueRooms();
+        notifyListeners();
+      } catch (e) {
+        debugPrint('refreshHueRooms error: $e');
+      }
+    });
   }
 
   @override
   void dispose() {
+    _hueRoomsDebounce?.cancel();
     _deviceSub?.cancel();
     _connSub?.cancel();
     _armedSub?.cancel();

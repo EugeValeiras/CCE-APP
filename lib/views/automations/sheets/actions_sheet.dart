@@ -197,6 +197,8 @@ class _ActionsSheetState extends State<_ActionsSheet> {
     final cceScenes = widget.devices.scenes;
     final hueScenes = widget.devices.hueScenes;
     final groups = widget.devices.groups;
+    final hueRooms = widget.devices.hueRooms;
+    const hueOrange = Color(0xFFFF6A00);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -289,7 +291,57 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               ),
             ),
         ],
-        if (cceScenes.isEmpty && hueScenes.isEmpty && groups.isEmpty)
+        if (hueRooms.isNotEmpty) ...[
+          _label('Rooms de Hue'),
+          for (final r in hueRooms)
+            Container(
+              height: 56,
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: draft.source == 'hueRoom' && draft.sourceId == r.id
+                    ? hueOrange.withValues(alpha: 0.14)
+                    : CceColors.surfaceHigh,
+                borderRadius: BorderRadius.circular(CceRadii.control),
+                border: Border.all(
+                  color: draft.source == 'hueRoom' && draft.sourceId == r.id
+                      ? hueOrange.withValues(alpha: 0.6)
+                      : CceColors.stroke,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => setState(() {
+                        draft.source = 'hueRoom';
+                        draft.sourceId = r.id;
+                        _stashActions();
+                      }),
+                      child: Text(r.name, style: CceText.body),
+                    ),
+                  ),
+                  if (draft.source == 'hueRoom' && draft.sourceId == r.id)
+                    SizedBox(
+                      width: 150,
+                      child: CceSegmented<String>(
+                        value: draft.sourceAction == 'off' ? 'off' : 'on',
+                        segments: const [
+                          CceSegment(value: 'on', label: 'On'),
+                          CceSegment(value: 'off', label: 'Off'),
+                        ],
+                        onChanged: (v) =>
+                            setState(() => draft.sourceAction = v),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+        ],
+        if (cceScenes.isEmpty &&
+            hueScenes.isEmpty &&
+            groups.isEmpty &&
+            hueRooms.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Text(
