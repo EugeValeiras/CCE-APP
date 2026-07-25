@@ -10,6 +10,7 @@ import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
 import '../models/hue_room.dart';
+import '../models/capability.dart';
 
 class ApiService {
   final ServerConfig config;
@@ -24,6 +25,19 @@ class ApiService {
     final data = jsonDecode(response.body);
     final list = data is List ? data : (data['devices'] as List? ?? []);
     return list.map((e) => Device.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+  }
+
+  /// Catálogo de capabilities (GET /capabilities): mapa capability→{stateFields,
+  /// actions con min/max/policy} + enums. Data pura, sin secretos. Se carga una
+  /// vez; convierte a la app en intérprete del schema para la vista unificada.
+  Future<CapabilityCatalog> getCapabilities() async {
+    final resp = await http
+        .get(Uri.parse('${config.baseUrl}/capabilities'), headers: ServerConfig.tokenHeaders)
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return const CapabilityCatalog();
+    return CapabilityCatalog.fromJson(Map<String, dynamic>.from(data));
   }
 
   Future<void> setDeviceState(String deviceId, Map<String, dynamic> state) async {

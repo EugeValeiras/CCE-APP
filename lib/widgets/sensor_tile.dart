@@ -11,6 +11,7 @@ import '../views/single_button_screen.dart';
 import '../views/switch_detail_screen.dart';
 import '../views/sensor_detail_screen.dart';
 import '../views/thermometer_screen.dart';
+import '../views/unified_device_screen.dart';
 import 'pulse_on_update.dart';
 
 /// Tile de sensor (contacto, movimiento, temperatura, humedad). Los devices
@@ -253,13 +254,22 @@ class SensorTile extends StatelessWidget {
       target = SensorDetailScreen(device: device, service: service);
     }
 
-    if (target == null) return tile;
+    // Long-press → Vista Unificada por capabilities (coexiste con la pantalla
+    // dedicada). Si no hay pantalla dedicada, el tap también la abre.
+    void openUnified() => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                UnifiedDeviceScreen(device: device, service: service),
+          ),
+        );
     final dest = target;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => dest),
-      ),
+      onTap: dest == null
+          ? openUnified
+          : () => Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => dest)),
+      onLongPress: openUnified,
       child: tile,
     );
   }

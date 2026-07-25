@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 import '../models/color_preset.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
+import '../models/capability.dart';
 import '../models/hue_room.dart';
 import '../models/light_group.dart';
 import '../models/room_ref.dart';
@@ -38,6 +39,7 @@ class DevicesService extends ChangeNotifier {
   List<CceScene> _scenes = const [];
   List<HueScene> _hueScenes = const [];
   List<HueRoom> _hueRooms = const [];
+  CapabilityCatalog _capabilityCatalog = const CapabilityCatalog();
   // Orden unificado de acciones por plano (compartido con el dashboard web):
   // planId -> ['scene:<id>', 'hueScene:<id>', 'group:<id>', ...].
   Map<String, List<String>> _actionOrder = const {};
@@ -98,6 +100,7 @@ class DevicesService extends ChangeNotifier {
   List<CceScene> get scenes => _scenes;
   List<HueScene> get hueScenes => _hueScenes;
   List<HueRoom> get hueRooms => _hueRooms;
+  CapabilityCatalog get capabilityCatalog => _capabilityCatalog;
   bool get loading => _loading;
   String? get error => _error;
   Device? byId(String id) => _byId[id];
@@ -136,6 +139,15 @@ class DevicesService extends ChangeNotifier {
         debugPrint('getHueRooms error (degrada a []): $e');
         return <HueRoom>[];
       });
+      // Catálogo de capabilities (una vez; degrada a vacío si falla): habilita
+      // la vista unificada por capabilities.
+      final Future<CapabilityCatalog> capsFuture = _capabilityCatalog
+              .capabilities.isNotEmpty
+          ? Future.value(_capabilityCatalog)
+          : _api.getCapabilities().catchError((Object e) {
+              debugPrint('getCapabilities error (degrada a vacío): $e');
+              return const CapabilityCatalog();
+            });
       // Estado de alarma en paralelo; si falla mantiene el valor previo.
       final armedFuture = _api.getAlarmState().catchError((Object e) {
         debugPrint('getAlarmState error (mantiene previo): $e');
@@ -205,6 +217,7 @@ class DevicesService extends ChangeNotifier {
       _actionOrder = _parseActionOrder(cfg['actionOrder']);
       _hueScenes = await hueScenesFuture;
       _hueRooms = await hueRoomsFuture;
+      _capabilityCatalog = await capsFuture;
       _alarmArmed = await armedFuture;
     } catch (e) {
       _error = 'Error cargando dispositivos';
@@ -461,6 +474,39 @@ class DevicesService extends ChangeNotifier {
       notifyListeners();
       _notifyCommandError(displayName(d));
     }
+  }
+
+  /// Vista unificada: aplica un patch de estado (PUT /state) con update
+  /// optimista ya proyectado en [optimistic] y revert + aviso si falla.
+  /// Para capabilities con stateFields (switch/brightness/color_temperature/
+  /// color_hsv/thermostat).
+  Future<void> applyCapabilityState(
+    Device d,
+    DeviceState optimistic,
+    Map<String, dynamic> patch,
+  ) async {
+    final prev = d.state;
+    d.state = optimistic;
+    notifyListeners();
+    try {
+      await _api.setDeviceState(d.id, patch);
+    } catch (e) {
+      debugPrint('applyCapabilityState error ${d.id}: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// Vista unificada: invoca un verbo de capability (POST /actions/:verb). El
+  /// estado real llega por WS. RELANZA la excepción con el mensaje semántico
+  /// del backend para que el caller maneje confirm (sensitive) o 501.
+  Future<void> invokeCapability(
+    Device d,
+    String verb, [
+    Map<String, dynamic>? args,
+  ]) async {
+    await _api.invokeAction(d.id, verb, args);
   }
 
   /// Prende/apaga el grupo, optimista luz por luz. Las luces cuyo PUT falló

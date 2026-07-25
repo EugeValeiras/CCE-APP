@@ -310,6 +310,10 @@ class Device {
     );
   }
 
+  /// ¿El device declara esta capability en su descriptor? Fuente canónica para
+  /// la vista unificada por capabilities.
+  bool hasCapability(String cap) => capabilities.contains(cap);
+
   /// Termostato: capability 'thermostat' en el descriptor (fuente canónica),
   /// con fallbacks por tipo / presencia de setpoint para descriptores legacy.
   bool get isThermostat =>
