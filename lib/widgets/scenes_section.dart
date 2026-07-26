@@ -210,6 +210,7 @@ class _ScenesSectionState extends State<ScenesSection> {
             HueRoomCard(
               name: hueRoom.name,
               on: hueRoom.on,
+              archetype: hueRoom.archetype,
               busy: _busyId == busyId,
               neo: widget.neo,
               onTap: () => _run(
