@@ -19,12 +19,18 @@ class ApiService {
 
   Future<List<Device>> getDevices() async {
     final response = await http
-        .get(Uri.parse('${config.baseUrl}/devices/merged'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/devices/merged'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) throw Exception('Error ${response.statusCode}');
+    if (response.statusCode != 200)
+      throw Exception('Error ${response.statusCode}');
     final data = jsonDecode(response.body);
     final list = data is List ? data : (data['devices'] as List? ?? []);
-    return list.map((e) => Device.fromJson(Map<String, dynamic>.from(e as Map))).toList();
+    return list
+        .map((e) => Device.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   /// Catálogo de capabilities (GET /capabilities): mapa capability→{stateFields,
@@ -32,7 +38,10 @@ class ApiService {
   /// vez; convierte a la app en intérprete del schema para la vista unificada.
   Future<CapabilityCatalog> getCapabilities() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/capabilities'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/capabilities'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -40,11 +49,49 @@ class ApiService {
     return CapabilityCatalog.fromJson(Map<String, dynamic>.from(data));
   }
 
-  Future<void> setDeviceState(String deviceId, Map<String, dynamic> state) async {
+  /// Qué sensores disparan la alarma: { deviceId → dispara }.
+  Future<Map<String, bool>> getSensorAlarmTriggers() async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/config/sensor-alarm-triggers'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) return const {};
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return const {};
+    return {for (final e in data.entries) e.key.toString(): e.value == true};
+  }
+
+  /// Prende/apaga que ESTE sensor dispare la alarma.
+  Future<void> setSensorAlarmTrigger(String deviceId, bool fires) async {
     await http
         .put(
-          Uri.parse('${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/state'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          Uri.parse(
+            '${config.baseUrl}/config/sensor-alarm-triggers/${Uri.encodeComponent(deviceId)}',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'fires': fires}),
+        )
+        .timeout(const Duration(seconds: 5));
+  }
+
+  Future<void> setDeviceState(
+    String deviceId,
+    Map<String, dynamic> state,
+  ) async {
+    await http
+        .put(
+          Uri.parse(
+            '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/state',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode(state),
         )
         .timeout(const Duration(seconds: 5));
@@ -55,13 +102,20 @@ class ApiService {
   /// clean/pause/resume/dock van sin args; setCleanMode {mode},
   /// cleanRooms {rooms: '7,3'}, setFanSpeed {level}. Lanza Exception con el
   /// mensaje semántico del backend si la acción falla (≠2xx o success:false).
-  Future<void> invokeAction(String deviceId, String verb,
-      [Map<String, dynamic>? args]) async {
+  Future<void> invokeAction(
+    String deviceId,
+    String verb, [
+    Map<String, dynamic>? args,
+  ]) async {
     final response = await http
         .post(
           Uri.parse(
-              '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/actions/${Uri.encodeComponent(verb)}'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+            '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/actions/${Uri.encodeComponent(verb)}',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode(args ?? const <String, dynamic>{}),
         )
         .timeout(const Duration(seconds: 10));
@@ -69,12 +123,16 @@ class ApiService {
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) body = decoded;
-    } catch (_) {/* body no-JSON: lo cubre el status */}
-    final ok = response.statusCode >= 200 &&
+    } catch (_) {
+      /* body no-JSON: lo cubre el status */
+    }
+    final ok =
+        response.statusCode >= 200 &&
         response.statusCode < 300 &&
         body?['success'] != false;
     if (!ok) {
-      final msg = body?['error'] ?? body?['message'] ?? 'HTTP ${response.statusCode}';
+      final msg =
+          body?['error'] ?? body?['message'] ?? 'HTTP ${response.statusCode}';
       throw Exception('$verb: $msg');
     }
   }
@@ -82,17 +140,21 @@ class ApiService {
   /// Simula la pulsación de un botón de un switch/dial (POST
   /// /devices/:id/simulate-button) → dispara la acción configurada en el
   /// backend. key: 0=click, 1=doble, 2=long; outlet = botón (0-based).
-  Future<void> simulateButton(String deviceId,
-      {required int key, int? outlet}) async {
+  Future<void> simulateButton(
+    String deviceId, {
+    required int key,
+    int? outlet,
+  }) async {
     await http
         .post(
           Uri.parse(
-              '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/simulate-button'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
-          body: jsonEncode({
-            'key': key,
-            if (outlet != null) 'outlet': outlet,
-          }),
+            '${config.baseUrl}/devices/${Uri.encodeComponent(deviceId)}/simulate-button',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'key': key, if (outlet != null) 'outlet': outlet}),
         )
         .timeout(const Duration(seconds: 6));
   }
@@ -109,19 +171,30 @@ class ApiService {
     if (channel != null) query['channel'] = channel;
     if (globalId != null) query['globalId'] = globalId;
     if (cursor != null) query['cursor'] = cursor;
-    final uri = Uri.parse('${config.baseUrl}/events').replace(queryParameters: query);
-    final resp = await http.get(uri, headers: ServerConfig.tokenHeaders).timeout(const Duration(seconds: 8));
+    final uri = Uri.parse(
+      '${config.baseUrl}/events',
+    ).replace(queryParameters: query);
+    final resp = await http
+        .get(uri, headers: ServerConfig.tokenHeaders)
+        .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
-    return EventsPage.fromJson(Map<String, dynamic>.from(jsonDecode(resp.body) as Map));
+    return EventsPage.fromJson(
+      Map<String, dynamic>.from(jsonDecode(resp.body) as Map),
+    );
   }
 
   Future<Map<String, dynamic>> getConfig() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/config'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/config'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
-    return data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map);
+    return data is Map<String, dynamic>
+        ? data
+        : Map<String, dynamic>.from(data as Map);
   }
 
   /// Persiste el orden de acciones por plano (mismo mecanismo que el
@@ -132,7 +205,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/config/action-order'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode(order),
         )
         .timeout(const Duration(seconds: 8));
@@ -143,7 +219,10 @@ class ApiService {
 
   Future<FloorPlansData> getFloorPlans() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/config/floor-plans'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/config/floor-plans'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = resp.statusCode == 200 ? jsonDecode(resp.body) : {};
     final plans = (data['plans'] as List? ?? [])
@@ -152,7 +231,10 @@ class ApiService {
     final activePlanId = data['activePlanId'] as String?;
 
     final posResp = await http
-        .get(Uri.parse('${config.baseUrl}/config/positions'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/config/positions'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final posData = posResp.statusCode == 200 ? jsonDecode(posResp.body) : {};
     final positions = <String, Map<String, LightPosition>>{};
@@ -161,7 +243,10 @@ class ApiService {
         if (devicesMap is Map) {
           final inner = <String, LightPosition>{};
           devicesMap.forEach((did, xy) {
-            if (xy is Map) inner[did.toString()] = LightPosition.fromJson(Map<String, dynamic>.from(xy));
+            if (xy is Map)
+              inner[did.toString()] = LightPosition.fromJson(
+                Map<String, dynamic>.from(xy),
+              );
           });
           positions[planId.toString()] = inner;
         }
@@ -172,8 +257,9 @@ class ApiService {
     // si el endpoint falla / no responde 200, el mapa queda vacío y el plano
     // simplemente no muestra ese marker.
     final jblPositions = await _fetchDevicePositions('/config/jbl-positions');
-    final tvPositions =
-        await _fetchDevicePositions('/config/samsung-tv-positions');
+    final tvPositions = await _fetchDevicePositions(
+      '/config/samsung-tv-positions',
+    );
 
     return FloorPlansData(
       plans: plans,
@@ -192,15 +278,19 @@ class ApiService {
     final out = <String, LightPosition>{};
     try {
       final resp = await http
-          .get(Uri.parse('${config.baseUrl}$path'), headers: ServerConfig.tokenHeaders)
+          .get(
+            Uri.parse('${config.baseUrl}$path'),
+            headers: ServerConfig.tokenHeaders,
+          )
           .timeout(const Duration(seconds: 5));
       if (resp.statusCode != 200) return out;
       final data = jsonDecode(resp.body);
       if (data is Map) {
         data.forEach((planId, xy) {
           if (xy is Map) {
-            out[planId.toString()] =
-                LightPosition.fromJson(Map<String, dynamic>.from(xy));
+            out[planId.toString()] = LightPosition.fromJson(
+              Map<String, dynamic>.from(xy),
+            );
           }
         });
       }
@@ -213,7 +303,10 @@ class ApiService {
   /// Escenas de config CCE (GET /config/scenes).
   Future<List<CceScene>> getScenes() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/config/scenes'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/config/scenes'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -227,7 +320,10 @@ class ApiService {
   /// Todas las escenas nativas del bridge Hue (GET /hue/scenes).
   Future<List<HueScene>> getHueScenes() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/hue/scenes'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/hue/scenes'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     return _parseHueScenes(resp.body);
@@ -237,7 +333,10 @@ class ApiService {
   /// (any_on, igual que la app de Philips Hue). Degrada a [] si falla.
   Future<List<HueRoom>> getHueRooms() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/hue/rooms'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/hue/rooms'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -253,8 +352,13 @@ class ApiService {
   Future<void> setHueRoomState(String roomId, {required bool on}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/hue/rooms/${Uri.encodeComponent(roomId)}/state'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          Uri.parse(
+            '${config.baseUrl}/hue/rooms/${Uri.encodeComponent(roomId)}/state',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'on': on}),
         )
         .timeout(const Duration(seconds: 8));
@@ -262,7 +366,8 @@ class ApiService {
       String msg = 'Error ${resp.statusCode}';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) msg = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          msg = data['error'].toString();
       } catch (_) {}
       throw Exception(msg);
     }
@@ -271,7 +376,12 @@ class ApiService {
   /// Escenas Hue de un room (GET /hue/rooms/{roomId}/scenes).
   Future<List<HueScene>> getHueRoomScenes(String roomId) async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/hue/rooms/${Uri.encodeComponent(roomId)}/scenes'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse(
+            '${config.baseUrl}/hue/rooms/${Uri.encodeComponent(roomId)}/scenes',
+          ),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     return _parseHueScenes(resp.body);
@@ -292,8 +402,12 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse(
-              '${config.baseUrl}/hue/scenes/${Uri.encodeComponent(sceneId)}/recall'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+            '${config.baseUrl}/hue/scenes/${Uri.encodeComponent(sceneId)}/recall',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'smart': smart}),
         )
         .timeout(const Duration(seconds: 8));
@@ -301,7 +415,8 @@ class ApiService {
       String msg = 'Error ${resp.statusCode}';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) msg = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          msg = data['error'].toString();
       } catch (_) {}
       throw Exception(msg);
     }
@@ -309,7 +424,10 @@ class ApiService {
 
   Future<bool> getAlarmState() async {
     final response = await http
-        .get(Uri.parse('${config.baseUrl}/config/alarm-armed'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/config/alarm-armed'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -322,7 +440,10 @@ class ApiService {
     final response = await http
         .put(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'armed': armed}),
         )
         .timeout(const Duration(seconds: 5));
@@ -337,11 +458,11 @@ class ApiService {
     await http
         .post(
           Uri.parse('${config.baseUrl}/apns/register'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
-          body: jsonEncode({
-            'deviceToken': token,
-            'deviceName': deviceName,
-          }),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'deviceToken': token, 'deviceName': deviceName}),
         )
         .timeout(const Duration(seconds: 5));
   }
@@ -349,14 +470,20 @@ class ApiService {
   Future<void> ackAlarm(String alarmId) async {
     if (alarmId.isEmpty) return;
     await http
-        .post(Uri.parse('${config.baseUrl}/apns/ack/$alarmId'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/apns/ack/$alarmId'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
   }
 
   Future<bool> testConnection() async {
     try {
       final response = await http
-          .get(Uri.parse('${config.baseUrl}/config/alarm-armed'), headers: ServerConfig.tokenHeaders)
+          .get(
+            Uri.parse('${config.baseUrl}/config/alarm-armed'),
+            headers: ServerConfig.tokenHeaders,
+          )
           .timeout(const Duration(seconds: 3));
       return response.statusCode == 200;
     } catch (_) {
@@ -375,17 +502,26 @@ class ApiService {
     // Timeout 8s: el server hace SSDP discovery (throttle 30s) antes de
     // responder offline; 5s daría timeouts espurios.
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/jbl/status'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/jbl/status'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
     return JblStatus.fromJson(
-        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+      data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map),
+    );
   }
 
   Future<List<JblRadio>> getJblRadios() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/jbl/radios'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/jbl/radios'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -406,7 +542,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/jbl/volume'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'volume': volume}),
         )
         .timeout(const Duration(seconds: 5));
@@ -418,7 +557,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/jbl/volume/up'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({if (step != null) 'step': step}),
         )
         .timeout(const Duration(seconds: 5));
@@ -430,7 +572,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/jbl/volume/down'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({if (step != null) 'step': step}),
         )
         .timeout(const Duration(seconds: 5));
@@ -442,7 +587,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/jbl/mute'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'muted': muted}),
         )
         .timeout(const Duration(seconds: 5));
@@ -452,7 +600,10 @@ class ApiService {
 
   Future<bool> toggleJblMute() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/jbl/mute/toggle'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/mute/toggle'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _jblOk(resp);
     return data['muted'] as bool;
@@ -463,7 +614,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/jbl/night'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'on': on}),
         )
         .timeout(const Duration(seconds: 5));
@@ -473,7 +627,10 @@ class ApiService {
 
   Future<bool> toggleJblNightMode() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/jbl/night/toggle'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/night/toggle'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _jblOk(resp);
     return data['nightMode'] as bool;
@@ -486,7 +643,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/jbl/remote'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'key': id}),
         )
         .timeout(const Duration(seconds: 5));
@@ -496,7 +656,10 @@ class ApiService {
 
   Future<void> jblPowerToggle() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/jbl/power/toggle'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/power/toggle'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     _jblOk(resp);
   }
@@ -505,7 +668,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/jbl/power'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'on': on, 'resume': resume}),
         )
         .timeout(const Duration(seconds: 5));
@@ -517,7 +683,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/jbl/radio/play'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({if (name != null) 'name': name}),
         )
         .timeout(const Duration(seconds: 5));
@@ -527,7 +696,10 @@ class ApiService {
 
   Future<String> saveJblRadio() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/jbl/radio/save'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/jbl/radio/save'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _jblOk(resp);
     return (data['name'] ?? '').toString();
@@ -535,14 +707,22 @@ class ApiService {
 
   Future<void> deleteJblRadio(String name) async {
     final resp = await http
-        .delete(Uri.parse('${config.baseUrl}/jbl/radios/${Uri.encodeComponent(name)}'), headers: ServerConfig.tokenHeaders)
+        .delete(
+          Uri.parse(
+            '${config.baseUrl}/jbl/radios/${Uri.encodeComponent(name)}',
+          ),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     _jblOk(resp);
   }
 
   Future<String> getJblConfig() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/jbl/config'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/jbl/config'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -553,7 +733,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/jbl/config'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'ip': ip}),
         )
         .timeout(const Duration(seconds: 5));
@@ -573,19 +756,28 @@ class ApiService {
     // probing del transporte antes de responder offline; 5s daría timeouts
     // espurios.
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/tv/status'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/tv/status'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
     return TvStatus.fromJson(
-        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+      data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map),
+    );
   }
 
   Future<String> setTvPower(bool on) async {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/power'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'on': on}),
         )
         .timeout(const Duration(seconds: 6));
@@ -595,7 +787,10 @@ class ApiService {
 
   Future<void> toggleTvPower() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/power/toggle'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/power/toggle'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 6));
     _tvOk(resp);
   }
@@ -604,7 +799,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/volume'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'volume': volume}),
         )
         .timeout(const Duration(seconds: 5));
@@ -614,7 +812,10 @@ class ApiService {
 
   Future<int?> tvVolumeUp() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/volume/up'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/volume/up'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _tvOk(resp);
     return (data['volume'] as num?)?.toInt();
@@ -622,7 +823,10 @@ class ApiService {
 
   Future<int?> tvVolumeDown() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/volume/down'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/volume/down'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _tvOk(resp);
     return (data['volume'] as num?)?.toInt();
@@ -632,7 +836,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/mute'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'muted': muted}),
         )
         .timeout(const Duration(seconds: 5));
@@ -642,7 +849,10 @@ class ApiService {
 
   Future<bool> toggleTvMute() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/mute/toggle'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/mute/toggle'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _tvOk(resp);
     return data['muted'] == true;
@@ -652,7 +862,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/channel'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'channel': channel}),
         )
         .timeout(const Duration(seconds: 5));
@@ -662,7 +875,10 @@ class ApiService {
 
   Future<String?> tvChannelUp() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/channel/up'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/channel/up'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _tvOk(resp);
     return data['channel']?.toString();
@@ -670,7 +886,10 @@ class ApiService {
 
   Future<String?> tvChannelDown() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/channel/down'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/channel/down'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     final data = _tvOk(resp);
     return data['channel']?.toString();
@@ -680,7 +899,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/input'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'source': source}),
         )
         .timeout(const Duration(seconds: 6));
@@ -690,7 +912,10 @@ class ApiService {
 
   Future<List<TvInput>> getTvInputs() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/tv/inputs'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/tv/inputs'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -710,7 +935,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/tv/remote'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'key': id}),
         )
         .timeout(const Duration(seconds: 5));
@@ -720,7 +948,10 @@ class ApiService {
 
   Future<List<TvRemoteKey>> getTvRemoteKeys() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/tv/remote/keys'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/tv/remote/keys'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -736,7 +967,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/playback'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'action': action}),
         )
         .timeout(const Duration(seconds: 5));
@@ -746,14 +980,20 @@ class ApiService {
 
   Future<void> tvTrackNext() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/track/next'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/track/next'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     _tvOk(resp);
   }
 
   Future<void> tvTrackPrev() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/track/prev'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/track/prev'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     _tvOk(resp);
   }
@@ -762,7 +1002,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/picture-mode'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'mode': mode}),
         )
         .timeout(const Duration(seconds: 5));
@@ -774,7 +1017,10 @@ class ApiService {
     final resp = await http
         .put(
           Uri.parse('${config.baseUrl}/tv/sound-mode'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'mode': mode}),
         )
         .timeout(const Duration(seconds: 5));
@@ -786,7 +1032,10 @@ class ApiService {
   /// Devuelve el Map crudo; el caller decide cómo consumirlo.
   Future<Map<String, dynamic>> getTvModes() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/tv/modes'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/tv/modes'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -800,7 +1049,10 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse('${config.baseUrl}/tv/app/launch'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'appId': appId}),
         )
         .timeout(const Duration(seconds: 6));
@@ -812,7 +1064,10 @@ class ApiService {
 
   Future<List<TvApp>> getTvApps() async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/tv/apps'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse('${config.baseUrl}/tv/apps'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 5));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
@@ -833,7 +1088,10 @@ class ApiService {
   Future<List<TvInstalledApp>> getInstalledTvApps() async {
     try {
       final resp = await http
-          .get(Uri.parse('${config.baseUrl}/tv/apps/installed'), headers: ServerConfig.tokenHeaders)
+          .get(
+            Uri.parse('${config.baseUrl}/tv/apps/installed'),
+            headers: ServerConfig.tokenHeaders,
+          )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return const [];
       final data = jsonDecode(resp.body);
@@ -854,7 +1112,10 @@ class ApiService {
   /// Activa el modo ambiente del TV (POST /tv/ambient/on).
   Future<void> tvAmbientOn() async {
     final resp = await http
-        .post(Uri.parse('${config.baseUrl}/tv/ambient/on'), headers: ServerConfig.tokenHeaders)
+        .post(
+          Uri.parse('${config.baseUrl}/tv/ambient/on'),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 6));
     _tvOk(resp);
   }
@@ -867,7 +1128,8 @@ class ApiService {
       String msg = 'Error ${resp.statusCode}';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) msg = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          msg = data['error'].toString();
       } catch (_) {}
       throw Exception(msg);
     }
@@ -885,7 +1147,8 @@ class ApiService {
       String msg = 'Error ${resp.statusCode}';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) msg = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          msg = data['error'].toString();
       } catch (_) {}
       throw Exception(msg);
     }
@@ -915,8 +1178,10 @@ class ApiService {
   Future<List<String>> getEzvizActors() async {
     try {
       final resp = await http
-          .get(Uri.parse('${config.baseUrl}/ezviz/actors'),
-              headers: ServerConfig.tokenHeaders)
+          .get(
+            Uri.parse('${config.baseUrl}/ezviz/actors'),
+            headers: ServerConfig.tokenHeaders,
+          )
           .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return const [];
       final data = jsonDecode(resp.body);
@@ -930,23 +1195,36 @@ class ApiService {
   /// (la pantalla cae al estado del merged device / muestra el error).
   Future<EzvizLockStatus> getLockStatus(String serial) async {
     final resp = await http
-        .get(Uri.parse('${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/status'), headers: ServerConfig.tokenHeaders)
+        .get(
+          Uri.parse(
+            '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/status',
+          ),
+          headers: ServerConfig.tokenHeaders,
+        )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     final data = jsonDecode(resp.body);
     return EzvizLockStatus.fromJson(
-        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+      data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map),
+    );
   }
 
   /// Historial de eventos (aperturas, timbre, intentos). Defensivo como
   /// getInstalledTvApps: ante cualquier fallo devuelve [] para que la lista caiga
   /// al estado vacío sin romper la pantalla.
-  Future<List<EzvizLockEvent>> getLockEvents(String serial, {int pageSize = 20}) async {
+  Future<List<EzvizLockEvent>> getLockEvents(
+    String serial, {
+    int pageSize = 20,
+  }) async {
     try {
       final uri = Uri.parse(
-              '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/events')
-          .replace(queryParameters: {'pageSize': pageSize.toString()});
-      final resp = await http.get(uri, headers: ServerConfig.tokenHeaders).timeout(const Duration(seconds: 8));
+        '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/events',
+      ).replace(queryParameters: {'pageSize': pageSize.toString()});
+      final resp = await http
+          .get(uri, headers: ServerConfig.tokenHeaders)
+          .timeout(const Duration(seconds: 8));
       if (resp.statusCode != 200) return const [];
       final data = jsonDecode(resp.body);
       // Contrato: List cruda; toleramos también { events: [...] } por las dudas.
@@ -969,8 +1247,12 @@ class ApiService {
     final resp = await http
         .post(
           Uri.parse(
-              '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/unlock'),
-          headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
+            '${config.baseUrl}/ezviz/devices/${Uri.encodeComponent(serial)}/unlock',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
           body: jsonEncode({'confirm': true}),
         )
         .timeout(const Duration(seconds: 10));
@@ -978,20 +1260,29 @@ class ApiService {
       String reason = 'No soportado por el modelo de cerradura';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) reason = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          reason = data['error'].toString();
       } catch (_) {}
-      return EzvizUnlockResponse(success: false, supported: false, reason: reason);
+      return EzvizUnlockResponse(
+        success: false,
+        supported: false,
+        reason: reason,
+      );
     }
     if (resp.statusCode != 200 && resp.statusCode != 201) {
       String msg = 'Error ${resp.statusCode}';
       try {
         final data = jsonDecode(resp.body);
-        if (data is Map && data['error'] != null) msg = data['error'].toString();
+        if (data is Map && data['error'] != null)
+          msg = data['error'].toString();
       } catch (_) {}
       throw Exception(msg);
     }
     final data = jsonDecode(resp.body);
     return EzvizUnlockResponse.fromJson(
-        data is Map<String, dynamic> ? data : Map<String, dynamic>.from(data as Map));
+      data is Map<String, dynamic>
+          ? data
+          : Map<String, dynamic>.from(data as Map),
+    );
   }
 }

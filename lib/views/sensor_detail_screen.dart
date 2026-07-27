@@ -84,8 +84,54 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     super.initState();
     _api = ApiService(widget.service.config);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _loadEvents();
+      if (mounted) {
+        _loadEvents();
+        _loadAlarmTrigger();
+      }
     });
+  }
+
+  /// ¿Este sensor dispara la alarma? null = todavía no se sabe (el recuadro
+  /// muestra un guion en vez de mentir con un "No" que quizá no es cierto).
+  bool? _firesAlarm;
+  bool _alarmSaving = false;
+
+  Future<void> _loadAlarmTrigger() async {
+    try {
+      final all = await _api.getSensorAlarmTriggers();
+      if (!mounted) return;
+      // El mapa está indexado por device; se prueba el canónico y los bindings
+      // porque las entradas viejas se guardaron con el id del provider.
+      final hit = [
+        _device.id,
+        ..._device.bindingIds,
+      ].any((k) => all[k] == true);
+      setState(() => _firesAlarm = hit);
+    } catch (_) {
+      // Sin dato el recuadro queda en '—' y el toggle deshabilitado: mejor eso
+      // que ofrecer un switch que no sabe de qué estado parte.
+    }
+  }
+
+  Future<void> _toggleAlarmTrigger() async {
+    final actual = _firesAlarm;
+    if (actual == null || _alarmSaving) return;
+    setState(() {
+      _firesAlarm = !actual;
+      _alarmSaving = true;
+    });
+    try {
+      await _api.setSensorAlarmTrigger(_device.id, !actual);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _firesAlarm = actual); // revert
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No pude cambiar el disparo de alarma')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _alarmSaving = false);
+    }
   }
 
   Device get _device => widget.service.byId(widget.device.id) ?? widget.device;
@@ -331,18 +377,63 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         label: 'AUTOMATIZ.',
         onTap: _openAutomations,
       ),
+      // Disparo de alarma: el recuadro ES el switch. Estaba sólo en el
+      // dashboard, así que desde el teléfono no había forma de sacar un sensor
+      // de la alarma — justo lo que uno quiere hacer rápido y en el momento.
+      _Metric(
+        svg: CceIcons.alarmShield,
+        iconColor: _firesAlarm == true
+            ? CceColors.danger
+            : CceColors.textSecondary,
+        value: switch (_firesAlarm) {
+          true => 'Sí',
+          false => 'No',
+          null => '—',
+        },
+        label: 'ALARMA',
+        onTap: _firesAlarm == null ? null : _toggleAlarmTrigger,
+      ),
     ];
 
     return LayoutBuilder(
       builder: (context, c) {
         final gap = c.maxWidth < 360 ? 8.0 : 12.0;
-        final children = <Widget>[];
-        for (var i = 0; i < metrics.length; i++) {
-          if (i > 0) children.add(SizedBox(width: gap));
-          children.add(Expanded(child: metrics[i]));
+        // Máximo 4 por fila: un sensor Sonoff llega a 5 recuadros (batería,
+        // ambiente, último, automatizaciones, alarma) y cinco en una sola fila
+        // quedan tan angostos que el valor se corta. Se parte en filas parejas
+        // —3+2 antes que 4+1— para que no quede una huérfana estirada.
+        const maxPorFila = 4;
+        final filas = <List<Widget>>[];
+        if (metrics.length <= maxPorFila) {
+          filas.add(metrics);
+        } else {
+          final porFila = (metrics.length / 2).ceil();
+          for (var i = 0; i < metrics.length; i += porFila) {
+            filas.add(
+              metrics.sublist(i, (i + porFila).clamp(0, metrics.length)),
+            );
+          }
         }
-        // Sin CrossAxisAlignment.stretch: Row dentro de scroll ilimitado.
-        return Row(children: children);
+
+        Widget fila(List<Widget> items) {
+          final children = <Widget>[];
+          for (var i = 0; i < items.length; i++) {
+            if (i > 0) children.add(SizedBox(width: gap));
+            children.add(Expanded(child: items[i]));
+          }
+          // Sin CrossAxisAlignment.stretch: Row dentro de scroll ilimitado.
+          return Row(children: children);
+        }
+
+        if (filas.length == 1) return fila(filas.first);
+        return Column(
+          children: [
+            for (var i = 0; i < filas.length; i++) ...[
+              if (i > 0) SizedBox(height: gap),
+              fila(filas[i]),
+            ],
+          ],
+        );
       },
     );
   }
