@@ -451,7 +451,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final vacuumRoomSlivers = <Widget>[
           if (roomPlan?.vacuumRoom != null)
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              // Mismo ritmo que el header de clima que tiene arriba (16/8/16/4),
+              // con un poco más de aire abajo para separarlo de las secciones.
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               sliver: SliverToBoxAdapter(
                 child: VacuumRoomButton(
                   service: service,
@@ -738,6 +740,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                       ),
                     ),
                   ),
+                // "Limpiar esta habitación" va ARRIBA, junto al clima: es una
+                // acción de la room entera, como el master de luces, no un
+                // apéndice. Al fondo —después de luces, devices y cerraduras—
+                // quedaba fuera de pantalla en cualquier room con varias luces.
+                ...vacuumRoomSlivers,
                 // El termostato YA NO tiene card propia acá: RoomTemperatureHeader
                 // es el header ÚNICO de clima y lo renderiza con +/− cuando es
                 // lo elegido (antes se duplicaba la misma temperatura en dos
@@ -745,7 +752,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
                 ...vacuumSlivers,
-                ...vacuumRoomSlivers,
                 // Una room de plano solo-con-TV/JBL ya no es "vacía".
                 if (devices.isEmpty && !hasTv && !hasJbl)
                   const SliverFillRemaining(
