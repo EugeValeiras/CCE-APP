@@ -54,6 +54,12 @@ class EventHistorySection extends StatefulWidget {
   final String emptyLabel;
   final int limit;
 
+  /// Se llama con el evento MÁS RECIENTE cuando termina de cargar (null si no
+  /// hay). Existe para que la métrica "ÚLTIMA" de las pantallas de botones
+  /// pueda mostrar algo cuando el proveedor no manda trigTime —Hue no lo
+  /// manda— sin repetir el request que esta sección ya hace.
+  final void Function(DateTime? lastAt)? onLoaded;
+
   const EventHistorySection({
     super.key,
     required this.service,
@@ -61,6 +67,7 @@ class EventHistorySection extends StatefulWidget {
     required this.builder,
     this.emptyLabel = 'Sin eventos registrados',
     this.limit = 40,
+    this.onLoaded,
   });
 
   @override
@@ -84,16 +91,20 @@ class _EventHistorySectionState extends State<EventHistorySection> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final page =
-          await _api.getEvents(globalId: widget.historyId, limit: widget.limit);
+      final page = await _api.getEvents(
+        globalId: widget.historyId,
+        limit: widget.limit,
+      );
       if (!mounted) return;
       // Solo el canal interno: websocket duplica cada evento.
-      final internal =
-          page.items.where((e) => e.channel == 'internal').toList();
+      final internal = page.items
+          .where((e) => e.channel == 'internal')
+          .toList();
       setState(() {
         _entries = widget.builder(internal);
         _loading = false;
       });
+      widget.onLoaded?.call(internal.isEmpty ? null : internal.first.timestamp);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -132,10 +143,12 @@ class _EventHistorySectionState extends State<EventHistorySection> {
                       )
                     : SizedBox.square(
                         dimension: 16,
-                        child: CceIcon(CceIcons.refreshCw,
-                            size: 16,
-                            color: CceColors.textSecondary,
-                            emboss: false),
+                        child: CceIcon(
+                          CceIcons.refreshCw,
+                          size: 16,
+                          color: CceColors.textSecondary,
+                          emboss: false,
+                        ),
                       ),
               ),
             ),
@@ -149,7 +162,9 @@ class _EventHistorySectionState extends State<EventHistorySection> {
               child: Text(
                 _loading ? 'Cargando eventos…' : widget.emptyLabel,
                 style: const TextStyle(
-                    color: CceColors.textTertiary, fontSize: 13),
+                  color: CceColors.textTertiary,
+                  fontSize: 13,
+                ),
               ),
             ),
           )
@@ -179,7 +194,8 @@ class _EventHistorySectionState extends State<EventHistorySection> {
             ? null
             : Border(
                 bottom: BorderSide(
-                    color: CceColors.neoDark.withValues(alpha: 0.55)),
+                  color: CceColors.neoDark.withValues(alpha: 0.55),
+                ),
               ),
       ),
       child: Row(
@@ -196,13 +212,14 @@ class _EventHistorySectionState extends State<EventHistorySection> {
                 ...CceShadows.neo(blur: 8, offset: 3),
                 if (e.glowing)
                   BoxShadow(
-                      color: e.color.withValues(alpha: 0.40), blurRadius: 8),
+                    color: e.color.withValues(alpha: 0.40),
+                    blurRadius: 8,
+                  ),
               ],
             ),
             child: SizedBox.square(
               dimension: 18,
-              child:
-                  CceIcon(e.glyph, size: 18, color: e.color, emboss: false),
+              child: CceIcon(e.glyph, size: 18, color: e.color, emboss: false),
             ),
           ),
           const SizedBox(width: 12),
@@ -215,7 +232,9 @@ class _EventHistorySectionState extends State<EventHistorySection> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 13.5, color: CceColors.textPrimary),
+                    fontSize: 13.5,
+                    color: CceColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -236,7 +255,9 @@ class _EventHistorySectionState extends State<EventHistorySection> {
           Text(
             TimeFormat.relative(e.timestamp),
             style: const TextStyle(
-                fontSize: 11.5, color: CceColors.textTertiary),
+              fontSize: 11.5,
+              color: CceColors.textTertiary,
+            ),
           ),
         ],
       ),

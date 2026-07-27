@@ -8,24 +8,33 @@ import '../widgets/event_history_section.dart';
 
 /// Nombre real de una pulsación (contrato del backend: lastKey 0/1/2).
 String pressKindLabel(int? key) => switch (key) {
-      0 => 'Click',
-      1 => 'Doble click',
-      2 => 'Mantenido',
-      null => 'Pulsación',
-      _ => 'Pulsación $key',
-    };
+  0 => 'Click',
+  1 => 'Doble click',
+  2 => 'Mantenido',
+  null => 'Pulsación',
+  _ => 'Pulsación $key',
+};
 
 /// Ícono por tipo de pulsación (icons0/lucide, ya vendoreados).
 String pressKindGlyph(int? key) => switch (key) {
-      1 => CceIcons.handTap, // doble
-      2 => CceIcons.clock, // mantenido = tiempo
-      _ => CceIcons.handTap,
-    };
+  1 => CceIcons.handTap, // doble
+  2 => CceIcons.clock, // mantenido = tiempo
+  _ => CceIcons.handTap,
+};
 
 /// Valor del well "ÚLTIMA": relativo del último disparo.
-String lastPressValue(int? trigTime) => trigTime == null
-    ? '—'
-    : TimeFormat.relative(DateTime.fromMillisecondsSinceEpoch(trigTime));
+///
+/// `trigTime` lo manda SÓLO eWeLink: en un Tap Dial de Hue venía siempre vacío
+/// y el recuadro mostraba un guion para siempre. Por eso acepta un [fallback]
+/// —el último evento del historial, que la pantalla ya carga— y así el dato
+/// aparece igual sin importar el proveedor.
+String lastPressValue(int? trigTime, {DateTime? fallback}) {
+  if (trigTime != null) {
+    return TimeFormat.relative(DateTime.fromMillisecondsSinceEpoch(trigTime));
+  }
+  if (fallback != null) return TimeFormat.relative(fallback);
+  return '—';
+}
 
 /// El backend indexa los eventos por el bindingId del provider, no por el
 /// dev_* canónico.
@@ -79,14 +88,16 @@ List<EventHistoryEntry> buttonHistoryEntries(
       }
     }
 
-    out.add(EventHistoryEntry(
-      label: label,
-      detail: detail,
-      glyph: pressKindGlyph(key),
-      color: CceColors.warm,
-      glowing: true,
-      timestamp: ts,
-    ));
+    out.add(
+      EventHistoryEntry(
+        label: label,
+        detail: detail,
+        glyph: pressKindGlyph(key),
+        color: CceColors.warm,
+        glowing: true,
+        timestamp: ts,
+      ),
+    );
   }
   return out;
 }

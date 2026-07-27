@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/device.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/button_events.dart';
+import '../widgets/device_automations_sheet.dart';
 import '../widgets/device_state_panel.dart';
 import '../widgets/event_history_section.dart';
 
@@ -32,6 +34,35 @@ class SingleButtonScreen extends StatefulWidget {
 }
 
 class _SingleButtonScreenState extends State<SingleButtonScreen> {
+  /// Último evento del historial. Sirve de respaldo para la métrica "ÚLTIMA"
+  /// cuando el proveedor no manda trigTime (Hue no lo manda; eWeLink sí).
+  DateTime? _lastFromHistory;
+
+  /// Se crea acá para no cambiar la firma de la pantalla ni sus call sites.
+  AutomationsService? _autos;
+  AutomationsService get autos => _autos ??= AutomationsService(
+    config: widget.service.config,
+    devices: widget.service,
+  );
+
+  int get _autoCount {
+    final ids = <String>{widget.device.id, ...widget.device.bindingIds};
+    return autos.automations
+        .where(
+          (a) => a.trigger.sensorTriggers.any((t) => ids.contains(t.sensorId)),
+        )
+        .length;
+  }
+
+  void _openAutomations() {
+    DeviceAutomationsSheet.show(
+      context,
+      device: widget.device,
+      devices: widget.service,
+      automations: autos,
+    );
+  }
+
   bool _pressed = false; // feedback visual (hundido)
   String? _feedback; // 'Click' / 'Doble click' / 'Mantenido'
   Timer? _flashTimer;
@@ -62,8 +93,11 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
     _fbTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _feedback = null);
     });
-    final ok = await widget.service
-        .simulateButton(widget.device, key: key, outlet: 0);
+    final ok = await widget.service.simulateButton(
+      widget.device,
+      key: key,
+      outlet: 0,
+    );
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo accionar el botón')),
@@ -85,7 +119,8 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
             // Mientras hay feedback local mostramos ESO (respuesta inmediata);
             // si no, la última pulsación reportada por el device.
             final live = _feedback != null;
-            final label = _feedback ??
+            final label =
+                _feedback ??
                 (lastKey != null ? pressKindLabel(lastKey) : 'Tocá el botón');
 
             return SingleChildScrollView(
@@ -104,31 +139,49 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
                     child: _button(),
                   ),
                   const SizedBox(height: 22),
-                  DeviceMetricsRow(metrics: [
-                    DeviceMetric(
-                      svg: CceIcons.batteryFull,
-                      iconColor: DeviceMetric.batteryColor(sensor?.battery),
-                      value:
-                          sensor?.battery != null ? '${sensor!.battery}%' : '—',
-                      label: 'BATERÍA',
-                    ),
-                    DeviceMetric(
-                      svg: CceIcons.clock,
-                      iconColor: CceColors.textSecondary,
-                      value: lastPressValue(sensor?.trigTime),
-                      label: 'ÚLTIMA',
-                    ),
-                    DeviceMetric(
-                      svg: CceIcons.sensors,
-                      iconColor: d.state.reachable
-                          ? CceColors.ok
-                          : CceColors.textTertiary,
-                      value: d.state.reachable ? 'En línea' : 'Sin señal',
-                      label: 'ESTADO',
-                    ),
-                  ]),
+                  DeviceMetricsRow(
+                    metrics: [
+                      DeviceMetric(
+                        svg: CceIcons.batteryFull,
+                        iconColor: DeviceMetric.batteryColor(sensor?.battery),
+                        value: sensor?.battery != null
+                            ? '${sensor!.battery}%'
+                            : '—',
+                        label: 'BATERÍA',
+                      ),
+                      DeviceMetric(
+                        svg: CceIcons.clock,
+                        iconColor: CceColors.textSecondary,
+                        value: lastPressValue(
+                          sensor?.trigTime,
+                          fallback: _lastFromHistory,
+                        ),
+                        label: 'ÚLTIMA',
+                      ),
+                      DeviceMetric(
+                        svg: CceIcons.sensors,
+                        iconColor: d.state.reachable
+                            ? CceColors.ok
+                            : CceColors.textTertiary,
+                        value: d.state.reachable ? 'En línea' : 'Sin señal',
+                        label: 'ESTADO',
+                      ),
+                      DeviceMetric(
+                        svg: CceIcons.automations,
+                        iconColor: CceColors.textSecondary,
+                        value: '$_autoCount',
+                        label: 'AUTOMATIZ.',
+                        onTap: _openAutomations,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 22),
                   EventHistorySection(
+                    onLoaded: (at) {
+                      if (mounted && at != _lastFromHistory) {
+                        setState(() => _lastFromHistory = at);
+                      }
+                    },
                     service: widget.service,
                     historyId: historyIdOf(d),
                     emptyLabel: 'Sin pulsaciones registradas',

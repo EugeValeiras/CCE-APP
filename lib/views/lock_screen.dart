@@ -12,9 +12,11 @@ import 'package:flutter/services.dart';
 import '../models/device.dart';
 import '../models/ezviz_lock.dart';
 import '../services/api_service.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../widgets/device_automations_sheet.dart';
 
 /// Pantalla de control de una CERRADURA EZVIZ (capability 'lock', provider
 /// ezviz). Espejo del control neumórfico del dashboard (lock-sidebar
@@ -45,17 +47,38 @@ import '../theme/cce_tokens.dart';
 class LockScreen extends StatefulWidget {
   final Device device;
   final DevicesService service;
-  const LockScreen({
-    super.key,
-    required this.device,
-    required this.service,
-  });
+  const LockScreen({super.key, required this.device, required this.service});
 
   @override
   State<LockScreen> createState() => _LockScreenState();
 }
 
 class _LockScreenState extends State<LockScreen> {
+  /// Se crea acá para no cambiar la firma de la pantalla ni sus call sites.
+  AutomationsService? _autos;
+  AutomationsService get autos => _autos ??= AutomationsService(
+    config: widget.service.config,
+    devices: widget.service,
+  );
+
+  int get _autoCount {
+    final ids = <String>{widget.device.id, ...widget.device.bindingIds};
+    return autos.automations
+        .where(
+          (a) => a.trigger.sensorTriggers.any((t) => ids.contains(t.sensorId)),
+        )
+        .length;
+  }
+
+  void _openAutomations() {
+    DeviceAutomationsSheet.show(
+      context,
+      device: widget.device,
+      devices: widget.service,
+      automations: autos,
+    );
+  }
+
   // ── Colores de estado del dashboard (tema oscuro) ──
   // Verde "trabada" (--neo-ok #34D399) y ámbar "destrabada" (--lock-amber
   // #FF9F0A) idénticos al manual del dashboard.
@@ -151,8 +174,9 @@ class _LockScreenState extends State<LockScreen> {
     _holdTimer?.cancel();
     _holdTimer = Timer.periodic(const Duration(milliseconds: 30), (_) {
       final elapsed = DateTime.now().difference(start).inMilliseconds;
-      final pct =
-          (elapsed / _holdDuration.inMilliseconds).clamp(0.0, 1.0).toDouble();
+      final pct = (elapsed / _holdDuration.inMilliseconds)
+          .clamp(0.0, 1.0)
+          .toDouble();
       if (mounted) setState(() => _holdPct = pct);
       if (pct >= 1.0) {
         _clearHold();
@@ -202,7 +226,7 @@ class _LockScreenState extends State<LockScreen> {
           _unlockDone = true;
           _lastUnlockAt = res.ts != null
               ? (DateTime.tryParse(res.ts!)?.millisecondsSinceEpoch ??
-                  DateTime.now().millisecondsSinceEpoch)
+                    DateTime.now().millisecondsSinceEpoch)
               : DateTime.now().millisecondsSinceEpoch;
         });
         _doneTimer?.cancel();
@@ -280,7 +304,8 @@ class _LockScreenState extends State<LockScreen> {
     if (m.contains('password') ||
         m.contains('pin') ||
         m.contains('code') ||
-        m.contains('código')) return 'código';
+        m.contains('código'))
+      return 'código';
     if (m.contains('remote') || m.contains('app') || m.contains('remoto')) {
       return 'remoto';
     }
@@ -461,8 +486,7 @@ class _LockScreenState extends State<LockScreen> {
                 letterSpacing: 0.5,
                 color: accent,
                 shadows: [
-                  Shadow(
-                      color: accent.withValues(alpha: 0.65), blurRadius: 12),
+                  Shadow(color: accent.withValues(alpha: 0.65), blurRadius: 12),
                 ],
               ),
             ),
@@ -520,6 +544,19 @@ class _LockScreenState extends State<LockScreen> {
                 label: 'Último evento',
               ),
             ),
+            SizedBox(width: gap),
+            // Cuarto recuadro ACCIONABLE: las automatizaciones que dispara la
+            // cerradura (se abrió con huella, entró tal persona…) se veían sólo
+            // desde la lista general, sin forma de llegar desde el aparato.
+            Expanded(
+              child: _Metric(
+                svg: CceIcons.automations,
+                iconColor: CceColors.textSecondary,
+                value: '$_autoCount',
+                label: 'Automatiz.',
+                onTap: _openAutomations,
+              ),
+            ),
           ],
         );
       },
@@ -553,8 +590,12 @@ class _LockScreenState extends State<LockScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               mainAxisSize: MainAxisSize.min,
               children: [
-                CceIcon(CceIcons.lockLocked,
-                    size: 20, color: CceColors.textTertiary, emboss: false),
+                CceIcon(
+                  CceIcons.lockLocked,
+                  size: 20,
+                  color: CceColors.textTertiary,
+                  emboss: false,
+                ),
                 const SizedBox(width: 8),
                 // Flexible para que la leyenda no desborde el botón en pantallas
                 // angostas (cae a "…" antes que tirar un RenderFlex overflow).
@@ -617,8 +658,11 @@ class _LockScreenState extends State<LockScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.schedule_rounded,
-                  size: 16, color: CceColors.textSecondary),
+              const Icon(
+                Icons.schedule_rounded,
+                size: 16,
+                color: CceColors.textSecondary,
+              ),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
@@ -677,10 +721,12 @@ class _LockScreenState extends State<LockScreen> {
                       )
                     : SizedBox.square(
                         dimension: 16,
-                        child: CceIcon(_kRefreshCw,
-                            size: 16,
-                            color: CceColors.textSecondary,
-                            emboss: false),
+                        child: CceIcon(
+                          _kRefreshCw,
+                          size: 16,
+                          color: CceColors.textSecondary,
+                          emboss: false,
+                        ),
                       ),
               ),
             ),
@@ -693,8 +739,10 @@ class _LockScreenState extends State<LockScreen> {
             child: Center(
               child: Text(
                 loading ? 'Cargando eventos…' : 'Sin eventos registrados',
-                style:
-                    const TextStyle(color: CceColors.textTertiary, fontSize: 13),
+                style: const TextStyle(
+                  color: CceColors.textTertiary,
+                  fontSize: 13,
+                ),
               ),
             ),
           )
@@ -733,7 +781,8 @@ class _LockScreenState extends State<LockScreen> {
             : Border(
                 // hairline oscuro (espejo de rgba(12,13,17,0.55) del dashboard).
                 bottom: BorderSide(
-                    color: CceColors.neoDark.withValues(alpha: 0.55)),
+                  color: CceColors.neoDark.withValues(alpha: 0.55),
+                ),
               ),
       ),
       child: Row(
@@ -759,8 +808,12 @@ class _LockScreenState extends State<LockScreen> {
             ),
             child: SizedBox.square(
               dimension: 16,
-              child: CceIcon(_eventIconSvg(ev),
-                  size: 16, color: color, emboss: false),
+              child: CceIcon(
+                _eventIconSvg(ev),
+                size: 16,
+                color: color,
+                emboss: false,
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -850,21 +903,21 @@ class _RoundKey extends StatelessWidget {
     }
 
     Widget body(double t) => Semantics(
-          button: onTap != null,
-          label: semantic,
-          child: Container(
-            width: size,
-            height: size,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: flat ? CceColors.neoBase : null,
-              gradient: flat ? null : CceGradients.convex(CceColors.neoBase),
-              boxShadow: _lerp(raised, inset, t),
-            ),
-            child: content,
-          ),
-        );
+      button: onTap != null,
+      label: semantic,
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: flat ? CceColors.neoBase : null,
+          gradient: flat ? null : CceGradients.convex(CceColors.neoBase),
+          boxShadow: _lerp(raised, inset, t),
+        ),
+        child: content,
+      ),
+    );
 
     // Decorativo (badge): sin onTap y sin atenuar → render directo sin gesto.
     if (onTap == null && !dimWhenDisabled) return body(0);
@@ -881,6 +934,7 @@ class _Metric extends StatelessWidget {
     required this.iconColor,
     required this.value,
     required this.label,
+    this.onTap,
   });
 
   final String svg;
@@ -888,8 +942,24 @@ class _Metric extends StatelessWidget {
   final String value;
   final String label;
 
+  /// Si se provee, el recuadro deja de ser un dato y pasa a ser un BOTÓN.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final card = _card(context);
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context) {
     return Container(
       // padding horizontal mínimo (4) para no robar ancho al contenido en
       // teléfonos angostos (espejo del `.metric { padding: 12px 4px }` <480px
@@ -962,7 +1032,12 @@ class _EventsState extends StatelessWidget {
               ),
             )
           else if (svg != null)
-            CceIcon(svg!, size: 28, color: CceColors.textTertiary, emboss: false),
+            CceIcon(
+              svg!,
+              size: 28,
+              color: CceColors.textTertiary,
+              emboss: false,
+            ),
           const SizedBox(height: 8),
           Text(
             text,
@@ -991,10 +1066,7 @@ class _Wordmark extends StatelessWidget {
           letterSpacing: 3,
           color: CceColors.textTertiary,
           shadows: [
-            Shadow(
-              color: Color(0x2EFFFFFF),
-              offset: Offset(-0.6, -0.8),
-            ),
+            Shadow(color: Color(0x2EFFFFFF), offset: Offset(-0.6, -0.8)),
             Shadow(
               color: Color(0xCC05060A),
               offset: Offset(0.8, 1.2),
@@ -1058,11 +1130,16 @@ class _UnlockButton extends StatelessWidget {
           const SizedBox(
             width: 18,
             height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(width: 10),
-          Text('Abriendo…',
-              style: labelStyle.copyWith(color: CceColors.neoText)),
+          Text(
+            'Abriendo…',
+            style: labelStyle.copyWith(color: CceColors.neoText),
+          ),
         ],
       );
     } else if (done) {
@@ -1071,8 +1148,12 @@ class _UnlockButton extends StatelessWidget {
         children: [
           SizedBox.square(
             dimension: 20,
-            child:
-                CceIcon(CceIcons.check, size: 20, color: accent, emboss: false),
+            child: CceIcon(
+              CceIcons.check,
+              size: 20,
+              color: accent,
+              emboss: false,
+            ),
           ),
           const SizedBox(width: 8),
           Text('Abierta', style: labelStyle),
@@ -1084,7 +1165,12 @@ class _UnlockButton extends StatelessWidget {
       label = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          CceIcon(CceIcons.lockUnlocked, size: 20, color: accent, emboss: false),
+          CceIcon(
+            CceIcons.lockUnlocked,
+            size: 20,
+            color: accent,
+            emboss: false,
+          ),
           const SizedBox(width: 8),
           Text('Mantené para abrir', style: labelStyle),
         ],
@@ -1216,7 +1302,7 @@ List<BoxShadow> _lerp(List<BoxShadow> a, List<BoxShadow> b, double t) {
 /// `onTap == null` ⇒ deshabilitado (sin gesto, atenuado al 45%).
 class _PressFx extends StatefulWidget {
   const _PressFx({this.child, this.builder, required this.onTap})
-      : assert(child != null || builder != null);
+    : assert(child != null || builder != null);
 
   final Widget? child;
   final Widget Function(double t)? builder;
@@ -1236,10 +1322,16 @@ class _PressFxState extends State<_PressFx>
 
   bool get _enabled => widget.onTap != null;
 
-  void _press() => _c.animateTo(1,
-      duration: const Duration(milliseconds: 80), curve: Curves.easeOut);
-  void _release() => _c.animateBack(0,
-      duration: const Duration(milliseconds: 240), curve: Curves.easeOutCubic);
+  void _press() => _c.animateTo(
+    1,
+    duration: const Duration(milliseconds: 80),
+    curve: Curves.easeOut,
+  );
+  void _release() => _c.animateBack(
+    0,
+    duration: const Duration(milliseconds: 240),
+    curve: Curves.easeOutCubic,
+  );
 
   @override
   void dispose() {

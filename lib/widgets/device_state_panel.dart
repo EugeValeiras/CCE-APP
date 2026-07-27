@@ -59,8 +59,12 @@ class DeviceStatePanel extends StatelessWidget {
                 ),
                 child: SizedBox.square(
                   dimension: 56,
-                  child: CceIcon(glyph ?? CceIcons.sensors,
-                      size: 56, color: accent, emboss: false),
+                  child: CceIcon(
+                    glyph ?? CceIcons.sensors,
+                    size: 56,
+                    color: accent,
+                    emboss: false,
+                  ),
                 ),
               ),
           const SizedBox(height: 16),
@@ -77,8 +81,9 @@ class DeviceStatePanel extends StatelessWidget {
                 shadows: glowing
                     ? [
                         Shadow(
-                            color: accent.withValues(alpha: 0.65),
-                            blurRadius: 12),
+                          color: accent.withValues(alpha: 0.65),
+                          blurRadius: 12,
+                        ),
                       ]
                     : null,
               ),
@@ -130,12 +135,16 @@ class DeviceMetric extends StatelessWidget {
   final String value;
   final String label;
 
+  /// Si se provee, el recuadro deja de ser un dato y pasa a ser un BOTÓN.
+  final VoidCallback? onTap;
+
   const DeviceMetric({
     super.key,
     required this.svg,
     required this.iconColor,
     required this.value,
     required this.label,
+    this.onTap,
   });
 
   /// Color de batería por nivel (verde / ámbar / rojo).
@@ -149,6 +158,19 @@ class DeviceMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final card = _card();
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
+      ),
+    );
+  }
+
+  Widget _card() {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
       decoration: BoxDecoration(
@@ -209,13 +231,15 @@ class DeviceWordmark extends StatelessWidget {
           color: CceColors.textTertiary,
           shadows: [
             Shadow(
-                color: Color(0x80FFFFFF),
-                offset: Offset(-1, -1.2),
-                blurRadius: 1.5),
+              color: Color(0x80FFFFFF),
+              offset: Offset(-1, -1.2),
+              blurRadius: 1.5,
+            ),
             Shadow(
-                color: Color(0xD907080C),
-                offset: Offset(1.4, 2),
-                blurRadius: 3),
+              color: Color(0xD907080C),
+              offset: Offset(1.4, 2),
+              blurRadius: 3,
+            ),
           ],
         ),
       ),

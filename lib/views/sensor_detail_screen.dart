@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/device.dart';
 import '../models/event_record.dart';
 import '../services/api_service.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/time_format.dart';
+import '../widgets/device_automations_sheet.dart';
 
 /// Pantalla de detalle de los sensores PASIVOS: movimiento y contacto
 /// (aberturas). Eran los únicos devices de la casa sin pantalla propia — el
@@ -123,6 +125,43 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     }
   }
 
+  /// Se crea acá y no se recibe por constructor para no cambiar la firma de
+  /// esta pantalla ni la de sus cinco call sites; toma lo mismo que ya tiene.
+  AutomationsService? _autos;
+  AutomationsService get autos => _autos ??= AutomationsService(
+    config: widget.service.config,
+    devices: widget.service,
+  );
+
+  /// Cuántas automatizaciones dispara este sensor (se muestra en el recuadro).
+  int get _autoCount {
+    final ids = <String>{_device.id, ..._device.bindingIds};
+    return autos.automations
+        .where(
+          (a) => a.trigger.sensorTriggers.any((t) => ids.contains(t.sensorId)),
+        )
+        .length;
+  }
+
+  void _openAutomations() {
+    DeviceAutomationsSheet.show(
+      context,
+      device: _device,
+      devices: widget.service,
+      automations: autos,
+    );
+  }
+
+  /// Cuándo se lo vio por última vez. `trigTime` es exclusivo de eWeLink, así
+  /// que sin él se cae al evento más reciente del historial ya cargado.
+  String _lastSeenLabel(int? trigTime) {
+    if (trigTime != null) {
+      return TimeFormat.relative(DateTime.fromMillisecondsSinceEpoch(trigTime));
+    }
+    if (_events.isNotEmpty) return TimeFormat.relative(_events.first.timestamp);
+    return _eventsLoading ? '…' : '—';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,61 +207,86 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         borderRadius: BorderRadius.circular(28),
         boxShadow: CceShadows.neo(blur: 16, offset: 6),
       ),
-      child: Column(
+      child: Stack(
         children: [
-          Container(
-            width: 132,
-            height: 132,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: CceGradients.concave(CceColors.neoBase),
-              // Glow SOLO por BoxShadow (regla dura: nada de ImageFiltered).
-              boxShadow: [
-                ...CceShadows.plato(blur: 15, offset: 6),
-                if (active) ...CceShadows.glowDot(accent),
-              ],
-            ),
-            child: SizedBox.square(
-              dimension: 56,
-              child: CceIcon(glyph, size: 56, color: accent, emboss: false),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              active ? spec.activeLabel : spec.idleLabel,
-              maxLines: 1,
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: accent,
-                shadows: active
-                    ? [
-                        Shadow(
-                            color: accent.withValues(alpha: 0.65),
-                            blurRadius: 12),
-                      ]
-                    : null,
+          // Sin señal: ícono en la esquina, SÓLO cuando pasa. Antes esto era un
+          // recuadro fijo que decía "En línea" el 99% del tiempo y gastaba un
+          // cuarto de la fila de métricas para no informar nada.
+          if (!_device.state.reachable)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: Tooltip(
+                message: 'Sin señal',
+                child: SizedBox.square(
+                  dimension: 20,
+                  child: CceIcon(
+                    CceIcons.sensors,
+                    size: 20,
+                    color: CceColors.danger,
+                    emboss: false,
+                  ),
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            widget.service.displayName(_device),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: CceText.caption,
+          Column(
+            children: [
+              Container(
+                width: 132,
+                height: 132,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: CceGradients.concave(CceColors.neoBase),
+                  // Glow SOLO por BoxShadow (regla dura: nada de ImageFiltered).
+                  boxShadow: [
+                    ...CceShadows.plato(blur: 15, offset: 6),
+                    if (active) ...CceShadows.glowDot(accent),
+                  ],
+                ),
+                child: SizedBox.square(
+                  dimension: 56,
+                  child: CceIcon(glyph, size: 56, color: accent, emboss: false),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  active ? spec.activeLabel : spec.idleLabel,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                    color: accent,
+                    shadows: active
+                        ? [
+                            Shadow(
+                              color: accent.withValues(alpha: 0.65),
+                              blurRadius: 12,
+                            ),
+                          ]
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.service.displayName(_device),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: CceText.caption,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  // ── Métricas: batería · luz ambiente · último evento ──────────────────────
+  // ── Métricas: batería · ambiente · último evento · automatizaciones ───────
 
   Widget _buildMetrics() {
     final sensor = _device.sensor;
@@ -246,22 +310,26 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
           value: brightness == 'brighter' ? 'Con luz' : 'Oscuro',
           label: 'AMBIENTE',
         ),
+      // trigTime lo manda SÓLO eWeLink: en un sensor Hue siempre venía vacío y
+      // el recuadro mostraba un guion para siempre. Cuando falta, se usa el
+      // último evento del historial —que esta misma pantalla ya carga— y así el
+      // dato aparece igual sin importar el proveedor.
       _Metric(
         svg: CceIcons.clock,
         iconColor: CceColors.textSecondary,
-        value: trig != null
-            ? TimeFormat.relative(
-                DateTime.fromMillisecondsSinceEpoch(trig))
-            : '—',
+        value: _lastSeenLabel(trig),
         label: 'ÚLTIMO',
       ),
+      // "En línea" ya NO ocupa un recuadro: es un dato binario que casi siempre
+      // dice lo mismo, y gastaba un cuarto de la fila. Pasa a ser un ícono en el
+      // header que aparece SÓLO cuando el sensor perdió señal — que es la única
+      // vez que importa. El lugar libre lo toma algo accionable.
       _Metric(
-        svg: CceIcons.sensors,
-        iconColor: _device.state.reachable
-            ? CceColors.ok
-            : CceColors.textTertiary,
-        value: _device.state.reachable ? 'En línea' : 'Sin señal',
-        label: 'ESTADO',
+        svg: CceIcons.automations,
+        iconColor: CceColors.textSecondary,
+        value: '$_autoCount',
+        label: 'AUTOMATIZ.',
+        onTap: _openAutomations,
       ),
     ];
 
@@ -321,10 +389,12 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                       )
                     : SizedBox.square(
                         dimension: 16,
-                        child: CceIcon(CceIcons.refreshCw,
-                            size: 16,
-                            color: CceColors.textSecondary,
-                            emboss: false),
+                        child: CceIcon(
+                          CceIcons.refreshCw,
+                          size: 16,
+                          color: CceColors.textSecondary,
+                          emboss: false,
+                        ),
                       ),
               ),
             ),
@@ -340,7 +410,9 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                     ? 'Cargando eventos…'
                     : 'Sin eventos registrados',
                 style: const TextStyle(
-                    color: CceColors.textTertiary, fontSize: 13),
+                  color: CceColors.textTertiary,
+                  fontSize: 13,
+                ),
               ),
             ),
           )
@@ -377,8 +449,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     final label = active == null
         ? 'Actualización'
         : (active ? spec.activeLabel : spec.idleLabel);
-    final color =
-        active == true ? spec.activeColor : CceColors.textTertiary;
+    final color = active == true ? spec.activeColor : CceColors.textTertiary;
     final glyph = active == true ? spec.activeGlyph : spec.idleGlyph;
     final ts = ev.timestamp;
 
@@ -389,7 +460,8 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
             ? null
             : Border(
                 bottom: BorderSide(
-                    color: CceColors.neoDark.withValues(alpha: 0.55)),
+                  color: CceColors.neoDark.withValues(alpha: 0.55),
+                ),
               ),
       ),
       child: Row(
@@ -406,13 +478,14 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                 ...CceShadows.neo(blur: 8, offset: 3),
                 if (active == true)
                   BoxShadow(
-                      color: color.withValues(alpha: 0.40), blurRadius: 8),
+                    color: color.withValues(alpha: 0.40),
+                    blurRadius: 8,
+                  ),
               ],
             ),
             child: SizedBox.square(
               dimension: 18,
-              child:
-                  CceIcon(glyph, size: 18, color: color, emboss: false),
+              child: CceIcon(glyph, size: 18, color: color, emboss: false),
             ),
           ),
           const SizedBox(width: 12),
@@ -425,7 +498,9 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 13.5, color: CceColors.textPrimary),
+                    fontSize: 13.5,
+                    color: CceColors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -433,7 +508,9 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 11.5, color: CceColors.textTertiary),
+                    fontSize: 11.5,
+                    color: CceColors.textTertiary,
+                  ),
                 ),
               ],
             ),
@@ -441,7 +518,9 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
           Text(
             TimeFormat.relative(ts),
             style: const TextStyle(
-                fontSize: 11.5, color: CceColors.textTertiary),
+              fontSize: 11.5,
+              color: CceColors.textTertiary,
+            ),
           ),
         ],
       ),
@@ -457,6 +536,7 @@ class _Metric extends StatelessWidget {
     required this.iconColor,
     required this.value,
     required this.label,
+    this.onTap,
   });
 
   final String svg;
@@ -464,8 +544,24 @@ class _Metric extends StatelessWidget {
   final String value;
   final String label;
 
+  /// Si se provee, el recuadro deja de ser un dato y pasa a ser un BOTÓN.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final card = _card(context);
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: card,
+      ),
+    );
+  }
+
+  Widget _card(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
       decoration: BoxDecoration(
@@ -524,8 +620,16 @@ class _Wordmark extends StatelessWidget {
           letterSpacing: 3,
           color: CceColors.textTertiary,
           shadows: [
-            Shadow(color: Color(0x80FFFFFF), offset: Offset(-1, -1.2), blurRadius: 1.5),
-            Shadow(color: Color(0xD907080C), offset: Offset(1.4, 2), blurRadius: 3),
+            Shadow(
+              color: Color(0x80FFFFFF),
+              offset: Offset(-1, -1.2),
+              blurRadius: 1.5,
+            ),
+            Shadow(
+              color: Color(0xD907080C),
+              offset: Offset(1.4, 2),
+              blurRadius: 3,
+            ),
           ],
         ),
       ),
