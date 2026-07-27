@@ -53,22 +53,36 @@ class VacuumRoomButton extends StatelessWidget {
         if (room == null) return const SizedBox.shrink();
 
         final queue = device.state.roomQueue;
-        // Con una cola en curso manda el tramo actual; si no, alcanza con que
-        // el robot esté limpiando.
-        final cleaning = queue != null
-            ? queue.currentSegment == link.segmentId
-            : device.state.vacuumState == 'cleaning';
-        final accent = cleaning ? CceColors.ok : CceColors.textSecondary;
+        // Índice de ESTA habitación dentro de la cola (-1 = no está en la cola).
+        final index = queue?.segments.indexOf(link.segmentId) ?? -1;
+        final enCola = index >= 0;
+        final cleaning = enCola
+            ? index == queue!.current
+            : queue == null && device.state.vacuumState == 'cleaning';
+        // Cuántas hay que limpiar ANTES que esta. Sirve igual venga de una
+        // limpieza total o de haberla encolado a mano.
+        final faltan = enCola ? index - queue!.current : 0;
+        final accent = cleaning
+            ? CceColors.ok
+            : (enCola ? CceColors.warm : CceColors.textSecondary);
 
         return CceCard(
+          // Ya NO se bloquea mientras el robot trabaja: tocarlo la ENCOLA. Sólo
+          // queda inerte si esta habitación ya es la que se está limpiando.
           onTap: cleaning
               ? null
               : () async {
                   HapticFeedback.selectionClick();
                   final ok = await service.cleanVacuumRooms(device, [link.segmentId]);
-                  if (!ok && context.mounted) {
+                  if (!context.mounted) return;
+                  if (!ok) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('No pude mandar a limpiar ${room.name}')),
+                    );
+                  } else if (enCola) {
+                    // Ya estaba: se avisa en vez de dejar creer que se sumó otra vez.
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${room.name} ya está en la cola')),
                     );
                   }
                 },
@@ -106,7 +120,7 @@ class VacuumRoomButton extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      cleaning ? 'Limpiando…' : 'Limpiar esta habitación',
+                      _title(cleaning: cleaning, enCola: enCola, faltan: faltan),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: neo
@@ -121,13 +135,15 @@ class VacuumRoomButton extends StatelessWidget {
                     SizedBox(height: neo ? 4 : 2),
                     Row(
                       children: [
-                        if (cleaning) ...[
-                          StatusDot(accent, pulse: true, semanticLabel: 'Limpiando'),
+                        if (cleaning || enCola) ...[
+                          StatusDot(accent,
+                              pulse: cleaning,
+                              semanticLabel: cleaning ? 'Limpiando' : 'En cola'),
                           const SizedBox(width: 8),
                         ],
                         Flexible(
                           child: Text(
-                            _subtitle(room.name, queue, link.segmentId),
+                            _subtitle(room.name, queue, index),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: CceText.caption,
@@ -145,12 +161,23 @@ class VacuumRoomButton extends StatelessWidget {
     );
   }
 
-  /// Cuando la habitación es parte de una cola, el turno importa más que el
-  /// nombre solo: decir "2 de 5" evita que parezca que no arrancó.
-  String _subtitle(String roomName, VacuumRoomQueue? queue, int segmentId) {
-    if (queue == null) return roomName;
-    final position = queue.segments.indexOf(segmentId);
-    if (position < 0) return roomName;
-    return '$roomName · ${position + 1} de ${queue.segments.length}';
+  /// El título dice el ESTADO, que es lo primero que se mira.
+  ///
+  /// Con el robot ocupado el botón ya no se bloquea: sumarla a la cola es una
+  /// acción válida, así que el texto tiene que decir qué va a pasar si lo tocás
+  /// y, si ya está encolada, cuánto falta para que le toque.
+  String _title({required bool cleaning, required bool enCola, required int faltan}) {
+    if (cleaning) return 'Limpiando…';
+    if (!enCola) return 'Limpiar esta habitación';
+    if (faltan <= 0) return 'En cola · es la próxima';
+    if (faltan == 1) return 'En cola · falta 1 antes';
+    return 'En cola · faltan $faltan antes';
+  }
+
+  /// El subtítulo ancla el nombre de la habitación y, dentro de una cola, su
+  /// número: "Kitchen · 2 de 5". Sin cola es sólo el nombre.
+  String _subtitle(String roomName, VacuumRoomQueue? queue, int index) {
+    if (queue == null || index < 0) return roomName;
+    return '$roomName · ${index + 1} de ${queue.segments.length}';
   }
 }
