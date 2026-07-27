@@ -88,13 +88,14 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
   /// Crea una automatización YA apuntada a este dispositivo: el sentido de
   /// entrar por acá es no tener que volver a elegirlo en el wizard.
   Future<void> _crear() async {
+    // Se parte de Automation.blank() y NO de un mapa a mano: ese factory pone
+    // los defaults que el editor y el server dan por sentados (id client-side,
+    // icon, mode). Armarlo a mano con id vacío abría el editor en gris.
+    final base = Automation.blank().toJson();
     final draft = Automation.fromJson({
-      'id': '',
-      'name': '',
-      'enabled': true,
-      'source': 'custom',
-      'mode': 'toggle',
+      ...base,
       'trigger': {
+        ...(base['trigger'] as Map? ?? const {}),
         'type': 'sensor',
         'sensorTriggers': [
           {
@@ -104,7 +105,6 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
           },
         ],
       },
-      'actions': <Map<String, dynamic>>[],
     });
     await Navigator.of(context).push(
       MaterialPageRoute<Object?>(

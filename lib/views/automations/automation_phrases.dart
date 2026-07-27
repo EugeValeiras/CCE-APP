@@ -1,5 +1,6 @@
 import '../../models/automation.dart';
 import '../../services/devices_service.dart';
+import '../../utils/button_events.dart';
 import '../../utils/verb_labels.dart';
 
 /// Frases humanas en español para automatizaciones (cards, editor, filas).
@@ -70,7 +71,18 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
   final name = _deviceName(devices, t.sensorId);
   switch (t.sensorField) {
     case 'lastKey':
-      return 'Botón ${_num(t.sensorValue)} del $name';
+      // lastKey NO es el número de botón: es el TIPO de pulsación (0 click,
+      // 1 doble, 2 mantenido — el mismo contrato que usa pressKindLabel en el
+      // historial). Decía "Botón 0 del Office 1-Button" para un pulsador que
+      // tiene UN solo botón. Cuál botón físico se aprieta lo dice sensorOutlet,
+      // y sólo tiene sentido nombrarlo en los multi-botón.
+      final kind = pressKindLabel(int.tryParse('${t.sensorValue}'));
+      // Los outlets son 0-based y se muestran +1, igual que en el historial
+      // (button_events.dart): "Botón 1" es el primero, no el segundo.
+      final outlet = t.sensorOutlet;
+      return outlet != null
+          ? '$kind en el botón ${outlet + 1} de $name'
+          : '$kind en $name';
     case 'motion':
       return t.sensorValue == true
           ? 'Movimiento en $name'
@@ -116,7 +128,7 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
   }
 }
 
-/// "Botón 2 del Dial", "Movimiento (2 sensores)", "19:30 · L–V",
+/// "Doble click en el botón 2 de Dial", "Movimiento (2 sensores)", "19:30 · L–V",
 /// "Cada 15 min · 08–22 h", "Manual".
 String triggerPhrase(Automation a, DevicesService devices) {
   final t = a.trigger;
