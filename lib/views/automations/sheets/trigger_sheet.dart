@@ -105,7 +105,8 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     // cerradura por cualquier camino, ninguna lockOpenWay debe quedar colgada.
     if (trigger.type != 'sensor') {
       trigger.conditions.removeWhere(
-          (c) => c.type == 'sensor' && c.field == 'lockOpenWay');
+        (c) => c.type == 'sensor' && c.field == 'lockOpenWay',
+      );
     } else {
       _pruneOrphanLockConditions();
     }
@@ -113,72 +114,24 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     super.dispose();
   }
 
-  bool _isButtonDevice(Device d) {
-    final t = d.type.toLowerCase();
-    return t.contains('button') ||
-        t.contains('switch') ||
-        t.contains('remote') ||
-        t.contains('dial');
-  }
+  bool _isButtonDevice(Device d) => isButtonDevice(d);
 
   List<Device> _selectableSensors() {
     final seen = <String>{};
     final out = <Device>[];
     for (final d in widget.devices.all) {
-      if (!d.isSensorDevice &&
-          !_isButtonDevice(d) &&
-          !d.isLock &&
-          !d.isVacuum) continue;
+      if (!d.isSensorDevice && !_isButtonDevice(d) && !d.isLock && !d.isVacuum)
+        continue;
       if (seen.add(d.id)) out.add(d);
     }
     return out;
   }
 
-  SensorTrigger _defaultTriggerFor(Device d) {
-    if (d.isLock) {
-      return SensorTrigger(
-          sensorId: d.id, sensorField: 'lockEventKind', sensorValue: 'unlock');
-    }
-    if (d.isVacuum) {
-      return SensorTrigger(
-          sensorId: d.id, sensorField: 'vacuumState', sensorValue: 'cleaning');
-    }
-    if (_isButtonDevice(d)) {
-      return SensorTrigger(
-          sensorId: d.id, sensorField: 'lastKey', sensorValue: 0);
-    }
-    if (d.isContactSensor) {
-      return SensorTrigger(
-          sensorId: d.id, sensorField: 'contact', sensorValue: true);
-    }
-    if (d.isMotionSensor) {
-      return SensorTrigger(
-          sensorId: d.id, sensorField: 'motion', sensorValue: true);
-    }
-    if (d.sensor?.temperature != null) {
-      return SensorTrigger(
-        sensorId: d.id,
-        sensorField: 'temperature',
-        sensorValue: d.sensor!.temperature!.roundToDouble(),
-        sensorOperator: 'gt',
-      );
-    }
-    if (d.sensor?.humidity != null) {
-      return SensorTrigger(
-        sensorId: d.id,
-        sensorField: 'humidity',
-        sensorValue: 60,
-        sensorOperator: 'gt',
-      );
-    }
-    return SensorTrigger(
-        sensorId: d.id, sensorField: 'motion', sensorValue: true);
-  }
+  SensorTrigger _defaultTriggerFor(Device d) => defaultTriggerFor(d);
 
   void _toggleSensor(Device d) {
     setState(() {
-      final idx =
-          trigger.sensorTriggers.indexWhere((t) => t.sensorId == d.id);
+      final idx = trigger.sensorTriggers.indexWhere((t) => t.sensorId == d.id);
       if (idx >= 0) {
         trigger.sensorTriggers.removeAt(idx);
         _pruneOrphanLockConditions();
@@ -200,8 +153,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     _captureSub?.cancel();
     _capturingDeviceId = d.id;
     _captureSub = widget.devices.socket.onDeviceChanged.listen((ev) {
-      final matches =
-          ev.deviceId == d.id || d.bindingIds.contains(ev.deviceId);
+      final matches = ev.deviceId == d.id || d.bindingIds.contains(ev.deviceId);
       if (!matches) return;
       final sensor = ev.sensor;
       if (sensor == null || !sensor.containsKey('lastKey')) return;
@@ -226,9 +178,9 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   // === Builders =============================================================
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(top: 20, bottom: 10),
-        child: Text(text.toUpperCase(), style: CceText.section),
-      );
+    padding: const EdgeInsets.only(top: 20, bottom: 10),
+    child: Text(text.toUpperCase(), style: CceText.section),
+  );
 
   Widget _sensorGrid() {
     final sensors = _selectableSensors();
@@ -250,8 +202,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
       itemCount: sensors.length,
       itemBuilder: (context, i) {
         final d = sensors[i];
-        final selected =
-            trigger.sensorTriggers.any((t) => t.sensorId == d.id);
+        final selected = trigger.sensorTriggers.any((t) => t.sensorId == d.id);
         // SensorTile no tiene onTap ni estado selected: la celda lo envuelve
         // en GestureDetector y dibuja el overlay de selección propio.
         return GestureDetector(
@@ -262,21 +213,25 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                 child: d.isLock
                     ? AbsorbPointer(
                         child: LockTile(
-                            device: d,
-                            service: widget.devices,
-                            size: TileSize.small))
+                          device: d,
+                          service: widget.devices,
+                          size: TileSize.small,
+                        ),
+                      )
                     : d.isVacuum
-                        ? AbsorbPointer(
-                            child: VacuumTile(
-                                device: d,
-                                service: widget.devices,
-                                size: TileSize.small))
-                        : SensorTile(
-                            device: d,
-                            service: widget.devices,
-                            size: TileSize.small,
-                            interactive: false,
-                          ),
+                    ? AbsorbPointer(
+                        child: VacuumTile(
+                          device: d,
+                          service: widget.devices,
+                          size: TileSize.small,
+                        ),
+                      )
+                    : SensorTile(
+                        device: d,
+                        service: widget.devices,
+                        size: TileSize.small,
+                        interactive: false,
+                      ),
               ),
               if (selected)
                 Positioned.fill(
@@ -284,8 +239,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(CceRadii.hueCard),
-                        border:
-                            Border.all(color: CceColors.accent, width: 2),
+                        border: Border.all(color: CceColors.accent, width: 2),
                       ),
                     ),
                   ),
@@ -302,8 +256,11 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                       color: CceColors.accent,
                       shape: BoxShape.circle,
                     ),
-                    child: const CceIcon(CceIcons.check,
-                        size: 14, color: Colors.white),
+                    child: const CceIcon(
+                      CceIcons.check,
+                      size: 14,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
             ],
@@ -332,8 +289,13 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   void _setLockOpenWay(String sensorId, String way) {
     trigger.conditions.removeWhere((c) => _isOpenWayCond(c, sensorId));
     if (way.isNotEmpty) {
-      trigger.conditions.add(AutomationCondition.sensor(
-          sensorId: sensorId, field: 'lockOpenWay', value: way));
+      trigger.conditions.add(
+        AutomationCondition.sensor(
+          sensorId: sensorId,
+          field: 'lockOpenWay',
+          value: way,
+        ),
+      );
     }
   }
 
@@ -343,14 +305,18 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   /// silencio (el engine la evalúa contra undefined → nunca dispara).
   void _pruneOrphanLockConditions() {
     final lockIds = trigger.sensorTriggers
-        .where((t) =>
-            t.sensorField == 'lockEventKind' || t.sensorField == 'lockActor')
+        .where(
+          (t) =>
+              t.sensorField == 'lockEventKind' || t.sensorField == 'lockActor',
+        )
         .map((t) => t.sensorId)
         .toSet();
-    trigger.conditions.removeWhere((c) =>
-        c.type == 'sensor' &&
-        c.field == 'lockOpenWay' &&
-        !lockIds.contains(c.sensorId));
+    trigger.conditions.removeWhere(
+      (c) =>
+          c.type == 'sensor' &&
+          c.field == 'lockOpenWay' &&
+          !lockIds.contains(c.sensorId),
+    );
   }
 
   Widget _triggerConfig(SensorTrigger t) {
@@ -484,11 +450,15 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                     width: 14,
                     height: 14,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: CceColors.accent),
+                      strokeWidth: 2,
+                      color: CceColors.accent,
+                    ),
                   ),
                   SizedBox(width: 10),
-                  Text('Tocá el botón ahora para capturarlo…',
-                      style: CceText.caption),
+                  Text(
+                    'Tocá el botón ahora para capturarlo…',
+                    style: CceText.caption,
+                  ),
                 ],
               )
             else if (_captured.contains(t.sensorId))
@@ -517,8 +487,11 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                   ),
                 if (!capturing && d != null)
                   ActionChip(
-                    avatar: const CceIcon(CceIcons.handTap,
-                        size: 14, color: CceColors.accent),
+                    avatar: const CceIcon(
+                      CceIcons.handTap,
+                      size: 14,
+                      color: CceColors.accent,
+                    ),
                     label: const Text('Capturar en vivo'),
                     onPressed: () => setState(() => _startCapture(d)),
                   ),
@@ -537,8 +510,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                     label: const Text('Cualquiera'),
                     selected: t.sensorOutlet == null,
                     showCheckmark: false,
-                    onSelected: (_) =>
-                        setState(() => t.sensorOutlet = null),
+                    onSelected: (_) => setState(() => t.sensorOutlet = null),
                   ),
                   for (var o = 0; o < d!.outletCount; o++)
                     ChoiceChip(
@@ -589,8 +561,10 @@ class _TriggerSheetState extends State<_TriggerSheet> {
           ],
         );
       default:
-        controls = Text('${t.sensorField} = ${t.sensorValue}',
-            style: CceText.caption);
+        controls = Text(
+          '${t.sensorField} = ${t.sensorValue}',
+          style: CceText.caption,
+        );
     }
 
     return Container(
@@ -654,8 +628,8 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                 final i = delayIdx < 0
                     ? 0
                     : (delayIdx >= _delaySteps.length - 1
-                        ? _delaySteps.length - 1
-                        : delayIdx + 1);
+                          ? _delaySteps.length - 1
+                          : delayIdx + 1);
                 trigger.sensorDelay = _delaySteps[i];
               }),
             ),
@@ -700,7 +674,8 @@ class _TriggerSheetState extends State<_TriggerSheet> {
 
   Widget _scheduleSection() {
     const dayLetters = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
-    final crossesMidnight = trigger.fromTime != null &&
+    final crossesMidnight =
+        trigger.fromTime != null &&
         trigger.toTime != null &&
         trigger.fromTime!.compareTo(trigger.toTime!) > 0;
     return Column(
@@ -772,8 +747,11 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                 const SizedBox(width: 8),
                 IconButton(
                   tooltip: 'Quitar ventana',
-                  icon: const Icon(Icons.close,
-                      size: 18, color: CceColors.textTertiary),
+                  icon: const Icon(
+                    Icons.close,
+                    size: 18,
+                    color: CceColors.textTertiary,
+                  ),
                   onPressed: () => setState(() {
                     trigger.fromTime = null;
                     trigger.toTime = null;
@@ -786,8 +764,10 @@ class _TriggerSheetState extends State<_TriggerSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: CceColors.info.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(CceRadii.pill),
@@ -795,9 +775,10 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                 child: const Text(
                   'La ventana cruza la medianoche',
                   style: TextStyle(
-                      color: CceColors.info,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600),
+                    color: CceColors.info,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
@@ -847,8 +828,9 @@ class _TriggerSheetState extends State<_TriggerSheet> {
         return Container(
           decoration: const BoxDecoration(
             color: CceColors.surface,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(CceRadii.sheet),
+            ),
           ),
           child: ListView(
             controller: scrollController,
@@ -867,9 +849,7 @@ class _TriggerSheetState extends State<_TriggerSheet> {
               ),
               Row(
                 children: [
-                  const Expanded(
-                    child: Text('Cuándo', style: CceText.title),
-                  ),
+                  const Expanded(child: Text('Cuándo', style: CceText.title)),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(true),
                     child: const Text('Listo'),
@@ -883,20 +863,26 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                   CceSegment(
                     value: 'sensor',
                     label: 'Sensor',
-                    icon: CceIcon(CceIcons.sensors,
-                        color: CceColors.triggerSensor),
+                    icon: CceIcon(
+                      CceIcons.sensors,
+                      color: CceColors.triggerSensor,
+                    ),
                   ),
                   CceSegment(
                     value: 'schedule',
                     label: 'Horario',
-                    icon: CceIcon(CceIcons.clock,
-                        color: CceColors.triggerSchedule),
+                    icon: CceIcon(
+                      CceIcons.clock,
+                      color: CceColors.triggerSchedule,
+                    ),
                   ),
                   CceSegment(
                     value: 'manual',
                     label: 'Manual',
-                    icon: CceIcon(CceIcons.handTap,
-                        color: CceColors.triggerManual),
+                    icon: CceIcon(
+                      CceIcons.handTap,
+                      color: CceColors.triggerManual,
+                    ),
                   ),
                 ],
                 onChanged: (v) => setState(() {
@@ -1060,4 +1046,80 @@ class _TimePill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ¿Es un control de botones (pulsador, remote, dial)?
+bool isButtonDevice(Device d) {
+  final t = d.type.toLowerCase();
+  return t.contains('button') ||
+      t.contains('switch') ||
+      t.contains('remote') ||
+      t.contains('dial');
+}
+
+/// Trigger por defecto para un dispositivo, con el CAMPO y el VALOR que le
+/// corresponden.
+///
+/// Vive fuera del sheet porque no es sólo suyo: la hoja de automatizaciones del
+/// device también necesita armar un trigger inicial, y la primera versión lo
+/// reimplementó a ojo — con `sensorValue: true` para un `lastKey`, que espera un
+/// número (0 click / 1 doble / 2 mantenido). Eso dejaba el tab Sensor en gris.
+SensorTrigger defaultTriggerFor(Device d) {
+  if (d.isLock) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'lockEventKind',
+      sensorValue: 'unlock',
+    );
+  }
+  if (d.isVacuum) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'vacuumState',
+      sensorValue: 'cleaning',
+    );
+  }
+  if (isButtonDevice(d)) {
+    // OJO: para lastKey el valor es el TIPO de pulsación (0/1/2), NO un bool.
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'lastKey',
+      sensorValue: 0,
+    );
+  }
+  if (d.isContactSensor) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'contact',
+      sensorValue: true,
+    );
+  }
+  if (d.isMotionSensor) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'motion',
+      sensorValue: true,
+    );
+  }
+  if (d.sensor?.temperature != null) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'temperature',
+      sensorValue: d.sensor!.temperature!.roundToDouble(),
+      sensorOperator: 'gt',
+    );
+  }
+  if (d.sensor?.humidity != null) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'humidity',
+      sensorValue: 60,
+      sensorOperator: 'gt',
+    );
+  }
+  return SensorTrigger(
+    sensorId: d.id,
+    sensorField: 'motion',
+    sensorValue: true,
+  );
 }

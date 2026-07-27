@@ -7,6 +7,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../views/automations/automation_editor_page.dart';
 import '../views/automations/automation_phrases.dart';
+import '../views/automations/sheets/trigger_sheet.dart';
 
 /// Automatizaciones que dispara ESTE dispositivo, con acceso a crear una nueva
 /// ya apuntada a él.
@@ -97,13 +98,11 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
       'trigger': {
         ...(base['trigger'] as Map? ?? const {}),
         'type': 'sensor',
-        'sensorTriggers': [
-          {
-            'sensorId': widget.device.id,
-            'sensorField': _campoPorDefecto(),
-            'sensorValue': true,
-          },
-        ],
+        // defaultTriggerFor da el campo Y el valor que le corresponden a este
+        // device. Armarlo a mano fallaba en los botones: lastKey espera el tipo
+        // de pulsación (0/1/2) y le pasábamos un bool, lo que dejaba el tab
+        // Sensor del editor en gris.
+        'sensorTriggers': [defaultTriggerFor(widget.device).toJson()],
       },
     });
     await Navigator.of(context).push(
@@ -117,17 +116,6 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
       ),
     );
     if (mounted) setState(() {});
-  }
-
-  /// El campo que este device dispara naturalmente, para que el editor abra ya
-  /// en el caso típico en vez de en blanco.
-  String _campoPorDefecto() {
-    final d = widget.device;
-    if (d.isContactSensor) return 'contact';
-    if (d.isMotionSensor) return 'motion';
-    if (d.isLock) return 'lockEventAt';
-    if (d.isSwitch) return 'lastKey';
-    return 'motion';
   }
 
   @override
