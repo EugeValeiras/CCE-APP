@@ -40,7 +40,6 @@ class HueRoomCard extends StatelessWidget {
   final bool neo;
   final VoidCallback onTap;
 
-  static const double _height = 132;
   static const double _iconSize = 34;
 
   /// Alto de la franja del switch. Mismo valor que [LightCard], para que el
@@ -179,9 +178,10 @@ class HueRoomCard extends StatelessWidget {
 
     // Encendida: el borde ES el gradiente de marca, con un glow suave del mismo
     // color para que se lea a distancia en la grilla.
-    if (!isOn) return SizedBox(height: _height, child: card);
-    return SizedBox(
-      height: _height,
+    // Sin alto propio: lo fija el grid que la hospeda (la de luces usa 156, la
+    // de escenas 132). Fijarlo acá la desalineaba al moverla de sección.
+    if (!isOn) return card;
+    return SizedBox.expand(
       child: Container(
         padding: const EdgeInsets.all(_borderWidth),
         decoration: BoxDecoration(

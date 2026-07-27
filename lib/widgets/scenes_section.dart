@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../services/devices_service.dart';
-import '../theme/components/hue_room_card.dart';
 import '../theme/components/scene_card.dart';
 import '../theme/components/section_header.dart';
 import '../theme/mdi.dart';
@@ -135,12 +134,10 @@ class _ScenesSectionState extends State<ScenesSection> {
                 .where((s) => s.planId == null)
                 .toList()
             : widget.service.scenesForRoom(room);
-        // El room de Hue vinculado se ofrece como un "grupo" más (on/off del
-        // room entero), fijo al frente de la grilla.
-        final hueRoom =
-            room == null ? null : widget.service.hueRoomForRoom(room);
-
-        if (hue.isEmpty && cce.isEmpty && hueRoom == null) {
+        // El room de Hue vinculado NO va acá: prender/apagar el room entero no
+        // es una escena, es el master de sus luces. Vive en la sección "Luces"
+        // (room_detail_screen), pinneado al frente de esa grilla.
+        if (hue.isEmpty && cce.isEmpty) {
           return const SizedBox.shrink();
         }
 
@@ -201,25 +198,6 @@ class _ScenesSectionState extends State<ScenesSection> {
           for (final e in entries)
             planId != null ? _draggable(planId, e.$1, e.$2) : e.$2,
         ];
-
-        // El grupo Hue queda pinneado al frente (no participa del reorder).
-        if (hueRoom != null) {
-          final busyId = 'hueRoom:${hueRoom.id}';
-          cards.insert(
-            0,
-            HueRoomCard(
-              name: hueRoom.name,
-              on: hueRoom.on,
-              archetype: hueRoom.archetype,
-              busy: _busyId == busyId,
-              neo: widget.neo,
-              onTap: () => _run(
-                busyId,
-                () => widget.service.setHueRoomOn(hueRoom, hueRoom.on != true),
-              ),
-            ),
-          );
-        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

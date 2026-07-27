@@ -15,6 +15,8 @@ import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
+import '../models/hue_room.dart';
+import '../theme/components/hue_room_card.dart';
 import '../widgets/vacuum_room_button.dart';
 import '../widgets/vacuum_tile.dart';
 import '../widgets/media_device_tile.dart';
@@ -57,6 +59,21 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   // Orden de los elementos (deviceIds) por sección, persistido por habitación.
   List<String> _lightOrder = [];
   List<String> _sensorOrder = [];
+
+  /// Spinner del master de Hue mientras el bridge confirma. Es un solo room por
+  /// pantalla, así que alcanza un bool (no hace falta un set de ids).
+  bool _hueRoomBusy = false;
+
+  /// Prende/apaga el room ENTERO de Hue (grouped_light, una sola llamada).
+  Future<void> _toggleHueRoom(HueRoom hueRoom) async {
+    if (_hueRoomBusy) return;
+    setState(() => _hueRoomBusy = true);
+    try {
+      await widget.service.setHueRoomOn(hueRoom, hueRoom.on != true);
+    } finally {
+      if (mounted) setState(() => _hueRoomBusy = false);
+    }
+  }
 
   String get _roomKey => widget.room?.id ?? widget.title;
 
@@ -428,8 +445,21 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // (pedido del dueño v1.62): el primario aparece dos veces a propósito
         // — como ThermostatHeaderCard fijo arriba Y como tile en la lista.
         final extraThermostats = thermostats;
-        final extraCount =
-            extraThermostats.length + (hasTv ? 1 : 0) + (hasJbl ? 1 : 0);
+        // Room de Hue vinculado: el master on/off de las luces de esta room.
+        // Va PINNEADO al frente de la grilla de Luces (no en Escenas: prender
+        // el room entero no es aplicar una escena, es el master del grupo).
+        final hueRoom =
+            widget.room == null ? null : service.hueRoomForRoom(widget.room!);
+        final hasHueRoom = hueRoom != null;
+
+        final vacuums = devices.where((d) => d.isVacuum).toList()
+          ..sort((a, b) => a.name.compareTo(b.name));
+        // El robot es un device MÁS: entra a la grilla de "Devices" junto a los
+        // termostatos, el TV y el JBL, en vez de tener su sección aparte.
+        final extraCount = extraThermostats.length +
+            (hasTv ? 1 : 0) +
+            (hasJbl ? 1 : 0) +
+            vacuums.length;
         final onCount = lights.where((l) => l.state.on).length;
         // Color representativo del room (mismo tint normalizado que usa RoomCard
         // en la home): el master toggle PRENDE con el color del room en vez del
@@ -440,8 +470,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
 
         // Sección "Robot": fija (como Cerraduras) — solo si el room tiene
         // asignado un robot aspiradora.
-        final vacuums = devices.where((d) => d.isVacuum).toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
         // Botón "Limpiar esta habitación": sale del vínculo que se configura
         // en el dashboard (floorPlans[].vacuumRoom). El widget se auto-oculta
         // si no hay vínculo, robot o habitación resoluble.
@@ -463,43 +491,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               ),
             ),
         ];
-        final vacuumSlivers = <Widget>[
-          if (vacuums.isNotEmpty) ...[
-            const SliverPadding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              sliver: SliverToBoxAdapter(
-                child: SectionHeader(title: 'Robot'),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              sliver: SliverGrid(
-                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: TileSize.medium.maxTileExtent,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  mainAxisExtent: TileSize.medium.sensorTileHeight,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => ListenableBuilder(
-                    listenable: service,
-                    builder: (ctx, _) {
-                      final d = service.byId(vacuums[i].id) ?? vacuums[i];
-                      return VacuumTile(
-                          device: d,
-                          service: service,
-                          size: TileSize.medium,
-                          neo: true);
-                    },
-                  ),
-                  childCount: vacuums.length,
-                ),
-              ),
-            ),
-          ],
-        ];
-
-        // Sección "Cerraduras": fija después de las secciones reordenables.
         final lockSlivers = <Widget>[
           if (locks.isNotEmpty) ...[
             const SliverPadding(
@@ -549,7 +540,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   ),
                 ]
               : const [],
-          'lights': lights.isNotEmpty
+          'lights': (lights.isNotEmpty || hasHueRoom)
               ? [
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -573,7 +564,20 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         (context, i) => ListenableBuilder(
                           listenable: service,
                           builder: (ctx, _) {
-                            final d = service.byId(lights[i].id) ?? lights[i];
+                            if (hasHueRoom && i == 0) {
+                              final hr = service.hueRoomForRoom(widget.room!) ??
+                                  hueRoom;
+                              return HueRoomCard(
+                                name: hr.name,
+                                on: hr.on,
+                                archetype: hr.archetype,
+                                busy: _hueRoomBusy,
+                                neo: true,
+                                onTap: () => _toggleHueRoom(hr),
+                              );
+                            }
+                            final li = hasHueRoom ? i - 1 : i;
+                            final d = service.byId(lights[li].id) ?? lights[li];
                             return LightTile(
                                 device: d,
                                 service: service,
@@ -581,7 +585,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                                 neo: true);
                           },
                         ),
-                        childCount: lights.length,
+                        childCount: lights.length + (hasHueRoom ? 1 : 0),
                       ),
                     ),
                   ),
@@ -639,6 +643,21 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                             );
                           }
                           j -= extraThermostats.length;
+                          if (j < vacuums.length) {
+                            final v = vacuums[j];
+                            return ListenableBuilder(
+                              listenable: service,
+                              builder: (ctx, _) {
+                                final d = service.byId(v.id) ?? v;
+                                return VacuumTile(
+                                    device: d,
+                                    service: service,
+                                    size: TileSize.medium,
+                                    neo: true);
+                              },
+                            );
+                          }
+                          j -= vacuums.length;
                           if (hasTv) {
                             if (j == 0) {
                               return TvDeviceTile(
@@ -751,7 +770,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 // cards, una encima de la otra).
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
-                ...vacuumSlivers,
                 // Una room de plano solo-con-TV/JBL ya no es "vacía".
                 if (devices.isEmpty && !hasTv && !hasJbl)
                   const SliverFillRemaining(
