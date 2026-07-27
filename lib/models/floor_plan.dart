@@ -10,12 +10,18 @@ class FloorPlan {
   /// Lo asigna el dashboard sobre el plano y lo muestran todas las plataformas.
   final String? icon;
 
+  /// Habitación del mapa del robot que le corresponde a esta room, para poder
+  /// limpiarla desde acá. Se vincula desde el dashboard (igual que [icon] y
+  /// [hueRoomId]) y las demás plataformas la consumen.
+  final VacuumRoomLink? vacuumRoom;
+
   FloorPlan(
       {required this.id,
       required this.name,
       required this.svg,
       this.hueRoomId,
-      this.icon});
+      this.icon,
+      this.vacuumRoom});
 
   factory FloorPlan.fromJson(Map<String, dynamic> json) {
     return FloorPlan(
@@ -24,7 +30,27 @@ class FloorPlan {
       svg: (json['svg'] ?? '').toString(),
       hueRoomId: json['hueRoomId'] as String?,
       icon: json['icon'] as String?,
+      vacuumRoom: VacuumRoomLink.fromJson(json['vacuumRoom']),
     );
+  }
+}
+
+/// Vínculo room del plano ↔ habitación del mapa del robot.
+class VacuumRoomLink {
+  final String deviceId;
+  final int segmentId;
+
+  const VacuumRoomLink({required this.deviceId, required this.segmentId});
+
+  /// Devuelve null si el vínculo no existe o está incompleto — el backend lo
+  /// guarda como `null` al desvincular.
+  static VacuumRoomLink? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final deviceId = json['deviceId'];
+    final segmentId = json['segmentId'];
+    if (deviceId is! String || deviceId.isEmpty) return null;
+    if (segmentId is! num) return null;
+    return VacuumRoomLink(deviceId: deviceId, segmentId: segmentId.toInt());
   }
 }
 

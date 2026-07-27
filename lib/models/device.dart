@@ -16,6 +16,46 @@ class VacuumRoom {
   }
 }
 
+/// Progreso de la cola de habitaciones (el backend las manda de a una porque
+/// el robot ignora el orden si van juntas). Ausente si no hay cola en curso.
+class VacuumRoomQueue {
+  final List<int> segments;
+  final List<String> names;
+  final int current;
+  final String phase; // 'starting' | 'running'
+
+  const VacuumRoomQueue({
+    required this.segments,
+    required this.names,
+    required this.current,
+    required this.phase,
+  });
+
+  /// Segmento que se está limpiando ahora, o null si el índice quedó fuera de
+  /// rango (defensivo: el progreso llega por push y podría venir desfasado).
+  int? get currentSegment =>
+      (current >= 0 && current < segments.length) ? segments[current] : null;
+
+  static VacuumRoomQueue? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final segments = (json['segments'] is List)
+        ? (json['segments'] as List)
+            .whereType<num>()
+            .map((e) => e.toInt())
+            .toList()
+        : <int>[];
+    if (segments.isEmpty) return null;
+    return VacuumRoomQueue(
+      segments: segments,
+      names: (json['names'] is List)
+          ? (json['names'] as List).map((e) => e.toString()).toList()
+          : const <String>[],
+      current: (json['current'] as num?)?.toInt() ?? 0,
+      phase: (json['phase'] ?? 'running').toString(),
+    );
+  }
+}
+
 class DeviceState {
   final bool on;
   final int bri;
@@ -55,6 +95,7 @@ class DeviceState {
   final List<VacuumRoom>? rooms; // habitaciones nombradas (sidecar)
   final String? fanSpeed; // potencia de succión activa (label real)
   final List<String>? fanSpeeds; // potencias soportadas
+  final VacuumRoomQueue? roomQueue; // cola de habitaciones en orden (sidecar)
 
   DeviceState({
     this.on = false,
@@ -85,6 +126,7 @@ class DeviceState {
     this.rooms,
     this.fanSpeed,
     this.fanSpeeds,
+    this.roomQueue,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -129,6 +171,7 @@ class DeviceState {
               .toList()
           : null,
       fanSpeed: json['fanSpeed'] as String?,
+      roomQueue: VacuumRoomQueue.fromJson(json['roomQueue']),
       fanSpeeds: (json['fanSpeeds'] is List)
           ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
           : null,
@@ -168,6 +211,7 @@ class DeviceState {
     List<VacuumRoom>? rooms,
     String? fanSpeed,
     List<String>? fanSpeeds,
+    VacuumRoomQueue? roomQueue,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -198,6 +242,7 @@ class DeviceState {
       rooms: rooms ?? this.rooms,
       fanSpeed: fanSpeed ?? this.fanSpeed,
       fanSpeeds: fanSpeeds ?? this.fanSpeeds,
+      roomQueue: roomQueue ?? this.roomQueue,
     );
   }
 }

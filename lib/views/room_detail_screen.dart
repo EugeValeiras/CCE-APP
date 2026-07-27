@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device.dart';
+import '../models/floor_plan.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
@@ -14,6 +15,7 @@ import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
+import '../widgets/vacuum_room_button.dart';
 import '../widgets/vacuum_tile.dart';
 import '../widgets/media_device_tile.dart';
 import '../widgets/room_temperature_header.dart';
@@ -440,6 +442,25 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // asignado un robot aspiradora.
         final vacuums = devices.where((d) => d.isVacuum).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
+        // Botón "Limpiar esta habitación": sale del vínculo que se configura
+        // en el dashboard (floorPlans[].vacuumRoom). El widget se auto-oculta
+        // si no hay vínculo, robot o habitación resoluble.
+        final FloorPlan? roomPlan = (planId != null && fp != null)
+            ? fp.plans.where((p) => p.id == planId).firstOrNull
+            : null;
+        final vacuumRoomSlivers = <Widget>[
+          if (roomPlan?.vacuumRoom != null)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverToBoxAdapter(
+                child: VacuumRoomButton(
+                  service: service,
+                  plan: roomPlan,
+                  neo: true,
+                ),
+              ),
+            ),
+        ];
         final vacuumSlivers = <Widget>[
           if (vacuums.isNotEmpty) ...[
             const SliverPadding(
@@ -724,6 +745,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                 for (final key in _order) ...sectionSlivers[key] ?? const [],
                 ...lockSlivers,
                 ...vacuumSlivers,
+                ...vacuumRoomSlivers,
                 // Una room de plano solo-con-TV/JBL ya no es "vacía".
                 if (devices.isEmpty && !hasTv && !hasJbl)
                   const SliverFillRemaining(
