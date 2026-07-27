@@ -6,13 +6,16 @@ import 'cce_switch.dart';
 import 'hue_badge.dart';
 
 /// Card del "grupo Hue": prende/apaga el room ENTERO (grouped_light) en una
-/// sola llamada. Mismo molde que [LightCard] —ícono grande extruido, nombre y
-/// franja inferior con [CceSwitch]— para que el grupo se maneje igual que una
-/// luz, más la identidad de Hue: el badge de marca acompaña al nombre y, cuando
-/// la room está ENCENDIDA, el borde es el gradiente arcoíris de Philips. Apagada
-/// no lleva borde, como el resto de las cards. El ícono es el del `archetype`
-/// del room, o sea el mismo que la room tiene en la app de Philips Hue, y prende
-/// en verde cuando el room está encendido (any_on, igual que Hue).
+/// sola llamada. Mismo molde que [LightCard] —ícono grande extruido y franja
+/// inferior con [CceSwitch]— para que el grupo se maneje igual que una luz.
+///
+/// A diferencia de LightCard NO muestra el nombre: en su lugar va el badge de
+/// Hue. La room ya está identificada por el plano en el que estás parado y por
+/// el ícono de su `archetype` (el mismo que tiene en la app de Philips), así que
+/// el texto sólo sumaba ruido; [name] sobrevive como semantics.
+///
+/// Encendida, el borde es el gradiente arcoíris de Philips y el glyph prende en
+/// verde (any_on, igual que Hue). Apagada no lleva borde, como el resto.
 class HueRoomCard extends StatelessWidget {
   const HueRoomCard({
     super.key,
@@ -136,33 +139,14 @@ class HueRoomCard extends StatelessWidget {
                     children: [
                       glyph,
                       const SizedBox(height: 6),
-                      // El badge va EN LA LÍNEA del nombre, no flotando
-                      // en la esquina: ahí rompía la simetría de la card
-                      // (era el único elemento fuera del eje central).
-                      Flexible(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            const HueBadge(width: 26, height: 13),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: TextAlign.left,
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.1,
-                                  height: 1.15,
-                                  color: CceColors.textPrimary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      // El badge OCUPA el lugar del nombre. La room ya está
+                      // identificada por el plano en el que estás parado y por
+                      // el ícono de su archetype: repetir el texto sólo sumaba
+                      // ruido. Queda como semantics para el lector de pantalla,
+                      // que no tiene ese contexto visual.
+                      Semantics(
+                        label: name,
+                        child: const HueBadge(width: 40, height: 20),
                       ),
                     ],
                   ),
