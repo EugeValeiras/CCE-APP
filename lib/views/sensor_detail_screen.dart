@@ -198,16 +198,6 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  /// Cuándo se lo vio por última vez. `trigTime` es exclusivo de eWeLink, así
-  /// que sin él se cae al evento más reciente del historial ya cargado.
-  String _lastSeenLabel(int? trigTime) {
-    if (trigTime != null) {
-      return TimeFormat.relative(DateTime.fromMillisecondsSinceEpoch(trigTime));
-    }
-    if (_events.isNotEmpty) return TimeFormat.relative(_events.first.timestamp);
-    return _eventsLoading ? '…' : '—';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -338,7 +328,6 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     final sensor = _device.sensor;
     final battery = sensor?.battery;
     final brightness = sensor?.brightness;
-    final trig = sensor?.trigTime;
 
     final metrics = <Widget>[
       _Metric(
@@ -356,20 +345,6 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
           value: brightness == 'brighter' ? 'Con luz' : 'Oscuro',
           label: 'AMBIENTE',
         ),
-      // trigTime lo manda SÓLO eWeLink: en un sensor Hue siempre venía vacío y
-      // el recuadro mostraba un guion para siempre. Cuando falta, se usa el
-      // último evento del historial —que esta misma pantalla ya carga— y así el
-      // dato aparece igual sin importar el proveedor.
-      _Metric(
-        svg: CceIcons.clock,
-        iconColor: CceColors.textSecondary,
-        value: _lastSeenLabel(trig),
-        label: 'ÚLTIMO',
-      ),
-      // "En línea" ya NO ocupa un recuadro: es un dato binario que casi siempre
-      // dice lo mismo, y gastaba un cuarto de la fila. Pasa a ser un ícono en el
-      // header que aparece SÓLO cuando el sensor perdió señal — que es la única
-      // vez que importa. El lugar libre lo toma algo accionable.
       _Metric(
         svg: CceIcons.automations,
         iconColor: CceColors.textSecondary,
