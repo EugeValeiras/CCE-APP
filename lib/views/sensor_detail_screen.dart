@@ -243,8 +243,15 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         borderRadius: BorderRadius.circular(28),
         boxShadow: CceShadows.neo(blur: 16, offset: 6),
       ),
+      // El Stack tiene que ocupar TODO el ancho: por defecto se encoge al hijo
+      // más ancho (el texto de estado) y lo alinea arriba-izquierda, y así el
+      // disco y los textos quedaban pegados al borde en vez de centrados. El
+      // ancho completo también hace que el ícono de sin-señal caiga en la
+      // esquina real de la card y no al lado del texto.
       child: Stack(
+        alignment: Alignment.topCenter,
         children: [
+          const SizedBox(width: double.infinity),
           // Sin señal: ícono en la esquina, SÓLO cuando pasa. Antes esto era un
           // recuadro fijo que decía "En línea" el 99% del tiempo y gastaba un
           // cuarto de la fila de métricas para no informar nada.
@@ -373,10 +380,11 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     return LayoutBuilder(
       builder: (context, c) {
         final gap = c.maxWidth < 360 ? 8.0 : 12.0;
-        // Máximo 4 por fila: un sensor Sonoff llega a 5 recuadros (batería,
-        // ambiente, último, automatizaciones, alarma) y cinco en una sola fila
-        // quedan tan angostos que el valor se corta. Se parte en filas parejas
-        // —3+2 antes que 4+1— para que no quede una huérfana estirada.
+        // Hasta 4 por fila entran bien en un teléfono; de ahí para arriba el
+        // valor se corta, así que se parte en filas PAREJAS —3+2 antes que
+        // 4+1— para que no quede una huérfana estirada. Hoy el máximo real es
+        // 4 (batería, ambiente, automatizaciones, alarma); el reparto existe
+        // para la próxima métrica que se sume.
         const maxPorFila = 4;
         final filas = <List<Widget>>[];
         if (metrics.length <= maxPorFila) {
