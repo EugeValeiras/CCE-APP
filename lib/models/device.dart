@@ -96,6 +96,17 @@ class DeviceState {
   final String? fanSpeed; // potencia de succión activa (label real)
   final List<String>? fanSpeeds; // potencias soportadas
   final VacuumRoomQueue? roomQueue; // cola de habitaciones en orden (sidecar)
+  /// Faena de mantenimiento en curso: 'washing_mop' | 'emptying_bin' |
+  /// 'going_to_wash'. COMPLEMENTA a [vacuumState]: el cluster RVC de Matter
+  /// sólo tiene siete estados y mete lavar la mopa y vaciar el depósito dentro
+  /// de 'docked', así que sin esto un robot trabajando en la base se ve igual
+  /// que uno durmiendo enchufado.
+  final String? vacuumActivity;
+  /// Habitación en la que el robot trabaja AHORA, ya resuelta a nombre. Sale
+  /// del status del propio robot, así que sirve aunque la limpieza no haya
+  /// salido de CCE — a diferencia de [roomQueue], que sólo sabe de las colas
+  /// que armamos nosotros.
+  final String? vacuumRoomName;
 
   DeviceState({
     this.on = false,
@@ -127,6 +138,8 @@ class DeviceState {
     this.fanSpeed,
     this.fanSpeeds,
     this.roomQueue,
+    this.vacuumActivity,
+    this.vacuumRoomName,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -172,6 +185,8 @@ class DeviceState {
           : null,
       fanSpeed: json['fanSpeed'] as String?,
       roomQueue: VacuumRoomQueue.fromJson(json['roomQueue']),
+      vacuumActivity: json['vacuumActivity'] as String?,
+      vacuumRoomName: json['vacuumRoomName'] as String?,
       fanSpeeds: (json['fanSpeeds'] is List)
           ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
           : null,
@@ -212,6 +227,8 @@ class DeviceState {
     String? fanSpeed,
     List<String>? fanSpeeds,
     VacuumRoomQueue? roomQueue,
+    String? vacuumActivity,
+    String? vacuumRoomName,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -243,6 +260,8 @@ class DeviceState {
       fanSpeed: fanSpeed ?? this.fanSpeed,
       fanSpeeds: fanSpeeds ?? this.fanSpeeds,
       roomQueue: roomQueue ?? this.roomQueue,
+      vacuumActivity: vacuumActivity ?? this.vacuumActivity,
+      vacuumRoomName: vacuumRoomName ?? this.vacuumRoomName,
     );
   }
 }

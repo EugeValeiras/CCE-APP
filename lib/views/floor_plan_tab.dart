@@ -22,6 +22,123 @@ import 'lock_screen.dart';
 import 'switch_detail_screen.dart';
 import 'thermostat_screen.dart';
 
+/// Teal del robot. No sale de la paleta: el robot no es un estado de la casa
+/// (como una luz prendida) sino un aparato TRABAJANDO, y conviene que se
+/// distinga del acento violeta. Mismo valor que usa el dashboard web.
+const Color _vacuumTeal = Color(0xFF14B8A6);
+
+/// Fallback de estados de Matter, para cuando el sidecar no tiene sesión.
+const _vacuumBusyStates = {'cleaning', 'paused', 'returning'};
+
+/// Estado detallado del robot → texto. Sale de `vacuumActivity`, que reporta el
+/// sidecar leyendo el código REAL del robot. No se usa `vacuumState`: el
+/// cluster RVC de Matter sólo tiene siete valores (mete cargar, lavar la mopa y
+/// vaciarse dentro de 'docked') y encima se queda pegado — medido el
+/// 2026-07-29, decía 'cleaning' con el robot quieto cargando en la base.
+const _vacuumActivityLabel = {
+  'starting': 'Arrancando',
+  'cleaning': 'Limpiando',
+  'segment_cleaning': 'Limpiando la habitación',
+  'zoned_cleaning': 'Limpiando la zona',
+  'spot_cleaning': 'Limpieza puntual',
+  'going_to_target': 'Moviéndose',
+  'returning': 'Volviendo a la base',
+  'docking': 'Yendo a la base',
+  'going_to_wash': 'Yendo a lavar la mopa',
+  'washing_mop': 'Lavando la mopa',
+  'emptying_bin': 'Vaciándose',
+  'charging': 'Cargando',
+  'charge_complete': 'Carga completa',
+  'charging_error': 'Problema de carga',
+  'paused': 'En pausa',
+  'idle': 'En reposo',
+  'manual': 'Control manual',
+  'remote_control': 'Control remoto',
+  'updating': 'Actualizándose',
+  'shutting_down': 'Apagándose',
+  'offline': 'Sin conexión',
+  'error': 'Con error',
+};
+
+/// Estados que ocurren DENTRO de una habitación: se les puede poner nombre.
+const _vacuumRoomAware = {
+  'going_to_target',
+  'segment_cleaning',
+  'cleaning',
+  'zoned_cleaning',
+  'spot_cleaning',
+};
+
+/// Estados en los que el robot está TRABAJANDO (≠ quieto en la base).
+const _vacuumWorkingActivities = {
+  'starting',
+  'cleaning',
+  'segment_cleaning',
+  'zoned_cleaning',
+  'spot_cleaning',
+  'going_to_target',
+  'returning',
+  'docking',
+  'going_to_wash',
+  'washing_mop',
+  'emptying_bin',
+  'manual',
+  'remote_control',
+  'paused',
+};
+
+/// Texto del estado del robot, o null si no hay nada que decir.
+String? vacuumStateLabel(Device d) {
+  final act = d.state.vacuumActivity;
+  final detalle = act == null ? null : _vacuumActivityLabel[act];
+  if (detalle != null) {
+    // El robot dice en qué habitación está: "Limpiando Kitchen" es mucho más
+    // útil que "Limpiando la habitación". El nombre de la cola es el fallback.
+    final q = d.state.roomQueue;
+    final room = d.state.vacuumRoomName ??
+        (q != null && q.current >= 0 && q.current < q.names.length
+            ? q.names[q.current]
+            : null);
+    if (room != null && _vacuumRoomAware.contains(act)) {
+      return act == 'going_to_target' ? 'Moviéndose a $room' : 'Limpiando $room';
+    }
+    return detalle;
+  }
+  return switch (d.state.vacuumState) {
+    'cleaning' => 'Limpiando',
+    'returning' => 'Volviendo a la base',
+    'paused' => 'En pausa',
+    'docked' => 'En la base',
+    'error' => 'Con error',
+    _ => null,
+  };
+}
+
+/// ¿El robot está trabajando? Cuenta moverse por la casa y las faenas en la
+/// base: para el dueño es lo mismo.
+///
+/// NO mira `state.on`: el robot no usa ese campo —Matter lo maneja por el
+/// cluster RVC— y reporta `on: false` incluso limpiando, que es lo que dejaba
+/// su marcador gris en el plano.
+bool vacuumWorking(Device d) {
+  final act = d.state.vacuumActivity;
+  // Manda el detalle; vacuumState es el fallback y no se le cree por encima:
+  // es el campo que se queda pegado en 'cleaning'.
+  if (act != null) return _vacuumWorkingActivities.contains(act);
+  return _vacuumBusyStates.contains(d.state.vacuumState);
+}
+
+/// Lo que hay que pintar del robot mientras trabaja.
+class _VacuumStatus {
+  /// Plano que está limpiando, o null si no hay forma de saberlo (la limpieza
+  /// no salió de una cola de CCE — p.ej. lanzada desde la app de Roborock).
+  final String? planId;
+  final String label;
+  final int? battery;
+
+  const _VacuumStatus({this.planId, required this.label, this.battery});
+}
+
 /// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
 /// Si [planId] != null fuerza ese plano y oculta el selector (modo "Plano"
 /// de una habitacion); con [planId] == null resuelve el default:
@@ -99,7 +216,79 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
     widget.ui.lastPlanId = id;
   }
 
-  Widget _planSelector(FloorPlansData fp, FloorPlan active) {
+  /// Cruza el robot con los planos: qué room está limpiando y cómo mostrarlo.
+  /// Devuelve null cuando está en la base, que es el caso normal.
+  _VacuumStatus? _vacuumStatus(FloorPlansData fp) {
+    Device? robot;
+    for (final d in widget.service.vacuums) {
+      if (vacuumWorking(d)) {
+        robot = d;
+        break;
+      }
+    }
+    if (robot == null) return null;
+
+    // Mientras hace una faena EN LA BASE no se marca ninguna room: la cola
+    // puede seguir viva, pero el robot no está en esa habitación.
+    const enLaBase = {'washing_mop', 'emptying_bin', 'charging', 'charge_complete', 'idle'};
+    final faena = enLaBase.contains(robot.state.vacuumActivity) ? true : null;
+
+    final q = robot.state.roomQueue;
+    final seg = q?.currentSegment;
+    String? planId;
+    // Durante una faena el robot está EN LA BASE, aunque la cola siga viva:
+    // marcar la room siguiente diría que está ahí, y no lo está.
+    if (seg != null && faena == null) {
+      for (final p in fp.plans) {
+        final vr = p.vacuumRoom;
+        if (vr != null && vr.deviceId == robot.id && vr.segmentId == seg) {
+          planId = p.id;
+          break;
+        }
+      }
+    }
+
+    return _VacuumStatus(
+      planId: planId,
+      // El texto ya viene resuelto (incluye "a <habitación>" cuando se sabe).
+      label: vacuumStateLabel(robot) ?? 'Trabajando',
+      battery: robot.state.battery,
+    );
+  }
+
+  /// Chip flotante sobre el plano. `IgnorePointer` para no comerle los gestos
+  /// de pan/zoom al canvas.
+  Widget _vacuumChip(_VacuumStatus vs) {
+    return IgnorePointer(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        decoration: BoxDecoration(
+          color: CceColors.surfaceHigh,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          border: Border.all(color: _vacuumTeal.withValues(alpha: 0.45)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CceIcon(CceIcons.robotVacuum,
+                size: 16, color: _vacuumTeal, emboss: false),
+            const SizedBox(width: 7),
+            Text(vs.label, style: CceText.caption),
+            if (vs.battery != null) ...[
+              const SizedBox(width: 7),
+              Text('${vs.battery}%', style: CceText.caption),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// [vacuumPlanId] marca con el ícono del robot el plano que se está
+  /// limpiando. En el modo segmentado (≤5 planos) no se marca: CceSegment sólo
+  /// acepta un label de texto. Ahí alcanza el chip, que nombra la habitación.
+  Widget _planSelector(FloorPlansData fp, FloorPlan active,
+      [String? vacuumPlanId]) {
     if (fp.plans.length <= 5) {
       return CceSegmented<String>(
         value: active.id,
@@ -145,13 +334,23 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                           ),
                         ),
                   alignment: Alignment.center,
-                  child: Text(
-                    p.name,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: CceColors.textPrimary,
-                    ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        p.name,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          color: CceColors.textPrimary,
+                        ),
+                      ),
+                      if (p.id == vacuumPlanId) ...[
+                        const SizedBox(width: 6),
+                        const CceIcon(CceIcons.robotVacuum,
+                            size: 15, color: _vacuumTeal, emboss: false),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -188,13 +387,14 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
         final jblPos = fp.jblPositions[plan.id];
         final showChips =
             widget.showPlanChips && widget.planId == null && fp.plans.length > 1;
+        final vacuum = _vacuumStatus(fp);
 
         return Column(
           children: [
             if (showChips)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: _planSelector(fp, plan),
+                child: _planSelector(fp, plan, vacuum?.planId),
               ),
             if (showChips && positions.length < 3)
               Padding(
@@ -213,21 +413,44 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                 ),
               ),
             Expanded(
-              child: _PlanCanvas(
-                plan: plan,
-                positions: positions,
-                service: widget.service,
-                dotSize: widget.dotSize,
-                neo: widget.neo,
-                // En el tablet (neo) el tap abre el control en vez de toggle.
-                openOnTap: widget.neo,
-                tv: widget.tv,
-                jbl: widget.jbl,
-                tvPos: tvPos,
-                jblPos: jblPos,
-                onOpenTv: widget.onOpenTv,
-                onOpenJbl: widget.onOpenJbl,
-                onOpenThermostat: widget.onOpenThermostat,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: _PlanCanvas(
+                      plan: plan,
+                      positions: positions,
+                      service: widget.service,
+                      dotSize: widget.dotSize,
+                      neo: widget.neo,
+                      // En el tablet (neo) el tap abre el control en vez de toggle.
+                      openOnTap: widget.neo,
+                      tv: widget.tv,
+                      jbl: widget.jbl,
+                      tvPos: tvPos,
+                      jblPos: jblPos,
+                      onOpenTv: widget.onOpenTv,
+                      onOpenJbl: widget.onOpenJbl,
+                      onOpenThermostat: widget.onOpenThermostat,
+                    ),
+                  ),
+                  // El plano que se está mirando ES el que limpia el robot.
+                  if (vacuum != null && vacuum.planId == plan.id)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                                color: _vacuumTeal.withValues(alpha: 0.55),
+                                width: 2),
+                            borderRadius:
+                                BorderRadius.circular(CceRadii.control),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (vacuum != null)
+                    Positioned(top: 10, left: 12, child: _vacuumChip(vacuum)),
+                ],
               ),
             ),
           ],
@@ -626,6 +849,12 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     } else if (isMotion) {
       active = device.sensor?.motion == true;
       accent = CceColors.motion;
+    } else if (device.isVacuum) {
+      // Sin esta rama el robot caía al `else` de abajo y su marcador quedaba
+      // SIEMPRE gris, incluso limpiando: no usa `state.on` (Matter lo maneja
+      // por el cluster RVC y reporta on:false trabajando).
+      active = vacuumWorking(device);
+      accent = _vacuumTeal;
     } else if (temp != null) {
       active = true;
       accent = _colorForTemp(temp);
