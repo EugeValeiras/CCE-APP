@@ -57,6 +57,12 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
   @override
   void initState() {
     super.initState();
+    // Modo Simple retirado: el editor trabaja SIEMPRE con acciones. Una
+    // automation legacy (source escena/grupo) se convierte acá a su acción
+    // equivalente — al guardar sale 'custom'. Efecto asumido: el draft queda
+    // "sucio" respecto de [original] y Cancelar pide confirmación (honesto:
+    // guardar SÍ cambiaría el formato persistido).
+    draft.convertLegacySourceToAction();
     _name.addListener(() {
       draft.name = _name.text;
       setState(() {});

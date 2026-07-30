@@ -210,8 +210,8 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
         default:
           return 'Prender room $name';
       }
-    // Igual que el modo Simple ("Escena X"): la marca Hue no va en la frase,
-    // la distingue el ícono naranja de la fila.
+    // "Escena X" a secas: la marca Hue no va en la frase, la distingue el
+    // ícono naranja de la fila.
     case AutomationActionKind.scene:
       return 'Escena ${_cceSceneName(devices, act.sceneId)}';
     case AutomationActionKind.hueScene:

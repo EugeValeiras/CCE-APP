@@ -122,6 +122,43 @@ class Automation {
   /// del item (lo que el editor abrió), base del chequeo de conflicto.
   Automation copyForEdit() => Automation.fromJson(raw);
 
+  /// Modo Simple retirado (2026-07-30): una automation legacy con source
+  /// 'scene'/'hueScene'/'group'/'hueRoom' se convierte EN MEMORIA a la acción
+  /// equivalente del editor de acciones, y al guardar sale source:'custom'.
+  /// La config del server ya está migrada — esto es robustez por si aparece
+  /// una vieja (backup, otro cliente). Muta [raw], NUNCA [original]: el
+  /// anti-clobber del save compara [original] contra el JSON del server tal
+  /// cual está. Sources desconocidos (futuros) quedan intactos: convertirlos
+  /// a ciegas perdería lo que signifiquen.
+  void convertLegacySourceToAction() {
+    final sid = sourceId;
+    switch (source) {
+      case 'scene':
+        if (sid != null) actions.add(AutomationAction.scene(sid));
+      case 'hueScene':
+        if (sid != null) {
+          actions.add(AutomationAction.hueScene(sid, sceneSmart: sourceSmart));
+        }
+      case 'group':
+        if (sid != null) {
+          actions.add(AutomationAction.group(sid)
+            ..updateGroup(groupId: sid, groupAction: sourceAction));
+        }
+      case 'hueRoom':
+        if (sid != null) {
+          // El modo Simple usaba sourceAction ('on'|'off') también para rooms.
+          actions.add(AutomationAction.hueRoom(sid)
+            ..updateHueRoom(hueRoomId: sid, hueRoomAction: sourceAction));
+        }
+      default:
+        return; // 'custom' o desconocido: nada que convertir.
+    }
+    raw['source'] = 'custom';
+    raw.remove('sourceId');
+    raw.remove('sourceAction');
+    raw.remove('sourceSmart');
+  }
+
   /// Validación dura client-side (el server acepta cualquier cosa).
   /// Devuelve el motivo visible en español, o null si se puede guardar.
   String? validationError() {
@@ -501,6 +538,10 @@ class AutomationAction {
     raw['on'] = 'group';
     raw['groupId'] = groupId;
     raw['groupAction'] = groupAction;
+    // El editor unificado permite cambiar Room Hue→grupo CCE en la misma
+    // fila: limpiar las claves del otro contrato (ver updateScene).
+    raw.remove('hueRoomId');
+    raw.remove('hueRoomAction');
     edited = true;
   }
 
@@ -512,6 +553,9 @@ class AutomationAction {
     raw['on'] = 'hueRoom';
     raw['hueRoomId'] = hueRoomId;
     raw['hueRoomAction'] = hueRoomAction;
+    // Cambio grupo CCE→Room Hue en la misma fila: ver updateGroup.
+    raw.remove('groupId');
+    raw.remove('groupAction');
     edited = true;
   }
 

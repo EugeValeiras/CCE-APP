@@ -9,6 +9,8 @@ import '../../../models/automation.dart';
 import '../../../models/scene.dart';
 import '../../../models/capability.dart';
 import '../../../models/device.dart';
+import '../../../models/hue_room.dart';
+import '../../../models/light_group.dart';
 import '../../../utils/verb_labels.dart';
 import '../../../models/server_config.dart';
 import '../../../services/devices_service.dart';
@@ -19,8 +21,10 @@ import '../../../theme/components/cce_segmented.dart';
 import '../../../theme/components/status_pill.dart';
 import '../automation_phrases.dart';
 
-/// Sheet ENTONCES: modo Simple (escena CCE / escena Hue / grupo) o
-/// Personalizado (lista reordenable de acciones). Muta el draft directo.
+/// Sheet ENTONCES: EL editor de acciones combinables (lista reordenable).
+/// El modo Simple (una escena/grupo como source) se retiró el 2026-07-30:
+/// la config está migrada a source:'custom' y las legacy se convierten al
+/// abrir el editor. Muta el draft directo.
 Future<bool> showActionsSheet(
   BuildContext context, {
   required Automation draft,
@@ -37,16 +41,17 @@ Future<bool> showActionsSheet(
   return result == true;
 }
 
-/// Naranja Hue, el mismo de la sección "Rooms de Hue" del modo Simple.
+/// Naranja de marca Hue (rooms y escenas del bridge).
 const _hueOrange = Color(0xFFFF6A00);
 
 /// Grosor del borde de marca Hue de los chips (mismo que HueRoomCard).
 const double _hueBorderWidth = 1.4;
 
-/// Chip de escena — COMPARTIDO entre el modo Simple y el editor de acción
-/// Escena para que la marca visual sea una sola: swatch de colores, pill
-/// 'auto' para smart scenes y borde con el gradiente de marca en las Hue.
-Widget _sceneChip({
+/// Chip de picker — COMPARTIDO entre los editores de acción Escena y Grupo
+/// para que la marca visual sea una sola: swatch de colores, pill 'auto'
+/// para smart scenes y borde con el gradiente de marca en lo que viene del
+/// bridge Hue (escenas y rooms).
+Widget _pickerChip({
   required String name,
   required bool selected,
   List<Color> swatch = const [],
@@ -136,12 +141,11 @@ Widget _sceneChip({
   );
 }
 
-/// Escenas agrupadas POR PLANO/room — COMPARTIDO entre el modo Simple y el
-/// editor de acción Escena (misma fuente de datos: DevicesService, sin fetch
+/// Escenas agrupadas POR PLANO/room (fuente: DevicesService, sin fetch
 /// propio): header con el nombre del plano y adentro las escenas CCE de ese
 /// planId + las Hue cuyo roomId corresponde al hueRoomId del plano, mezcladas
 /// en el mismo wrap (primero CCE, después Hue alfabético). Lo que no matchea
-/// ningún plano cae en 'Otras' al final.
+/// ningún plano cae al final: CCE en 'Sin plano', Hue por room 'sin vincular'.
 List<Widget> _sceneSectionList({
   required DevicesService devices,
   required Widget Function(String) label,
@@ -203,6 +207,71 @@ List<Widget> _sceneSectionList({
   for (final e in byRoom.entries) {
     out.add(label('${e.key} · sin vincular'));
     out.add(sectionWrap(const [], e.value));
+  }
+  return out;
+}
+
+/// Grupos agrupados POR PLANO/room — MISMO patrón que [_sceneSectionList],
+/// unificando lo que antes eran dos listas planas ("Grupos" y "Rooms de
+/// Hue"): header con el nombre del plano y adentro los grupos CCE de ese
+/// planId + el room de Hue que el plano vinculó (hueRoomId), con el borde de
+/// marca. Grupos sin plano caen en 'Sin plano'; los rooms de Hue que ningún
+/// plano vinculó, al final con la leyenda 'sin vincular' (espejo del
+/// Dashboard). Nada se descarta.
+List<Widget> _groupSectionList({
+  required DevicesService devices,
+  required Widget Function(String) label,
+  required Widget Function(LightGroup) cceTile,
+  required Widget Function(HueRoom) hueTile,
+}) {
+  final groups = devices.groups;
+  final hueRooms = devices.hueRooms;
+  if (groups.isEmpty && hueRooms.isEmpty) return const [];
+
+  final usedCce = <String>{};
+  final usedHue = <String>{};
+  final out = <Widget>[];
+
+  Widget sectionWrap(List<LightGroup> cce, List<HueRoom> hue) => Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final g in cce) cceTile(g),
+          for (final r in hue) hueTile(r),
+        ],
+      );
+
+  // Orden de secciones: el orden de los planos como los da devices_service.
+  for (final room in devices.rooms) {
+    final planId = room.planId;
+    final cce = planId == null
+        ? const <LightGroup>[]
+        : groups.where((g) => g.planId == planId).toList();
+    final hue = [
+      for (final r in hueRooms)
+        if (room.hueRoomId != null && r.id == room.hueRoomId) r,
+    ];
+    if (cce.isEmpty && hue.isEmpty) continue;
+    usedCce.addAll(cce.map((g) => g.id));
+    usedHue.addAll(hue.map((r) => r.id));
+    out.add(label(room.name));
+    out.add(sectionWrap(cce, hue));
+  }
+
+  // Grupos CCE sin plano.
+  final looseCce = groups.where((g) => !usedCce.contains(g.id)).toList();
+  if (looseCce.isNotEmpty) {
+    out.add(label('Sin plano'));
+    out.add(sectionWrap(looseCce, const []));
+  }
+
+  // Rooms de Hue sin vincular: sección propia por room con la leyenda, igual
+  // que las escenas Hue sueltas de [_sceneSectionList].
+  final looseHue = hueRooms.where((r) => !usedHue.contains(r.id)).toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  for (final r in looseHue) {
+    out.add(label('${r.name} · sin vincular'));
+    out.add(sectionWrap(const [], [r]));
   }
   return out;
 }
@@ -277,188 +346,6 @@ class _ActionsSheet extends StatefulWidget {
 class _ActionsSheetState extends State<_ActionsSheet> {
   Automation get draft => widget.draft;
 
-  /// Acciones personalizadas guardadas al pasar a modo escena/grupo. Antes se
-  /// hacia actions.clear() y se perdian sin aviso ni undo; ahora se restauran
-  /// solas al volver a "Personalizado".
-  List<AutomationAction>? _stashedActions;
-
-  /// Pasa a modo simple (escena/grupo) preservando las acciones custom.
-  void _stashActions() {
-    if (draft.actions.isNotEmpty) {
-      _stashedActions = List<AutomationAction>.of(draft.actions);
-    }
-    draft.actions.clear();
-  }
-
-  /// Vuelve a modo personalizado restaurando lo guardado (si el usuario no
-  /// agrego nada nuevo en el medio).
-  void _restoreActions() {
-    final stash = _stashedActions;
-    if (stash != null && draft.actions.isEmpty) {
-      draft.actions.addAll(stash);
-      _stashedActions = null;
-    }
-  }
-
-  late bool _custom = draft.source == 'custom';
-
-  // === Simple ===============================================================
-
-  Widget _cceSceneTile(CceScene s) => _sceneChip(
-        name: s.name,
-        selected: draft.source == 'scene' && draft.sourceId == s.id,
-        onTap: () => setState(() {
-          draft.source = 'scene';
-          draft.sourceId = s.id;
-          _stashActions();
-        }),
-      );
-
-  Widget _hueSceneTile(HueScene s) => _sceneChip(
-        name: s.name,
-        swatch: s.swatch,
-        isSmart: s.isSmart,
-        hueBorder: true,
-        selected: draft.source == 'hueScene' && draft.sourceId == s.id,
-        onTap: () => setState(() {
-          draft.source = 'hueScene';
-          draft.sourceId = s.id;
-          draft.sourceSmart = s.isSmart;
-          _stashActions();
-        }),
-      );
-
-  /// Escenas agrupadas por plano/room del modo Simple: delega en el helper
-  /// compartido con el editor de acción Escena (ver [_sceneSectionList]).
-  List<Widget> _sceneSections() => _sceneSectionList(
-        devices: widget.devices,
-        label: _label,
-        cceTile: _cceSceneTile,
-        hueTile: _hueSceneTile,
-      );
-
-  Widget _simpleBody() {
-    final cceScenes = widget.devices.scenes;
-    final hueScenes = widget.devices.hueScenes;
-    final groups = widget.devices.groups;
-    final hueRooms = widget.devices.hueRooms;
-    const hueOrange = Color(0xFFFF6A00);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ..._sceneSections(),
-        if (groups.isNotEmpty) ...[
-          _label('Grupos'),
-          for (final g in groups)
-            Container(
-              height: 56,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: draft.source == 'group' && draft.sourceId == g.id
-                    ? CceColors.accent.withValues(alpha: 0.16)
-                    : CceColors.surfaceHigh,
-                borderRadius: BorderRadius.circular(CceRadii.control),
-                border: Border.all(
-                  color: draft.source == 'group' && draft.sourceId == g.id
-                      ? CceColors.accent.withValues(alpha: 0.6)
-                      : CceColors.stroke,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(() {
-                        draft.source = 'group';
-                        draft.sourceId = g.id;
-                        _stashActions();
-                      }),
-                      child: Text(g.name, style: CceText.body),
-                    ),
-                  ),
-                  if (draft.source == 'group' && draft.sourceId == g.id)
-                    SizedBox(
-                      width: 150,
-                      child: CceSegmented<String>(
-                        value: draft.sourceAction == 'off' ? 'off' : 'on',
-                        segments: const [
-                          CceSegment(value: 'on', label: 'On'),
-                          CceSegment(value: 'off', label: 'Off'),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => draft.sourceAction = v),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-        ],
-        if (hueRooms.isNotEmpty) ...[
-          _label('Rooms de Hue'),
-          for (final r in hueRooms)
-            Container(
-              height: 56,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: draft.source == 'hueRoom' && draft.sourceId == r.id
-                    ? hueOrange.withValues(alpha: 0.14)
-                    : CceColors.surfaceHigh,
-                borderRadius: BorderRadius.circular(CceRadii.control),
-                border: Border.all(
-                  color: draft.source == 'hueRoom' && draft.sourceId == r.id
-                      ? hueOrange.withValues(alpha: 0.6)
-                      : CceColors.stroke,
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(() {
-                        draft.source = 'hueRoom';
-                        draft.sourceId = r.id;
-                        _stashActions();
-                      }),
-                      child: Text(r.name, style: CceText.body),
-                    ),
-                  ),
-                  if (draft.source == 'hueRoom' && draft.sourceId == r.id)
-                    SizedBox(
-                      width: 150,
-                      child: CceSegmented<String>(
-                        value: draft.sourceAction == 'off' ? 'off' : 'on',
-                        segments: const [
-                          CceSegment(value: 'on', label: 'On'),
-                          CceSegment(value: 'off', label: 'Off'),
-                        ],
-                        onChanged: (v) =>
-                            setState(() => draft.sourceAction = v),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-        ],
-        if (cceScenes.isEmpty &&
-            hueScenes.isEmpty &&
-            groups.isEmpty &&
-            hueRooms.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Text(
-              'No hay escenas ni grupos configurados — usá el modo '
-              'Personalizado.',
-              style: CceText.caption,
-            ),
-          ),
-      ],
-    );
-  }
-
-  // === Personalizado ========================================================
-
   Future<void> _editAction(AutomationAction action, {required bool isNew}) async {
     bool? applied;
     switch (action.kind) {
@@ -466,13 +353,12 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         applied = await _showActionEditor(
             (ctx, scroll) => _LightActionEditor(
                 action: action, devices: widget.devices, scroll: scroll));
+      // Un solo editor para grupos CCE y rooms de Hue: el picker unificado
+      // por plano mezcla ambos y al aplicar escribe el contrato que toque.
       case AutomationActionKind.group:
-        applied = await _showActionEditor(
-            (ctx, scroll) => _GroupActionEditor(
-                action: action, devices: widget.devices, scroll: scroll));
       case AutomationActionKind.hueRoom:
         applied = await _showActionEditor(
-            (ctx, scroll) => _HueRoomActionEditor(
+            (ctx, scroll) => _GroupActionEditor(
                 action: action, devices: widget.devices, scroll: scroll));
       // Un solo editor para escenas CCE y Hue: el picker mezcla ambas y al
       // aplicar escribe el contrato que corresponda.
@@ -735,17 +621,13 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               const CceIcon(CceIcons.lights, size: 24, color: CceColors.warm),
               () => _editAction(AutomationAction.light(''), isNew: true),
             ),
+            // Un solo tile: el editor unificado ofrece grupos CCE y rooms de
+            // Hue juntos, agrupados por plano (antes eran dos tiles).
             _addTile(
               'Grupo',
               const CceIcon(CceIcons.room, size: 24, color: CceColors.accent),
               () => _editAction(AutomationAction.group(''), isNew: true),
             ),
-            if (widget.devices.hueRooms.isNotEmpty)
-              _addTile(
-                'Room Hue',
-                const CceIcon(CceIcons.room, size: 24, color: _hueOrange),
-                () => _editAction(AutomationAction.hueRoom(''), isNew: true),
-              ),
             _addTile(
               'Dispositivo',
               const Icon(Icons.tune, size: 24, color: CceColors.info),
@@ -835,23 +717,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
                 ],
               ),
               const SizedBox(height: 14),
-              CceSegmented<bool>(
-                value: _custom,
-                segments: const [
-                  CceSegment(value: false, label: 'Simple'),
-                  CceSegment(value: true, label: 'Personalizado'),
-                ],
-                // Al volver a Simple, la selección previa (sourceId) se
-                // restaura sola al elegir; mientras tanto sigue 'custom'.
-                onChanged: (v) => setState(() {
-                  _custom = v;
-                  if (v) {
-                    draft.source = 'custom';
-                    _restoreActions();
-                  }
-                }),
-              ),
-              _custom ? _customBody() : _simpleBody(),
+              _customBody(),
             ],
           ),
         );
@@ -1093,7 +959,11 @@ class _LightActionEditorState extends State<_LightActionEditor> {
   }
 }
 
-/// Grupo: picker + Prender/Apagar/Alternar.
+/// Grupo como acción: UN grupo CCE o room de Hue (borde con el gradiente de
+/// marca), agrupados por plano igual que las escenas ([_groupSectionList]),
+/// + Prender/Apagar/Alternar. Al aplicar escribe el contrato del backend que
+/// corresponda: on:'group'+groupId+groupAction o
+/// on:'hueRoom'+hueRoomId+hueRoomAction.
 class _GroupActionEditor extends StatefulWidget {
   const _GroupActionEditor({
     required this.action,
@@ -1110,121 +980,78 @@ class _GroupActionEditor extends StatefulWidget {
 }
 
 class _GroupActionEditorState extends State<_GroupActionEditor> {
-  late String _groupId = widget.action.groupId ?? '';
-  late String _groupAction = widget.action.groupAction;
+  // Selección única entre dos namespaces de id: _hue dice de cuál viene.
+  late bool _hue = widget.action.kind == AutomationActionKind.hueRoom;
+  late String _targetId =
+      (_hue ? widget.action.hueRoomId : widget.action.groupId) ?? '';
+  // on/off/alternar compartido: al aplicar cae en groupAction o hueRoomAction.
+  late String _mode =
+      _hue ? widget.action.hueRoomAction : widget.action.groupAction;
+
+  void _apply() {
+    if (_hue) {
+      widget.action
+          .updateHueRoom(hueRoomId: _targetId, hueRoomAction: _mode);
+    } else {
+      widget.action.updateGroup(groupId: _targetId, groupAction: _mode);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final groups = widget.devices.groups;
-    final valid = _groupId.isNotEmpty;
+    final devices = widget.devices;
+    final empty = devices.groups.isEmpty && devices.hueRooms.isEmpty;
     return _EditorScaffold(
       title: 'Acción de grupo',
       scroll: widget.scroll,
-      onApply: valid
-          ? () => widget.action
-              .updateGroup(groupId: _groupId, groupAction: _groupAction)
-          : null,
+      onApply: _targetId.isEmpty ? null : _apply,
       children: [
-        _editorLabel('Grupo'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final g in groups)
-              ChoiceChip(
-                label: Text(g.name),
-                selected: _groupId == g.id,
-                showCheckmark: false,
-                onSelected: (_) => setState(() => _groupId = g.id),
-              ),
-          ],
-        ),
-        _editorLabel('Acción'),
-        CceSegmented<String>(
-          value: _groupAction,
-          segments: const [
-            CceSegment(value: 'on', label: 'Prender'),
-            CceSegment(value: 'off', label: 'Apagar'),
-            CceSegment(value: 'toggle', label: 'Alternar'),
-          ],
-          onChanged: (v) => setState(() => _groupAction = v),
-        ),
-      ],
-    );
-  }
-}
-
-/// Room de Hue: picker de rooms + Prender/Apagar/Alternar. Espejo de
-/// _GroupActionEditor, pero contra el grouped_light del bridge
-/// (on:'hueRoom' + hueRoomId + hueRoomAction).
-class _HueRoomActionEditor extends StatefulWidget {
-  const _HueRoomActionEditor({
-    required this.action,
-    required this.devices,
-    required this.scroll,
-  });
-
-  final AutomationAction action;
-  final DevicesService devices;
-  final ScrollController scroll;
-
-  @override
-  State<_HueRoomActionEditor> createState() => _HueRoomActionEditorState();
-}
-
-class _HueRoomActionEditorState extends State<_HueRoomActionEditor> {
-  late String _hueRoomId = widget.action.hueRoomId ?? '';
-  late String _hueRoomAction = widget.action.hueRoomAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final rooms = widget.devices.hueRooms;
-    final valid = _hueRoomId.isNotEmpty;
-    return _EditorScaffold(
-      title: 'Room de Hue',
-      scroll: widget.scroll,
-      onApply: valid
-          ? () => widget.action.updateHueRoom(
-              hueRoomId: _hueRoomId, hueRoomAction: _hueRoomAction)
-          : null,
-      children: [
-        _editorLabel('Room'),
-        if (rooms.isEmpty)
-          const Text('No hay rooms de Hue disponibles.', style: CceText.caption)
-        else
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final r in rooms)
-                ChoiceChip(
-                  label: Text(r.name),
-                  selected: _hueRoomId == r.id,
-                  showCheckmark: false,
-                  onSelected: (_) => setState(() => _hueRoomId = r.id),
-                ),
-            ],
+        if (empty)
+          const Text('No hay grupos ni rooms de Hue configurados.',
+              style: CceText.caption)
+        else ...[
+          ..._groupSectionList(
+            devices: devices,
+            label: _editorLabel,
+            cceTile: (g) => _pickerChip(
+              name: g.name,
+              selected: !_hue && _targetId == g.id,
+              onTap: () => setState(() {
+                _hue = false;
+                _targetId = g.id;
+              }),
+            ),
+            hueTile: (r) => _pickerChip(
+              name: r.name,
+              hueBorder: true,
+              selected: _hue && _targetId == r.id,
+              onTap: () => setState(() {
+                _hue = true;
+                _targetId = r.id;
+              }),
+            ),
           ),
-        _editorLabel('Acción'),
-        CceSegmented<String>(
-          value: _hueRoomAction,
-          segments: const [
-            CceSegment(value: 'on', label: 'Prender'),
-            CceSegment(value: 'off', label: 'Apagar'),
-            CceSegment(value: 'toggle', label: 'Alternar'),
-          ],
-          onChanged: (v) => setState(() => _hueRoomAction = v),
-        ),
+          _editorLabel('Acción'),
+          CceSegmented<String>(
+            value: _mode,
+            segments: const [
+              CceSegment(value: 'on', label: 'Prender'),
+              CceSegment(value: 'off', label: 'Apagar'),
+              CceSegment(value: 'toggle', label: 'Alternar'),
+            ],
+            onChanged: (v) => setState(() => _mode = v),
+          ),
+        ],
       ],
     );
   }
 }
 
-/// Escena como acción del modo Personalizado: UNA escena CCE o Hue (las Hue
-/// con el borde de gradiente de marca), combinable con las demás acciones.
-/// Reusa el picker agrupado por plano del modo Simple ([_sceneSectionList])
-/// y al aplicar escribe el contrato del backend que corresponda:
-/// on:'scene'+sceneId o on:'hueScene'+hueSceneId+sceneSmart.
+/// Escena como acción: UNA escena CCE o Hue (las Hue con el borde de
+/// gradiente de marca), combinable con las demás acciones. Usa el picker
+/// agrupado por plano ([_sceneSectionList]) y al aplicar escribe el contrato
+/// del backend que corresponda: on:'scene'+sceneId o
+/// on:'hueScene'+hueSceneId+sceneSmart.
 class _SceneActionEditor extends StatefulWidget {
   const _SceneActionEditor({
     required this.action,
@@ -1279,7 +1106,7 @@ class _SceneActionEditorState extends State<_SceneActionEditor> {
           ..._sceneSectionList(
             devices: devices,
             label: _editorLabel,
-            cceTile: (s) => _sceneChip(
+            cceTile: (s) => _pickerChip(
               name: s.name,
               selected: !_hue && _sceneId == s.id,
               onTap: () => setState(() {
@@ -1287,7 +1114,7 @@ class _SceneActionEditorState extends State<_SceneActionEditor> {
                 _sceneId = s.id;
               }),
             ),
-            hueTile: (s) => _sceneChip(
+            hueTile: (s) => _pickerChip(
               name: s.name,
               swatch: s.swatch,
               isSmart: s.isSmart,
