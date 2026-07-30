@@ -254,19 +254,25 @@ class RoomPanel extends StatelessWidget {
         .where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock)
         .toList();
     final locks = devices.where((d) => d.isLock).toList();
-    // Pertenencia config-driven de TV/JBL (NO hardcodear el Living): el
-    // dispositivo pertenece a la room si su posición está en el plano de ESTA
-    // room (mismo lookup que floor_plan_tab). planId == null en rooms de
-    // fallback (groups/_orphans) ⇒ nunca muestran TV/JBL.
+    // Pertenencia de TV/JBL derivada de los DEVICES del room ("todos son
+    // dispositivos", espejo del phone en room_detail_screen.dart): si
+    // dev_tv/dev_jbl están en los deviceIds (pasa en las rooms de fallback
+    // groups/_orphans), su tile aparece; la posición en el plano de ESTA room
+    // sigue contando como pertenencia porque las rooms de plano no los listan
+    // en positions (viven en tv/jblPositions). El gate viejo exigía
+    // planId != null y las rooms de fallback jamás mostraban TV/JBL.
     final fp = service.floorPlans;
+    final mediaDevices = devices.where((d) => d.isMediaDevice).toList();
     final hasTv = tv != null &&
-        room.planId != null &&
-        fp != null &&
-        fp.tvPositions.containsKey(room.planId);
+        (mediaDevices.any((d) => d.id == kTvDeviceId) ||
+            (room.planId != null &&
+                fp != null &&
+                fp.tvPositions.containsKey(room.planId)));
     final hasJbl = jbl != null &&
-        room.planId != null &&
-        fp != null &&
-        fp.jblPositions.containsKey(room.planId);
+        (mediaDevices.any((d) => d.id == kJblDeviceId) ||
+            (room.planId != null &&
+                fp != null &&
+                fp.jblPositions.containsKey(room.planId)));
     // TODOS los termostatos entran a la sección Devices como tiles (pedido
     // del dueño v1.62): el primario aparece dos veces a propósito — como
     // ThermostatHeaderCard fijo arriba Y como tile en la lista.

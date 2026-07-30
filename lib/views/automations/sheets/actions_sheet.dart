@@ -76,7 +76,9 @@ Widget _kindIcon(AutomationActionKind kind, Color color) {
     case AutomationActionKind.alarm:
       return CceIcon(CceIcons.alarmShield, size: 18, color: color);
     case AutomationActionKind.jbl:
-      return Icon(Icons.music_note_outlined, size: 18, color: color);
+      // Wordmark JBL vendoreado (mismo asset del panel de Sonido): la acción
+      // es del soundbar, no "música" genérica.
+      return CceIcon(CceIcons.jbl, size: 18, color: color);
     case AutomationActionKind.advanced:
       return CceIcon(CceIcons.automations, size: 18, color: color);
   }
@@ -716,8 +718,8 @@ class _ActionsSheetState extends State<_ActionsSheet> {
             ),
             _addTile(
               'Música',
-              const Icon(Icons.music_note_outlined,
-                  size: 24, color: CceColors.ok),
+              // Wordmark JBL vendoreado (ver _kindIcon): identifica al device.
+              const CceIcon(CceIcons.jbl, size: 24, color: CceColors.ok),
               () => _editAction(AutomationAction.jbl(), isNew: true),
             ),
             _addTile(

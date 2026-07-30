@@ -427,20 +427,26 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // Cerraduras del room → sección propia (no reordenable, fija al final).
         final locks = devices.where((d) => d.isLock).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
-        // Pertenencia config-driven de TV/JBL (NO hardcodear el Living): el
-        // dispositivo pertenece a la room si su posición está en el plano de
-        // ESTA room (mismo lookup que floor_plan_tab). planId == null en rooms
-        // de fallback (groups/_orphans) ⇒ nunca muestran TV/JBL.
+        // Pertenencia de TV/JBL derivada de los DEVICES del room ("todos son
+        // dispositivos"): dev_tv/dev_jbl existen en /merged y caen en los
+        // deviceIds de las rooms de fallback (groups/_orphans), así que si el
+        // device está acá, su tile aparece. Las rooms de plano no los listan
+        // en positions (su lugar vive en tv/jblPositions), por eso el plano
+        // sigue contando como pertenencia. El gate viejo exigía planId != null
+        // y las rooms de fallback jamás mostraban TV/JBL.
         final fp = service.floorPlans;
         final planId = widget.room?.planId;
+        final mediaDevices = devices.where((d) => d.isMediaDevice).toList();
         final hasTv = widget.tv != null &&
-            planId != null &&
-            fp != null &&
-            fp.tvPositions.containsKey(planId);
+            (mediaDevices.any((d) => d.id == kTvDeviceId) ||
+                (planId != null &&
+                    fp != null &&
+                    fp.tvPositions.containsKey(planId)));
         final hasJbl = widget.jbl != null &&
-            planId != null &&
-            fp != null &&
-            fp.jblPositions.containsKey(planId);
+            (mediaDevices.any((d) => d.id == kJblDeviceId) ||
+                (planId != null &&
+                    fp != null &&
+                    fp.jblPositions.containsKey(planId)));
         // TODOS los termostatos entran a la sección Devices como tiles
         // (pedido del dueño v1.62): el primario aparece dos veces a propósito
         // — como ThermostatHeaderCard fijo arriba Y como tile en la lista.

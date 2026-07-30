@@ -91,6 +91,12 @@ class DevicesService extends ChangeNotifier {
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
   List<Device> get locks => all.where((d) => d.isLock).toList();
   List<Device> get vacuums => all.where((d) => d.isVacuum).toList();
+  // Contrapartida del !isMediaDevice de arriba: si lights/sensors los
+  // excluyen, TIENE que existir el getter que los liste — ninguna categoría
+  // puede esconder un device por su tipo ("todos son dispositivos"). El
+  // control fino sigue en Jbl/TvService; esto alimenta listas/gates genéricos.
+  // El test device_partition_test.dart asserta que la partición es exhaustiva.
+  List<Device> get media => all.where((d) => d.isMediaDevice).toList();
   FloorPlansData? get floorPlans => _floorPlans;
   List<LightGroup> get groups => _groups;
   Map<String, String> get lightIcons => _lightIcons;
@@ -118,6 +124,23 @@ class DevicesService extends ChangeNotifier {
   String automationName(String? id) {
     if (id == null || id.isEmpty) return 'Automatización';
     return _automationNames[id] ?? id;
+  }
+
+  /// SOLO TESTS: siembra el estado interno con [devices] para poder assertar
+  /// los getters de listas (lights/sensors/…/media) contra el fixture dorado
+  /// sin red ni socket. Espeja lo que hace [refresh] con la respuesta HTTP.
+  @visibleForTesting
+  void debugSeedDevices(List<Device> devices) {
+    _byId
+      ..clear()
+      ..addEntries(devices.map((d) => MapEntry(d.id, d)));
+    _byBindingId.clear();
+    for (final d in devices) {
+      for (final bid in d.bindingIds) {
+        _byBindingId[bid] = d;
+      }
+    }
+    notifyListeners();
   }
 
   Future<void> refresh() async {

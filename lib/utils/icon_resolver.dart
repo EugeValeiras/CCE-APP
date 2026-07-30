@@ -101,6 +101,22 @@ class IconResolver {
     final t = device.type.toLowerCase();
     final n = (displayName ?? device.name).toLowerCase();
 
+    // Capabilities canónicas ANTES de cualquier heurística por nombre/tipo:
+    // sin estas ramas un TV, el robot o la cerradura caían al fallback
+    // lamparita ("todos son dispositivos": el default respeta lo que el
+    // device declara en su descriptor).
+    if (device.isMediaDevice) {
+      // TV vs parlante: media_playback/app_launcher son del TV (mismo criterio
+      // que el historial en event_presenter); el resto de los media son audio.
+      final tvLike = device.hasCapability('media_playback') ||
+          device.hasCapability('app_launcher') ||
+          t.contains('tv');
+      return tvLike ? Mdi.television : Mdi.speaker;
+    }
+    if (device.isVacuum) return Mdi.robotVacuum;
+    if (device.isLock) return Mdi.lock;
+    if (device.isThermostat) return Mdi.thermometer;
+
     // Sensors
     if (device.isContactSensor) {
       return (device.sensor?.contact == true) ? Mdi.doorOpen : Mdi.door;

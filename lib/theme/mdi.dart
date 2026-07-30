@@ -57,6 +57,10 @@ abstract final class Mdi {
   static const IconData lightbulbOn = IconData(0xf06e8, fontFamily: _f);
   static const IconData lightbulbOnOutline = IconData(0xf06e9, fontFamily: _f);
   static const IconData lightbulbOutline = IconData(0xf0336, fontFamily: _f);
+  // lock/robotVacuum/speaker: agregados a mano al pasar a uso estático
+  // (defaults por capability de icon_resolver / historial); MISMOS codepoints
+  // que sus entradas de [byName] — si se regenera, conservarlos.
+  static const IconData lock = IconData(0xf033e, fontFamily: _f);
   static const IconData motionSensor = IconData(0xf0d91, fontFamily: _f);
   static const IconData motionSensorOff = IconData(0xf1435, fontFamily: _f);
   static const IconData powerPlug = IconData(0xf06a5, fontFamily: _f);
@@ -65,10 +69,12 @@ abstract final class Mdi {
   static const IconData powerSocketEu = IconData(0xf07e7, fontFamily: _f);
   static const IconData powerSocketUs = IconData(0xf07e9, fontFamily: _f);
   static const IconData remote = IconData(0xf0454, fontFamily: _f);
+  static const IconData robotVacuum = IconData(0xf070d, fontFamily: _f);
   static const IconData shield = IconData(0xf0498, fontFamily: _f);
   static const IconData shieldHome = IconData(0xf068a, fontFamily: _f);
   static const IconData shieldOutline = IconData(0xf0499, fontFamily: _f);
   static const IconData sofa = IconData(0xf04b9, fontFamily: _f);
+  static const IconData speaker = IconData(0xf04c3, fontFamily: _f);
   static const IconData spotlight = IconData(0xf04c8, fontFamily: _f);
   static const IconData spotlightBeam = IconData(0xf04c9, fontFamily: _f);
   static const IconData stove = IconData(0xf04de, fontFamily: _f);

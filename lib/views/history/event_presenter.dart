@@ -158,6 +158,64 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   if (state is Map) {
     final on = state['on'];
     final bri = state['bri'];
+    // Media (dev_tv/dev_jbl vía /merged): rama PROPIA antes de la de luces —
+    // sin esto "Samsung TV: encendido" salía con lamparita y los eventos de
+    // volumen/mediaState caían al fallback genérico ("todos son dispositivos":
+    // el historial también les debe ícono y copy correctos).
+    final device = resolveDevice(e, devices);
+    if (device != null && device.isMediaDevice) {
+      // TV vs parlante por capability (media_playback/app_launcher son del
+      // TV) con fallback por type; el resto de los media son audio.
+      final tvLike = device.hasCapability('media_playback') ||
+          device.hasCapability('app_launcher') ||
+          device.type.toLowerCase().contains('tv');
+      final icon = Icon(tvLike ? Mdi.television : Mdi.speaker, size: 22);
+      if (on != null) {
+        return EventPresentation(
+          icon: icon,
+          color: on == true ? CceColors.warm : CceColors.textTertiary,
+          title: on == true ? '$name: encendido' : '$name: apagado',
+        );
+      }
+      final volume = state['volume'];
+      if (volume is num) {
+        // Volumen 0-100 canónico del backend (la vista JBL reescala, acá no).
+        return EventPresentation(
+          icon: icon,
+          color: CceColors.info,
+          title: '$name: volumen al ${volume.round()}%',
+        );
+      }
+      if (state['muted'] is bool) {
+        final muted = state['muted'] == true;
+        return EventPresentation(
+          icon: icon,
+          color: muted ? CceColors.textTertiary : CceColors.info,
+          title: muted ? '$name: silenciado' : '$name: sonido activado',
+        );
+      }
+      final mediaState = state['mediaState'];
+      if (mediaState is String && mediaState.isNotEmpty) {
+        const copy = {
+          'playing': 'reproduciendo',
+          'paused': 'en pausa',
+          'stopped': 'detenido',
+        };
+        return EventPresentation(
+          icon: icon,
+          color: mediaState == 'playing' ? CceColors.ok : CceColors.textTertiary,
+          title: '$name: ${copy[mediaState] ?? mediaState}',
+        );
+      }
+      // Cualquier otro cambio de estado media (input, app, canal…): genérico
+      // pero con SU ícono, nunca la lamparita ni el fallback "Evento de".
+      return EventPresentation(
+        icon: icon,
+        color: CceColors.textTertiary,
+        title: 'Evento de $name',
+        subtitle: e.eventName,
+      );
+    }
     if (on != null) {
       if (on == true) {
         final pct = bri is num ? (bri / 254 * 100).round() : null;
