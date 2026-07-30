@@ -40,6 +40,161 @@ Future<bool> showActionsSheet(
 /// Naranja Hue, el mismo de la sección "Rooms de Hue" del modo Simple.
 const _hueOrange = Color(0xFFFF6A00);
 
+/// Grosor del borde de marca Hue de los chips (mismo que HueRoomCard).
+const double _hueBorderWidth = 1.4;
+
+/// Chip de escena — COMPARTIDO entre el modo Simple y el editor de acción
+/// Escena para que la marca visual sea una sola: swatch de colores, pill
+/// 'auto' para smart scenes y borde con el gradiente de marca en las Hue.
+Widget _sceneChip({
+  required String name,
+  required bool selected,
+  List<Color> swatch = const [],
+  bool isSmart = false,
+  bool hueBorder = false,
+  required VoidCallback onTap,
+}) {
+  final tile = InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(CceRadii.control),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: selected
+            ? CceColors.accent.withValues(alpha: 0.24)
+            : CceColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        // Escena Hue: el borde lo pone el contenedor externo con el
+        // gradiente de marca; acá no va Border para no sumar un anillo.
+        border: hueBorder
+            ? null
+            : Border.all(
+                color: selected
+                    ? CceColors.accent.withValues(alpha: 0.6)
+                    : CceColors.stroke,
+              ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (swatch.isNotEmpty) ...[
+            SizedBox(
+              width: 16 + (swatch.length.clamp(1, 4) - 1) * 9.0,
+              height: 16,
+              child: Stack(
+                children: [
+                  for (var i = 0; i < swatch.length && i < 4; i++)
+                    Positioned(
+                      left: i * 9.0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: swatch[i],
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: CceColors.surface, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Text(
+            name,
+            style: const TextStyle(
+              color: CceColors.textPrimary,
+              fontSize: 13.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (isSmart) ...[
+            const SizedBox(width: 6),
+            const StatusPill(label: 'auto', color: Color(0x52000000)),
+          ],
+          if (selected) ...[
+            const SizedBox(width: 6),
+            const CceIcon(CceIcons.check, size: 14, color: CceColors.accent),
+          ],
+        ],
+      ),
+    ),
+  );
+  if (!hueBorder) return tile;
+  // Borde con el GRADIENTE de marca de Hue: mismo truco que HueRoomCard
+  // (Flutter no pinta Border con gradiente) — Container con el gradiente +
+  // padding fino, y el chip real encima tapando el centro.
+  return Container(
+    padding: const EdgeInsets.all(_hueBorderWidth),
+    decoration: BoxDecoration(
+      gradient: CceGradients.hueBrand,
+      borderRadius: BorderRadius.circular(CceRadii.control),
+    ),
+    child: tile,
+  );
+}
+
+/// Escenas agrupadas POR PLANO/room — COMPARTIDO entre el modo Simple y el
+/// editor de acción Escena (misma fuente de datos: DevicesService, sin fetch
+/// propio): header con el nombre del plano y adentro las escenas CCE de ese
+/// planId + las Hue cuyo roomId corresponde al hueRoomId del plano, mezcladas
+/// en el mismo wrap (primero CCE, después Hue alfabético). Lo que no matchea
+/// ningún plano cae en 'Otras' al final.
+List<Widget> _sceneSectionList({
+  required DevicesService devices,
+  required Widget Function(String) label,
+  required Widget Function(CceScene) cceTile,
+  required Widget Function(HueScene) hueTile,
+}) {
+  final cceScenes = devices.scenes;
+  final hueScenes = devices.hueScenes;
+  if (cceScenes.isEmpty && hueScenes.isEmpty) return const [];
+
+  final usedCce = <String>{};
+  final usedHue = <String>{};
+  final out = <Widget>[];
+
+  Widget sectionWrap(List<CceScene> cce, List<HueScene> hue) => Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final s in cce) cceTile(s),
+          for (final s in hue) hueTile(s),
+        ],
+      );
+
+  // Orden de secciones: el orden de los planos como los da devices_service.
+  for (final room in devices.rooms) {
+    final planId = room.planId;
+    final hueRoomId = room.hueRoomId;
+    final cce = planId == null
+        ? const <CceScene>[]
+        : cceScenes.where((s) => s.planId == planId).toList();
+    final hue = hueRoomId == null
+        ? const <HueScene>[]
+        : (hueScenes.where((s) => s.roomId == hueRoomId).toList()
+          ..sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())));
+    if (cce.isEmpty && hue.isEmpty) continue;
+    usedCce.addAll(cce.map((s) => s.id));
+    usedHue.addAll(hue.map((s) => s.id));
+    out.add(label(room.name));
+    out.add(sectionWrap(cce, hue));
+  }
+
+  // Escenas sin plano/room (o de rooms Hue no vinculados a ningún plano).
+  final looseCce = cceScenes.where((s) => !usedCce.contains(s.id)).toList();
+  final looseHue = hueScenes.where((s) => !usedHue.contains(s.id)).toList()
+    ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  if (looseCce.isNotEmpty || looseHue.isNotEmpty) {
+    out.add(label('Otras'));
+    out.add(sectionWrap(looseCce, looseHue));
+  }
+  return out;
+}
+
 Color _kindColor(AutomationActionKind kind) {
   switch (kind) {
     case AutomationActionKind.light:
@@ -47,6 +202,11 @@ Color _kindColor(AutomationActionKind kind) {
     case AutomationActionKind.group:
       return CceColors.accent;
     case AutomationActionKind.hueRoom:
+      return _hueOrange;
+    case AutomationActionKind.scene:
+      return CceColors.accent;
+    // Escena Hue en naranja de marca: misma distinción que hueRoom.
+    case AutomationActionKind.hueScene:
       return _hueOrange;
     case AutomationActionKind.device:
       return CceColors.info;
@@ -69,6 +229,9 @@ Widget _kindIcon(AutomationActionKind kind, Color color) {
       return CceIcon(CceIcons.room, size: 18, color: color);
     case AutomationActionKind.hueRoom:
       return CceIcon(CceIcons.room, size: 18, color: color);
+    case AutomationActionKind.scene:
+    case AutomationActionKind.hueScene:
+      return CceIcon(CceIcons.scenes, size: 18, color: color);
     case AutomationActionKind.device:
       return Icon(Icons.tune, size: 18, color: color);
     case AutomationActionKind.notification:
@@ -129,100 +292,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
 
   // === Simple ===============================================================
 
-  /// Grosor del borde de marca Hue de los chips (mismo que HueRoomCard).
-  static const double _hueBorderWidth = 1.4;
-
-  Widget _sceneTile({
-    required String name,
-    required bool selected,
-    List<Color> swatch = const [],
-    bool isSmart = false,
-    bool hueBorder = false,
-    required VoidCallback onTap,
-  }) {
-    final tile = InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(CceRadii.control),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? CceColors.accent.withValues(alpha: 0.24)
-              : CceColors.surfaceHigh,
-          borderRadius: BorderRadius.circular(CceRadii.control),
-          // Escena Hue: el borde lo pone el contenedor externo con el
-          // gradiente de marca; acá no va Border para no sumar un anillo.
-          border: hueBorder
-              ? null
-              : Border.all(
-                  color: selected
-                      ? CceColors.accent.withValues(alpha: 0.6)
-                      : CceColors.stroke,
-                ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (swatch.isNotEmpty) ...[
-              SizedBox(
-                width: 16 + (swatch.length.clamp(1, 4) - 1) * 9.0,
-                height: 16,
-                child: Stack(
-                  children: [
-                    for (var i = 0; i < swatch.length && i < 4; i++)
-                      Positioned(
-                        left: i * 9.0,
-                        child: Container(
-                          width: 16,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: swatch[i],
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                                color: CceColors.surface, width: 1.5),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Text(
-              name,
-              style: const TextStyle(
-                color: CceColors.textPrimary,
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            if (isSmart) ...[
-              const SizedBox(width: 6),
-              const StatusPill(label: 'auto', color: Color(0x52000000)),
-            ],
-            if (selected) ...[
-              const SizedBox(width: 6),
-              const CceIcon(CceIcons.check, size: 14, color: CceColors.accent),
-            ],
-          ],
-        ),
-      ),
-    );
-    if (!hueBorder) return tile;
-    // Borde con el GRADIENTE de marca de Hue: mismo truco que HueRoomCard
-    // (Flutter no pinta Border con gradiente) — Container con el gradiente +
-    // padding fino, y el chip real encima tapando el centro.
-    return Container(
-      padding: const EdgeInsets.all(_hueBorderWidth),
-      decoration: BoxDecoration(
-        gradient: CceGradients.hueBrand,
-        borderRadius: BorderRadius.circular(CceRadii.control),
-      ),
-      child: tile,
-    );
-  }
-
-  Widget _cceSceneTile(CceScene s) => _sceneTile(
+  Widget _cceSceneTile(CceScene s) => _sceneChip(
         name: s.name,
         selected: draft.source == 'scene' && draft.sourceId == s.id,
         onTap: () => setState(() {
@@ -232,7 +302,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         }),
       );
 
-  Widget _hueSceneTile(HueScene s) => _sceneTile(
+  Widget _hueSceneTile(HueScene s) => _sceneChip(
         name: s.name,
         swatch: s.swatch,
         isSmart: s.isSmart,
@@ -246,57 +316,14 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         }),
       );
 
-  /// Escenas agrupadas POR PLANO/room: header con el nombre del plano y
-  /// adentro las escenas CCE de ese planId + las Hue cuyo roomId corresponde
-  /// al hueRoomId del plano, mezcladas en el mismo wrap (primero CCE, después
-  /// Hue alfabético). Lo que no matchea ningún plano cae en 'Otras' al final.
-  List<Widget> _sceneSections() {
-    final cceScenes = widget.devices.scenes;
-    final hueScenes = widget.devices.hueScenes;
-    if (cceScenes.isEmpty && hueScenes.isEmpty) return const [];
-
-    final usedCce = <String>{};
-    final usedHue = <String>{};
-    final out = <Widget>[];
-
-    Widget sectionWrap(List<CceScene> cce, List<HueScene> hue) => Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final s in cce) _cceSceneTile(s),
-            for (final s in hue) _hueSceneTile(s),
-          ],
-        );
-
-    // Orden de secciones: el orden de los planos como los da devices_service.
-    for (final room in widget.devices.rooms) {
-      final planId = room.planId;
-      final hueRoomId = room.hueRoomId;
-      final cce = planId == null
-          ? const <CceScene>[]
-          : cceScenes.where((s) => s.planId == planId).toList();
-      final hue = hueRoomId == null
-          ? const <HueScene>[]
-          : (hueScenes.where((s) => s.roomId == hueRoomId).toList()
-            ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())));
-      if (cce.isEmpty && hue.isEmpty) continue;
-      usedCce.addAll(cce.map((s) => s.id));
-      usedHue.addAll(hue.map((s) => s.id));
-      out.add(_label(room.name));
-      out.add(sectionWrap(cce, hue));
-    }
-
-    // Escenas sin plano/room (o de rooms Hue no vinculados a ningún plano).
-    final looseCce =
-        cceScenes.where((s) => !usedCce.contains(s.id)).toList();
-    final looseHue = hueScenes.where((s) => !usedHue.contains(s.id)).toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    if (looseCce.isNotEmpty || looseHue.isNotEmpty) {
-      out.add(_label('Otras'));
-      out.add(sectionWrap(looseCce, looseHue));
-    }
-    return out;
-  }
+  /// Escenas agrupadas por plano/room del modo Simple: delega en el helper
+  /// compartido con el editor de acción Escena (ver [_sceneSectionList]).
+  List<Widget> _sceneSections() => _sceneSectionList(
+        devices: widget.devices,
+        label: _label,
+        cceTile: _cceSceneTile,
+        hueTile: _hueSceneTile,
+      );
 
   Widget _simpleBody() {
     final cceScenes = widget.devices.scenes;
@@ -435,6 +462,13 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         applied = await _showActionEditor(
             (ctx, scroll) => _HueRoomActionEditor(
                 action: action, devices: widget.devices, scroll: scroll));
+      // Un solo editor para escenas CCE y Hue: el picker mezcla ambas y al
+      // aplicar escribe el contrato que corresponda.
+      case AutomationActionKind.scene:
+      case AutomationActionKind.hueScene:
+        applied = await _showActionEditor(
+            (ctx, scroll) => _SceneActionEditor(
+                action: action, devices: widget.devices, scroll: scroll));
       case AutomationActionKind.device:
         applied = await _showActionEditor(
             (ctx, scroll) => _DeviceActionEditor(
@@ -499,8 +533,9 @@ class _ActionsSheetState extends State<_ActionsSheet> {
             const Text('Convertir escena en acciones', style: CceText.title),
             const SizedBox(height: 6),
             const Text(
-              'El modo personalizado no puede activar escenas directamente: '
-              'esto copia las luces de la escena como acciones individuales.',
+              'Copia las luces de la escena como acciones individuales para '
+              'retocarlas una por una. Para activarla tal cual, usá la '
+              'acción Escena.',
               style: CceText.caption,
             ),
             const SizedBox(height: 8),
@@ -724,6 +759,15 @@ class _ActionsSheetState extends State<_ActionsSheet> {
             ),
             _addTile(
               'Escena',
+              const CceIcon(CceIcons.scenes,
+                  size: 24, color: CceColors.accent),
+              () => _editAction(AutomationAction.scene(''), isNew: true),
+            ),
+            // Flujo legacy: copia las luces de una escena CCE como acciones
+            // sueltas (editable luz por luz), distinto de la acción Escena
+            // que activa la escena tal cual.
+            _addTile(
+              'Copiar escena',
               const CceIcon(CceIcons.scenes,
                   size: 24, color: CceColors.textTertiary),
               _convertScene,
@@ -1159,6 +1203,90 @@ class _HueRoomActionEditorState extends State<_HueRoomActionEditor> {
           ],
           onChanged: (v) => setState(() => _hueRoomAction = v),
         ),
+      ],
+    );
+  }
+}
+
+/// Escena como acción del modo Personalizado: UNA escena CCE o Hue (las Hue
+/// con el borde de gradiente de marca), combinable con las demás acciones.
+/// Reusa el picker agrupado por plano del modo Simple ([_sceneSectionList])
+/// y al aplicar escribe el contrato del backend que corresponda:
+/// on:'scene'+sceneId o on:'hueScene'+hueSceneId+sceneSmart.
+class _SceneActionEditor extends StatefulWidget {
+  const _SceneActionEditor({
+    required this.action,
+    required this.devices,
+    required this.scroll,
+  });
+
+  final AutomationAction action;
+  final DevicesService devices;
+  final ScrollController scroll;
+
+  @override
+  State<_SceneActionEditor> createState() => _SceneActionEditorState();
+}
+
+class _SceneActionEditorState extends State<_SceneActionEditor> {
+  // Selección única entre dos namespaces de id: _hue dice de cuál viene.
+  late bool _hue = widget.action.kind == AutomationActionKind.hueScene;
+  late String _sceneId =
+      (_hue ? widget.action.hueSceneId : widget.action.sceneId) ?? '';
+
+  void _apply() {
+    if (_hue) {
+      // sceneSmart sale del flag REAL de la lista de escenas Hue (no lo
+      // elige el usuario); si la escena ya no está publicada en el bridge se
+      // conserva lo persistido en la acción.
+      var smart = widget.action.sceneSmart;
+      for (final s in widget.devices.hueScenes) {
+        if (s.id == _sceneId) {
+          smart = s.isSmart;
+          break;
+        }
+      }
+      widget.action.updateHueScene(hueSceneId: _sceneId, sceneSmart: smart);
+    } else {
+      widget.action.updateScene(sceneId: _sceneId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final devices = widget.devices;
+    final empty = devices.scenes.isEmpty && devices.hueScenes.isEmpty;
+    return _EditorScaffold(
+      title: 'Escena',
+      scroll: widget.scroll,
+      onApply: _sceneId.isEmpty ? null : _apply,
+      children: [
+        if (empty)
+          const Text('No hay escenas configuradas.', style: CceText.caption)
+        else
+          ..._sceneSectionList(
+            devices: devices,
+            label: _editorLabel,
+            cceTile: (s) => _sceneChip(
+              name: s.name,
+              selected: !_hue && _sceneId == s.id,
+              onTap: () => setState(() {
+                _hue = false;
+                _sceneId = s.id;
+              }),
+            ),
+            hueTile: (s) => _sceneChip(
+              name: s.name,
+              swatch: s.swatch,
+              isSmart: s.isSmart,
+              hueBorder: true,
+              selected: _hue && _sceneId == s.id,
+              onTap: () => setState(() {
+                _hue = true;
+                _sceneId = s.id;
+              }),
+            ),
+          ),
       ],
     );
   }

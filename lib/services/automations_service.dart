@@ -520,6 +520,22 @@ class AutomationsService extends ChangeNotifier {
                 } else {
                   await _applyHueRoom(rid, act.hueRoomAction);
                 }
+              case AutomationActionKind.scene:
+                final sid = act.sceneId;
+                if (sid == null) {
+                  warnings.add('Hay una escena sin configurar');
+                  degraded = true;
+                } else {
+                  await _applyScene(sid);
+                }
+              case AutomationActionKind.hueScene:
+                final sid = act.hueSceneId;
+                if (sid == null) {
+                  warnings.add('Hay una escena de Hue sin configurar');
+                  degraded = true;
+                } else {
+                  await _applyHueScene(sid, act.sceneSmart);
+                }
               case AutomationActionKind.light:
                 await _applyLightAction(act);
               case AutomationActionKind.device:
@@ -654,6 +670,36 @@ class AutomationsService extends ChangeNotifier {
     }
     for (final id in group.lightIds) {
       await _putState(id, {'on': on});
+    }
+  }
+
+  /// Activa una escena CCE luz por luz — misma réplica client-side que el
+  /// modo Simple (la API no expone recall de escenas CCE). Escena
+  /// desconocida → throw, que el caller convierte en warning sin crash.
+  Future<void> _applyScene(String sceneId) async {
+    final scene = devices.scenes.firstWhereOrNull((s) => s.id == sceneId);
+    if (scene == null) throw Exception('Escena $sceneId no encontrada');
+    for (final l in scene.lights) {
+      await _putState(l.lightId, l.toStateBody());
+    }
+  }
+
+  /// Recall server-side de una escena Hue: mismo endpoint que usa el modo
+  /// Simple; `smart` preserva la variante dinámica de la escena.
+  Future<void> _applyHueScene(String sceneId, bool smart) async {
+    final resp = await http
+        .post(
+          Uri.parse(
+              '${config.baseUrl}/hue/scenes/${Uri.encodeComponent(sceneId)}/recall'),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders
+          },
+          body: jsonEncode({'smart': smart}),
+        )
+        .timeout(_timeout);
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Recall de escena Hue falló (${resp.statusCode})');
     }
   }
 

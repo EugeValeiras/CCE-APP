@@ -241,6 +241,8 @@ enum AutomationActionKind {
   light,
   group,
   hueRoom,
+  scene,
+  hueScene,
   device,
   notification,
   alarm,
@@ -275,6 +277,29 @@ class AutomationAction {
         'on': 'hueRoom',
         'hueRoomId': hueRoomId,
         'hueRoomAction': 'on',
+      });
+
+  /// Escena CCE como acción del modo Personalizado — contrato del backend:
+  /// on:'scene' + sceneId. El lightId sentinel es solo local (la API lo
+  /// ignora): distingue la fila en la UI sin campo extra.
+  factory AutomationAction.scene(String sceneId) => AutomationAction.blank({
+        'lightId': '__scene__$sceneId',
+        'on': 'scene',
+        'sceneId': sceneId,
+      });
+
+  /// Escena Hue como acción — contrato: on:'hueScene' + hueSceneId +
+  /// sceneSmart (recall dinámico vs estático; sale del flag real de la
+  /// escena en la lista del bridge, no lo elige el usuario).
+  factory AutomationAction.hueScene(
+    String hueSceneId, {
+    bool sceneSmart = false,
+  }) =>
+      AutomationAction.blank({
+        'lightId': '__hueScene__$hueSceneId',
+        'on': 'hueScene',
+        'hueSceneId': hueSceneId,
+        'sceneSmart': sceneSmart,
       });
 
   /// Acción por CAPABILITY sobre cualquier device: POST /actions/:verb con args
@@ -356,6 +381,32 @@ class AutomationAction {
 
   String get hueRoomAction => (raw['hueRoomAction'] as String?) ?? 'on';
 
+  /// Acción escena CCE (on:'scene'): id con fallback al sentinel, espejo
+  /// de [groupId]/[hueRoomId].
+  String? get sceneId {
+    final s = raw['sceneId'];
+    if (s is String && s.isNotEmpty) return s;
+    if (lightId.startsWith('__scene__')) {
+      final id = lightId.substring('__scene__'.length);
+      return id.isEmpty ? null : id;
+    }
+    return null;
+  }
+
+  /// Acción escena Hue (on:'hueScene').
+  String? get hueSceneId {
+    final s = raw['hueSceneId'];
+    if (s is String && s.isNotEmpty) return s;
+    if (lightId.startsWith('__hueScene__')) {
+      final id = lightId.substring('__hueScene__'.length);
+      return id.isEmpty ? null : id;
+    }
+    return null;
+  }
+
+  /// Smart scene del bridge (solo on:'hueScene').
+  bool get sceneSmart => raw['sceneSmart'] == true;
+
   String get notificationMessage =>
       (raw['notificationMessage'] as String?) ?? 'Alerta de automatización';
   String get notificationSound =>
@@ -399,6 +450,14 @@ class AutomationAction {
     if (on == 'device') return AutomationActionKind.device;
     if (lightId.startsWith('__hueRoom__') || on == 'hueRoom') {
       return AutomationActionKind.hueRoom;
+    }
+    // hueScene ANTES que scene: los sentinels no colisionan, pero el orden
+    // deja explícito que el chequeo más específico gana.
+    if (lightId.startsWith('__hueScene__') || on == 'hueScene') {
+      return AutomationActionKind.hueScene;
+    }
+    if (lightId.startsWith('__scene__') || on == 'scene') {
+      return AutomationActionKind.scene;
     }
     if (lightId.startsWith('__group__') || on == 'group') {
       return AutomationActionKind.group;
@@ -453,6 +512,30 @@ class AutomationAction {
     raw['on'] = 'hueRoom';
     raw['hueRoomId'] = hueRoomId;
     raw['hueRoomAction'] = hueRoomAction;
+    edited = true;
+  }
+
+  void updateScene({required String sceneId}) {
+    raw['lightId'] = '__scene__$sceneId';
+    raw['on'] = 'scene';
+    raw['sceneId'] = sceneId;
+    // El editor permite cambiar Hue→CCE en la misma fila: limpiar las claves
+    // del otro contrato para emitir el JSON exacto que espera la API.
+    raw.remove('hueSceneId');
+    raw.remove('sceneSmart');
+    edited = true;
+  }
+
+  void updateHueScene({
+    required String hueSceneId,
+    required bool sceneSmart,
+  }) {
+    raw['lightId'] = '__hueScene__$hueSceneId';
+    raw['on'] = 'hueScene';
+    raw['hueSceneId'] = hueSceneId;
+    raw['sceneSmart'] = sceneSmart;
+    // Cambio CCE→Hue en la misma fila: ver updateScene.
+    raw.remove('sceneId');
     edited = true;
   }
 

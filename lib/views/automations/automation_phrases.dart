@@ -42,6 +42,26 @@ String _sceneName(DevicesService devices, Automation a) {
   return 'escena';
 }
 
+/// Nombre de una escena CCE por id (acciones on:'scene'). Si la escena ya no
+/// existe se muestra el id: mejor pista que un genérico "escena".
+String _cceSceneName(DevicesService devices, String? id) {
+  if (id == null || id.isEmpty) return 'escena';
+  for (final s in devices.scenes) {
+    if (s.id == id) return s.name;
+  }
+  return id;
+}
+
+/// Nombre de una escena Hue por id (acciones on:'hueScene'). Mismo fallback
+/// al id que [_cceSceneName].
+String _hueSceneName(DevicesService devices, String? id) {
+  if (id == null || id.isEmpty) return 'escena';
+  for (final s in devices.hueScenes) {
+    if (s.id == id) return s.name;
+  }
+  return id;
+}
+
 String _num(dynamic v) {
   if (v is double) {
     return v == v.roundToDouble() ? v.round().toString() : v.toString();
@@ -190,6 +210,12 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
         default:
           return 'Prender room $name';
       }
+    // Igual que el modo Simple ("Escena X"): la marca Hue no va en la frase,
+    // la distingue el ícono naranja de la fila.
+    case AutomationActionKind.scene:
+      return 'Escena ${_cceSceneName(devices, act.sceneId)}';
+    case AutomationActionKind.hueScene:
+      return 'Escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
       final name = _deviceName(devices, act.deviceId);
       return '$name: ${verbLabel(act.verb)}';
@@ -238,6 +264,10 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.hueRoom:
       final name = _hueRoomName(devices, act.hueRoomId);
       return '$name ${act.hueRoomAction == 'off' ? 'off' : act.hueRoomAction == 'toggle' ? 'alterna' : 'on'}';
+    case AutomationActionKind.scene:
+      return 'escena ${_cceSceneName(devices, act.sceneId)}';
+    case AutomationActionKind.hueScene:
+      return 'escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
       return '${_deviceName(devices, act.deviceId)} ${verbLabel(act.verb)}';
     case AutomationActionKind.notification:
