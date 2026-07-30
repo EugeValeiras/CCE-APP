@@ -127,14 +127,18 @@ class _ActionsSheetState extends State<_ActionsSheet> {
 
   // === Simple ===============================================================
 
+  /// Grosor del borde de marca Hue de los chips (mismo que HueRoomCard).
+  static const double _hueBorderWidth = 1.4;
+
   Widget _sceneTile({
     required String name,
     required bool selected,
     List<Color> swatch = const [],
     bool isSmart = false,
+    bool hueBorder = false,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    final tile = InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(CceRadii.control),
       child: Container(
@@ -144,11 +148,15 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               ? CceColors.accent.withValues(alpha: 0.24)
               : CceColors.surfaceHigh,
           borderRadius: BorderRadius.circular(CceRadii.control),
-          border: Border.all(
-            color: selected
-                ? CceColors.accent.withValues(alpha: 0.6)
-                : CceColors.stroke,
-          ),
+          // Escena Hue: el borde lo pone el contenedor externo con el
+          // gradiente de marca; acá no va Border para no sumar un anillo.
+          border: hueBorder
+              ? null
+              : Border.all(
+                  color: selected
+                      ? CceColors.accent.withValues(alpha: 0.6)
+                      : CceColors.stroke,
+                ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -198,6 +206,94 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         ),
       ),
     );
+    if (!hueBorder) return tile;
+    // Borde con el GRADIENTE de marca de Hue: mismo truco que HueRoomCard
+    // (Flutter no pinta Border con gradiente) — Container con el gradiente +
+    // padding fino, y el chip real encima tapando el centro.
+    return Container(
+      padding: const EdgeInsets.all(_hueBorderWidth),
+      decoration: BoxDecoration(
+        gradient: CceGradients.hueBrand,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+      ),
+      child: tile,
+    );
+  }
+
+  Widget _cceSceneTile(CceScene s) => _sceneTile(
+        name: s.name,
+        selected: draft.source == 'scene' && draft.sourceId == s.id,
+        onTap: () => setState(() {
+          draft.source = 'scene';
+          draft.sourceId = s.id;
+          _stashActions();
+        }),
+      );
+
+  Widget _hueSceneTile(HueScene s) => _sceneTile(
+        name: s.name,
+        swatch: s.swatch,
+        isSmart: s.isSmart,
+        hueBorder: true,
+        selected: draft.source == 'hueScene' && draft.sourceId == s.id,
+        onTap: () => setState(() {
+          draft.source = 'hueScene';
+          draft.sourceId = s.id;
+          draft.sourceSmart = s.isSmart;
+          _stashActions();
+        }),
+      );
+
+  /// Escenas agrupadas POR PLANO/room: header con el nombre del plano y
+  /// adentro las escenas CCE de ese planId + las Hue cuyo roomId corresponde
+  /// al hueRoomId del plano, mezcladas en el mismo wrap (primero CCE, después
+  /// Hue alfabético). Lo que no matchea ningún plano cae en 'Otras' al final.
+  List<Widget> _sceneSections() {
+    final cceScenes = widget.devices.scenes;
+    final hueScenes = widget.devices.hueScenes;
+    if (cceScenes.isEmpty && hueScenes.isEmpty) return const [];
+
+    final usedCce = <String>{};
+    final usedHue = <String>{};
+    final out = <Widget>[];
+
+    Widget sectionWrap(List<CceScene> cce, List<HueScene> hue) => Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final s in cce) _cceSceneTile(s),
+            for (final s in hue) _hueSceneTile(s),
+          ],
+        );
+
+    // Orden de secciones: el orden de los planos como los da devices_service.
+    for (final room in widget.devices.rooms) {
+      final planId = room.planId;
+      final hueRoomId = room.hueRoomId;
+      final cce = planId == null
+          ? const <CceScene>[]
+          : cceScenes.where((s) => s.planId == planId).toList();
+      final hue = hueRoomId == null
+          ? const <HueScene>[]
+          : (hueScenes.where((s) => s.roomId == hueRoomId).toList()
+            ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase())));
+      if (cce.isEmpty && hue.isEmpty) continue;
+      usedCce.addAll(cce.map((s) => s.id));
+      usedHue.addAll(hue.map((s) => s.id));
+      out.add(_label(room.name));
+      out.add(sectionWrap(cce, hue));
+    }
+
+    // Escenas sin plano/room (o de rooms Hue no vinculados a ningún plano).
+    final looseCce =
+        cceScenes.where((s) => !usedCce.contains(s.id)).toList();
+    final looseHue = hueScenes.where((s) => !usedHue.contains(s.id)).toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    if (looseCce.isNotEmpty || looseHue.isNotEmpty) {
+      out.add(_label('Otras'));
+      out.add(sectionWrap(looseCce, looseHue));
+    }
+    return out;
   }
 
   Widget _simpleBody() {
@@ -209,48 +305,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (cceScenes.isNotEmpty) ...[
-          _label('Escenas'),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final s in cceScenes)
-                _sceneTile(
-                  name: s.name,
-                  selected: draft.source == 'scene' && draft.sourceId == s.id,
-                  onTap: () => setState(() {
-                    draft.source = 'scene';
-                    draft.sourceId = s.id;
-                    _stashActions();
-                  }),
-                ),
-            ],
-          ),
-        ],
-        if (hueScenes.isNotEmpty) ...[
-          _label('Escenas Hue'),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              for (final s in hueScenes)
-                _sceneTile(
-                  name: s.name,
-                  swatch: s.swatch,
-                  isSmart: s.isSmart,
-                  selected:
-                      draft.source == 'hueScene' && draft.sourceId == s.id,
-                  onTap: () => setState(() {
-                    draft.source = 'hueScene';
-                    draft.sourceId = s.id;
-                    draft.sourceSmart = s.isSmart;
-                    _stashActions();
-                  }),
-                ),
-            ],
-          ),
-        ],
+        ..._sceneSections(),
         if (groups.isNotEmpty) ...[
           _label('Grupos'),
           for (final g in groups)
