@@ -237,7 +237,16 @@ class AutomationCondition {
 }
 
 /// Tipo de acción para la UI (color del círculo, editor a abrir).
-enum AutomationActionKind { light, group, device, notification, alarm, jbl, advanced }
+enum AutomationActionKind {
+  light,
+  group,
+  hueRoom,
+  device,
+  notification,
+  alarm,
+  jbl,
+  advanced,
+}
 
 class AutomationAction {
   AutomationAction.fromJson(Map<String, dynamic> json)
@@ -257,6 +266,15 @@ class AutomationAction {
         'on': 'group',
         'groupId': groupId,
         'groupAction': 'on',
+      });
+
+  /// Room de Hue entero (grouped_light) como target de acción — contrato del
+  /// backend: on:'hueRoom' + hueRoomId + hueRoomAction ('on'|'off'|'toggle').
+  factory AutomationAction.hueRoom(String hueRoomId) => AutomationAction.blank({
+        'lightId': '__hueRoom__$hueRoomId',
+        'on': 'hueRoom',
+        'hueRoomId': hueRoomId,
+        'hueRoomAction': 'on',
       });
 
   /// Acción por CAPABILITY sobre cualquier device: POST /actions/:verb con args
@@ -326,6 +344,18 @@ class AutomationAction {
 
   String get groupAction => (raw['groupAction'] as String?) ?? 'on';
 
+  String? get hueRoomId {
+    final r = raw['hueRoomId'];
+    if (r is String && r.isNotEmpty) return r;
+    if (lightId.startsWith('__hueRoom__')) {
+      final id = lightId.substring('__hueRoom__'.length);
+      return id.isEmpty ? null : id;
+    }
+    return null;
+  }
+
+  String get hueRoomAction => (raw['hueRoomAction'] as String?) ?? 'on';
+
   String get notificationMessage =>
       (raw['notificationMessage'] as String?) ?? 'Alerta de automatización';
   String get notificationSound =>
@@ -367,6 +397,9 @@ class AutomationAction {
     }
     if (lightId == '__jbl__' || on == 'jbl') return AutomationActionKind.jbl;
     if (on == 'device') return AutomationActionKind.device;
+    if (lightId.startsWith('__hueRoom__') || on == 'hueRoom') {
+      return AutomationActionKind.hueRoom;
+    }
     if (lightId.startsWith('__group__') || on == 'group') {
       return AutomationActionKind.group;
     }
@@ -409,6 +442,17 @@ class AutomationAction {
     raw['on'] = 'group';
     raw['groupId'] = groupId;
     raw['groupAction'] = groupAction;
+    edited = true;
+  }
+
+  void updateHueRoom({
+    required String hueRoomId,
+    required String hueRoomAction,
+  }) {
+    raw['lightId'] = '__hueRoom__$hueRoomId';
+    raw['on'] = 'hueRoom';
+    raw['hueRoomId'] = hueRoomId;
+    raw['hueRoomAction'] = hueRoomAction;
     edited = true;
   }
 

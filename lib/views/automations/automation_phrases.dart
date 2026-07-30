@@ -180,6 +180,16 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
         default:
           return 'Prender grupo $name';
       }
+    case AutomationActionKind.hueRoom:
+      final name = _hueRoomName(devices, act.hueRoomId);
+      switch (act.hueRoomAction) {
+        case 'off':
+          return 'Apagar room $name';
+        case 'toggle':
+          return 'Alternar room $name';
+        default:
+          return 'Prender room $name';
+      }
     case AutomationActionKind.device:
       final name = _deviceName(devices, act.deviceId);
       return '$name: ${verbLabel(act.verb)}';
@@ -225,6 +235,9 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.group:
       final name = _groupName(devices, act.groupId);
       return '$name ${act.groupAction == 'off' ? 'off' : act.groupAction == 'toggle' ? 'alterna' : 'on'}';
+    case AutomationActionKind.hueRoom:
+      final name = _hueRoomName(devices, act.hueRoomId);
+      return '$name ${act.hueRoomAction == 'off' ? 'off' : act.hueRoomAction == 'toggle' ? 'alterna' : 'on'}';
     case AutomationActionKind.device:
       return '${_deviceName(devices, act.deviceId)} ${verbLabel(act.verb)}';
     case AutomationActionKind.notification:

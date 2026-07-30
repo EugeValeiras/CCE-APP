@@ -761,19 +761,44 @@ class DevicesService extends ChangeNotifier {
     return colors;
   }
 
-  /// Prende/apaga TODAS las luces de la sala (optimista, luz por luz).
-  /// Devuelve false si ALGUNA luz falló; el estado optimista de las luces
-  /// fallidas se revierte. El catch por luz se mantiene para no abortar la
-  /// ráfaga del resto.
+  /// Luz servida por el bridge Hue (id canónico o binding `hue_*`): la cubre
+  /// el grouped_light del room, no hace falta comandarla luz por luz.
+  static bool _isHueLight(Device d) =>
+      d.id.startsWith('hue_') || d.bindingIds.any((b) => b.startsWith('hue_'));
+
+  /// Prende/apaga TODAS las luces de la sala (optimista). Si la sala tiene
+  /// room de Hue linkeado ([RoomRef.hueRoomId]), las luces Hue van en UNA
+  /// sola llamada al grouped_light y solo las NO-Hue restantes se comandan
+  /// luz por luz (fin del pochoclo del room). Devuelve false si ALGO falló;
+  /// el estado optimista de lo fallido se revierte. El catch por luz se
+  /// mantiene para no abortar la ráfaga del resto.
   Future<bool> setRoomOn(RoomRef room, bool on) async {
     final lights = _roomLights(room);
     if (lights.isEmpty) return true;
+    final hueRoomId = room.hueRoomId;
+    final hueLights =
+        hueRoomId != null ? lights.where(_isHueLight).toList() : const <Device>[];
+    final looseLights = hueRoomId != null
+        ? lights.where((d) => !_isHueLight(d)).toList()
+        : lights;
     for (final d in lights) {
       d.state = d.state.copyWith(on: on);
     }
     notifyListeners();
     var allOk = true;
-    for (final d in lights) {
+    if (hueRoomId != null) {
+      try {
+        await _api.setHueRoomState(hueRoomId, on: on);
+        hueRoomForRoom(room)?.on = on; // espejo optimista de setHueRoomOn
+      } catch (e) {
+        debugPrint('setRoomOn error on hue room $hueRoomId: $e');
+        for (final d in hueLights) {
+          d.state = d.state.copyWith(on: !on);
+        }
+        allOk = false;
+      }
+    }
+    for (final d in looseLights) {
       try {
         await _api.setDeviceState(d.id, {'on': on});
       } catch (e) {

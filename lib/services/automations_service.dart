@@ -9,6 +9,7 @@ import '../models/automation.dart';
 import '../models/light_group.dart';
 import '../models/server_config.dart';
 import '../utils/time_format.dart';
+import 'api_service.dart';
 import 'devices_service.dart';
 import 'socket_service.dart';
 
@@ -55,6 +56,9 @@ class AutomationsService extends ChangeNotifier {
 
   final ServerConfig config;
   final DevicesService devices;
+
+  /// Cliente tipado para las rutas que ApiService ya modela (rooms de Hue).
+  late final ApiService _api = ApiService(config);
 
   static const _eq = DeepCollectionEquality();
   static const _timeout = Duration(seconds: 8);
@@ -486,19 +490,7 @@ class AutomationsService extends ChangeNotifier {
             return const RunResult(
                 ok: false, warning: 'La automatización no tiene room');
           }
-          final resp = await http
-              .put(
-                Uri.parse(
-                    '${config.baseUrl}/hue/rooms/${Uri.encodeComponent(sid)}/state'),
-                headers: {'Content-Type': 'application/json', ...ServerConfig.tokenHeaders},
-                body: jsonEncode({'on': a.sourceAction != 'off'}),
-              )
-              .timeout(_timeout);
-          if (resp.statusCode != 200 && resp.statusCode != 201) {
-            return RunResult(
-                ok: false,
-                warning: 'No se pudo cambiar el room (${resp.statusCode})');
-          }
+          await _applyHueRoom(sid, a.sourceAction);
         default: // custom
           for (final act in a.actions) {
             switch (act.kind) {
@@ -519,6 +511,14 @@ class AutomationsService extends ChangeNotifier {
                   degraded = true;
                 } else {
                   await _applyGroup(gid, act.groupAction);
+                }
+              case AutomationActionKind.hueRoom:
+                final rid = act.hueRoomId;
+                if (rid == null) {
+                  warnings.add('Hay un room de Hue sin configurar');
+                  degraded = true;
+                } else {
+                  await _applyHueRoom(rid, act.hueRoomAction);
                 }
               case AutomationActionKind.light:
                 await _applyLightAction(act);
@@ -655,5 +655,22 @@ class AutomationsService extends ChangeNotifier {
     for (final id in group.lightIds) {
       await _putState(id, {'on': on});
     }
+  }
+
+  /// Aplica on/off/toggle al room ENTERO de Hue (una sola llamada al
+  /// grouped_light). toggle lee el estado conocido del room (any_on) en
+  /// DevicesService. Room desconocido → throw, que el caller convierte en
+  /// warning sin crash — espejo de [_applyGroup].
+  Future<void> _applyHueRoom(String roomId, String action) async {
+    final room = devices.hueRooms.firstWhereOrNull((r) => r.id == roomId);
+    if (room == null) throw Exception('Room de Hue $roomId no encontrado');
+    final bool on;
+    if (action == 'toggle') {
+      // toggle = si alguna luz del room está prendida (any_on), apaga todo.
+      on = !(room.on ?? false);
+    } else {
+      on = action != 'off';
+    }
+    await _api.setHueRoomState(roomId, on: on);
   }
 }

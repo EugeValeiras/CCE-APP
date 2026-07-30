@@ -406,9 +406,10 @@ class ApiService {
         .toList();
   }
 
-  /// Prende/apaga el room ENTERO de Hue (grouped_light) en una sola llamada
-  /// (PUT /hue/rooms/{id}/state). El backend rutea al bridge dueño por el id.
-  Future<void> setHueRoomState(String roomId, {required bool on}) async {
+  /// Patch de estado del room ENTERO de Hue (grouped_light) en una sola
+  /// llamada (PUT /hue/rooms/{id}/state, acepta {on,bri,ct,hue,sat}). Manda
+  /// SOLO los campos presentes; el backend rutea al bridge dueño por el id.
+  Future<void> setHueRoomState(String roomId, {bool? on, int? bri, int? ct}) async {
     final resp = await http
         .put(
           Uri.parse(
@@ -418,7 +419,11 @@ class ApiService {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
           },
-          body: jsonEncode({'on': on}),
+          body: jsonEncode({
+            'on': ?on,
+            'bri': ?bri,
+            'ct': ?ct,
+          }),
         )
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200 && resp.statusCode != 201) {

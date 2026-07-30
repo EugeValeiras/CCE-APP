@@ -37,12 +37,17 @@ Future<bool> showActionsSheet(
   return result == true;
 }
 
+/// Naranja Hue, el mismo de la sección "Rooms de Hue" del modo Simple.
+const _hueOrange = Color(0xFFFF6A00);
+
 Color _kindColor(AutomationActionKind kind) {
   switch (kind) {
     case AutomationActionKind.light:
       return CceColors.warm;
     case AutomationActionKind.group:
       return CceColors.accent;
+    case AutomationActionKind.hueRoom:
+      return _hueOrange;
     case AutomationActionKind.device:
       return CceColors.info;
     case AutomationActionKind.notification:
@@ -61,6 +66,8 @@ Widget _kindIcon(AutomationActionKind kind, Color color) {
     case AutomationActionKind.light:
       return CceIcon(CceIcons.lights, size: 18, color: color);
     case AutomationActionKind.group:
+      return CceIcon(CceIcons.room, size: 18, color: color);
+    case AutomationActionKind.hueRoom:
       return CceIcon(CceIcons.room, size: 18, color: color);
     case AutomationActionKind.device:
       return Icon(Icons.tune, size: 18, color: color);
@@ -367,6 +374,10 @@ class _ActionsSheetState extends State<_ActionsSheet> {
         applied = await _showActionEditor(
             (ctx, scroll) => _GroupActionEditor(
                 action: action, devices: widget.devices, scroll: scroll));
+      case AutomationActionKind.hueRoom:
+        applied = await _showActionEditor(
+            (ctx, scroll) => _HueRoomActionEditor(
+                action: action, devices: widget.devices, scroll: scroll));
       case AutomationActionKind.device:
         applied = await _showActionEditor(
             (ctx, scroll) => _DeviceActionEditor(
@@ -625,6 +636,12 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               const CceIcon(CceIcons.room, size: 24, color: CceColors.accent),
               () => _editAction(AutomationAction.group(''), isNew: true),
             ),
+            if (widget.devices.hueRooms.isNotEmpty)
+              _addTile(
+                'Room Hue',
+                const CceIcon(CceIcons.room, size: 24, color: _hueOrange),
+                () => _editAction(AutomationAction.hueRoom(''), isNew: true),
+              ),
             _addTile(
               'Dispositivo',
               const Icon(Icons.tune, size: 24, color: CceColors.info),
@@ -1018,6 +1035,72 @@ class _GroupActionEditorState extends State<_GroupActionEditor> {
             CceSegment(value: 'toggle', label: 'Alternar'),
           ],
           onChanged: (v) => setState(() => _groupAction = v),
+        ),
+      ],
+    );
+  }
+}
+
+/// Room de Hue: picker de rooms + Prender/Apagar/Alternar. Espejo de
+/// _GroupActionEditor, pero contra el grouped_light del bridge
+/// (on:'hueRoom' + hueRoomId + hueRoomAction).
+class _HueRoomActionEditor extends StatefulWidget {
+  const _HueRoomActionEditor({
+    required this.action,
+    required this.devices,
+    required this.scroll,
+  });
+
+  final AutomationAction action;
+  final DevicesService devices;
+  final ScrollController scroll;
+
+  @override
+  State<_HueRoomActionEditor> createState() => _HueRoomActionEditorState();
+}
+
+class _HueRoomActionEditorState extends State<_HueRoomActionEditor> {
+  late String _hueRoomId = widget.action.hueRoomId ?? '';
+  late String _hueRoomAction = widget.action.hueRoomAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final rooms = widget.devices.hueRooms;
+    final valid = _hueRoomId.isNotEmpty;
+    return _EditorScaffold(
+      title: 'Room de Hue',
+      scroll: widget.scroll,
+      onApply: valid
+          ? () => widget.action.updateHueRoom(
+              hueRoomId: _hueRoomId, hueRoomAction: _hueRoomAction)
+          : null,
+      children: [
+        _editorLabel('Room'),
+        if (rooms.isEmpty)
+          const Text('No hay rooms de Hue disponibles.', style: CceText.caption)
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final r in rooms)
+                ChoiceChip(
+                  label: Text(r.name),
+                  selected: _hueRoomId == r.id,
+                  showCheckmark: false,
+                  onSelected: (_) => setState(() => _hueRoomId = r.id),
+                ),
+            ],
+          ),
+        _editorLabel('Acción'),
+        CceSegmented<String>(
+          value: _hueRoomAction,
+          segments: const [
+            CceSegment(value: 'on', label: 'Prender'),
+            CceSegment(value: 'off', label: 'Apagar'),
+            CceSegment(value: 'toggle', label: 'Alternar'),
+          ],
+          onChanged: (v) => setState(() => _hueRoomAction = v),
         ),
       ],
     );
