@@ -509,8 +509,14 @@ class DevicesService extends ChangeNotifier {
     await _api.invokeAction(d.id, verb, args);
   }
 
-  /// Prende/apaga el grupo, optimista luz por luz. Las luces cuyo PUT falló
-  /// se revierten al estado previo y se avisa UNA vez con el nombre del grupo.
+  /// Prende/apaga el grupo con UNA llamada al endpoint atómico
+  /// (PUT /groups/{id}/state): el backend compila los miembros Hue a un solo
+  /// groupcast, así las luces cambian sincronizadas (adiós efecto pochoclo del
+  /// loop luz-por-luz que había acá). Optimista con el mismo patrón que
+  /// [toggleLight] (copyWith + notifyListeners PRE-await); se revierten SOLO
+  /// los deviceIds que el backend reportó en failed[] — el resto ya quedó
+  /// bien — y ante fallo total (HTTP/transporte) se revierte todo. En ambos
+  /// casos se avisa UNA vez con el nombre del grupo.
   Future<void> setGroupOn(LightGroup g, bool on) async {
     final ids = g.lightIds.where((id) => _byId.containsKey(id)).toList();
     final prev = {for (final id in ids) id: _byId[id]!.state};
@@ -519,19 +525,32 @@ class DevicesService extends ChangeNotifier {
       d.state = d.state.copyWith(on: on);
     }
     notifyListeners();
-    var anyFailed = false;
-    for (final id in ids) {
-      try {
-        await _api.setDeviceState(id, {'on': on});
-      } catch (e) {
-        debugPrint('setGroupOn error on $id: $e');
-        _byId[id]!.state = prev[id]!;
-        anyFailed = true;
+    try {
+      final failed = await _api.setGroupState(g.id, {'on': on});
+      if (failed.isEmpty) return;
+      for (final f in failed) {
+        debugPrint('setGroupOn falló en ${f.deviceId}: ${f.error}');
+        final p = prev[f.deviceId];
+        // Solo revertimos luces que nosotros proyectamos: un deviceId ajeno
+        // en failed[] (miembro que la app no conoce) no tiene snapshot.
+        if (p != null) _byId[f.deviceId]!.state = p;
       }
-    }
-    if (anyFailed) {
       notifyListeners();
       _notifyCommandError(g.name);
+    } catch (e) {
+      debugPrint('setGroupOn error: $e');
+      // Revert SOLO de las tiles que siguen mostrando nuestro optimismo: si el
+      // socket ya reconcilió una luz (el server pudo haber aplicado aunque el
+      // HTTP venciera), pisarla con el snapshot viejo la dejaría mintiendo.
+      for (final id in ids) {
+        final d = _byId[id];
+        if (d != null && d.state.on == on) d.state = prev[id]!;
+      }
+      notifyListeners();
+      _notifyCommandError(g.name);
+      // La verdad del server pisa cualquier resto: un refresh corto resuelve
+      // el caso timeout-del-cliente-con-server-exitoso.
+      unawaited(refresh());
     }
   }
 

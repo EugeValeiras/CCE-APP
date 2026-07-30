@@ -1,3 +1,20 @@
+/// Fallo por device del PUT atómico de grupo (entrada de `failed[]` en la
+/// respuesta de PUT /groups/{id}/state). Existe como modelo para que el
+/// service pueda revertir el optimista SOLO de las luces que fallaron.
+class GroupStateFailure {
+  final String deviceId;
+  final String error;
+
+  const GroupStateFailure({required this.deviceId, required this.error});
+
+  factory GroupStateFailure.fromJson(Map<String, dynamic> json) {
+    return GroupStateFailure(
+      deviceId: (json['deviceId'] ?? '').toString(),
+      error: (json['error'] ?? '').toString(),
+    );
+  }
+}
+
 class LightGroup {
   final String id;
   final String name;

@@ -13,10 +13,18 @@ class ServerConfig {
   /// manda el header (el backend arranca en modo warn: nada se rompe).
   static const String apiToken = String.fromEnvironment('CCE_API_TOKEN');
 
-  /// Headers de auth para TODAS las llamadas HTTP a la API. Mapa vacío si no
-  /// hay token configurado (⇒ no viaja ningún header extra).
-  static Map<String, String> get tokenHeaders =>
-      apiToken.isEmpty ? const {} : const {'X-CCE-Token': apiToken};
+  /// Identidad de este cliente ante la API (header `X-CCE-Client`): el
+  /// command ledger del backend registra QUIÉN hizo cada escritura. Constante
+  /// porque todo lo que sale de la app es el usuario operando su teléfono.
+  static const String clientId = 'user:app';
+
+  /// Headers comunes para TODAS las llamadas HTTP a la API: identidad del
+  /// cliente (siempre — el ledger la necesita aun sin auth) + token de auth
+  /// solo si está configurado (sin token el backend corre en modo warn y
+  /// nada se rompe).
+  static Map<String, String> get tokenHeaders => apiToken.isEmpty
+      ? const {'X-CCE-Client': clientId}
+      : const {'X-CCE-Client': clientId, 'X-CCE-Token': apiToken};
 
   String get baseUrl => 'http://$host:$port/api';
   String get socketUrl => 'http://$host:$port';

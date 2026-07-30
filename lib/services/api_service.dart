@@ -10,6 +10,7 @@ import '../models/event_record.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
 import '../models/hue_room.dart';
+import '../models/light_group.dart';
 import '../models/capability.dart';
 
 class ApiService {
@@ -298,6 +299,64 @@ class ApiService {
       debugPrint('[FloorPlan] $path no disponible: $e');
     }
     return out;
+  }
+
+  /// Escritura ATÓMICA de grupo (PUT /groups/{id}/state con patch
+  /// {on?, bri?, ct?, hue?, sat?}): el backend compila los miembros Hue a UN
+  /// solo groupcast, así las luces del grupo cambian sincronizadas (adiós
+  /// efecto pochoclo del loop luz-por-luz). Responde
+  /// {ok, failed:[{deviceId,error}], native?}. Devuelve la lista de fallos
+  /// por device ([] si salió todo); tira solo ante fallo HTTP/transporte —
+  /// los fallos parciales NO son excepción porque el caller revierte solo
+  /// esas luces.
+  Future<List<GroupStateFailure>> setGroupState(
+    String groupId,
+    Map<String, dynamic> patch,
+  ) async {
+    final resp = await http
+        .put(
+          Uri.parse(
+            '${config.baseUrl}/groups/${Uri.encodeComponent(groupId)}/state',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode(patch),
+        )
+        .timeout(
+          // 15s y no 8: un miembro con timeout de provider (tuya muerto = 5s)
+          // más el fallback puede superar los 8 — y un timeout del CLIENTE con
+          // el server aún trabajando dejaba la UI revertida mintiendo mientras
+          // las luces sí cambiaban (revisión adversarial).
+          const Duration(seconds: 15),
+        );
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      String msg = 'Error ${resp.statusCode}';
+      try {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['error'] != null) {
+          msg = data['error'].toString();
+        }
+      } catch (_) {}
+      throw Exception(msg);
+    }
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return const [];
+    final rawFailed = data['failed'];
+    final failed = rawFailed is List
+        ? rawFailed
+            .whereType<Map>()
+            .map((f) =>
+                GroupStateFailure.fromJson(Map<String, dynamic>.from(f)))
+            .toList()
+        : <GroupStateFailure>[];
+    // ok:false sin detalle por device = fallo total del grupo (p.ej. grupo
+    // inexistente): lo tratamos como excepción para que el caller revierta todo.
+    if (data['ok'] == false && failed.isEmpty) {
+      throw Exception((data['error'] ?? 'Fallo del grupo').toString());
+    }
+    return failed;
   }
 
   /// Escenas de config CCE (GET /config/scenes).
