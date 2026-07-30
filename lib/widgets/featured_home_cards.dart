@@ -618,7 +618,9 @@ class _SceneHomeCardState extends State<SceneHomeCard> {
   Widget build(BuildContext context) {
     final name = widget.scene?.name ?? widget.hueScene!.name;
     final sub = widget.scene != null
-        ? '${widget.scene!.lights.length} luces'
+        // Dispositivos, no luces: una escena heterogénea (Modo Cine) vive en
+        // entries[] y con lights.length decía "0 luces" teniendo un device.
+        ? widget.scene!.deviceCountLabel
         : 'Escena Hue${widget.hueScene!.roomName != null ? ' · ${widget.hueScene!.roomName}' : ''}';
     final accent = widget.hueScene?.swatch.isNotEmpty == true
         ? widget.hueScene!.swatch.first

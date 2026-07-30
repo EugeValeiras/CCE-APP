@@ -95,7 +95,8 @@ class CceSceneLight {
 }
 
 /// Escena de config CCE (key 'scenes' del GET /config). Se ejecuta
-/// client-side luz por luz con setDeviceState.
+/// server-side vía POST /config/scenes/:id/run (corre lights[] Y entries[];
+/// la réplica local de lights queda solo como update optimista).
 class CceScene {
   final String id;
   final String name;
@@ -103,16 +104,23 @@ class CceScene {
   final String? planId;
   final List<CceSceneLight> lights;
 
+  /// Devices de entries[] (escenas heterogéneas tipo Modo Cine: TV/JBL con
+  /// state o acción de catálogo). La app no las ejecuta ni edita — el run es
+  /// server-side — pero SÍ las cuenta: sin esto Modo Cine decía "0 luces".
+  final List<String> entryDeviceIds;
+
   const CceScene({
     required this.id,
     required this.name,
     this.icon,
     this.planId,
     this.lights = const [],
+    this.entryDeviceIds = const [],
   });
 
   factory CceScene.fromJson(Map<String, dynamic> json) {
     final rawLights = json['lights'];
+    final rawEntries = json['entries'];
     return CceScene(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
@@ -124,6 +132,24 @@ class CceScene {
               .map((l) => CceSceneLight.fromJson(Map<String, dynamic>.from(l)))
               .toList()
           : const [],
+      entryDeviceIds: rawEntries is List
+          ? rawEntries
+              .whereType<Map>()
+              .map((e) => (e['deviceId'] ?? '').toString())
+              .where((id) => id.isNotEmpty)
+              .toList()
+          : const [],
     );
   }
+
+  /// DISPOSITIVOS de la escena: luces + devices únicos de entries[] (varias
+  /// entries del mismo device son pasos — prender + setInput — no devices).
+  int get deviceCount {
+    final ids = <String>{...lights.map((l) => l.lightId), ...entryDeviceIds};
+    return ids.length;
+  }
+
+  /// "1 dispositivo" / "N dispositivos" — etiqueta de las cards de escena.
+  String get deviceCountLabel =>
+      '$deviceCount ${deviceCount == 1 ? 'dispositivo' : 'dispositivos'}';
 }

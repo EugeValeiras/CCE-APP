@@ -966,7 +966,9 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
-  /// Ejecuta una escena CCE client-side: optimista + N× setDeviceState.
+  /// Ejecuta una escena CCE: update optimista de las luces + UN run
+  /// server-side (corre lights[] Y entries[] — la réplica client-side vieja
+  /// no ejecutaba entries y el Modo Cine no hacía nada desde la app).
   Future<void> applyScene(CceScene s) async {
     for (final l in s.lights) {
       final d = _byId[l.lightId];
@@ -989,9 +991,7 @@ class DevicesService extends ChangeNotifier {
       );
     }
     notifyListeners();
-    for (final l in s.lights) {
-      await _api.setDeviceState(l.lightId, l.toStateBody());
-    }
+    await _api.runScene(s.id);
   }
 
   /// Recall de escena Hue nativa, optimista CON REVERT: marca [s] activa y el

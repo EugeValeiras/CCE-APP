@@ -80,6 +80,23 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
   }
 
+  /// Corre una escena CCE server-side (POST /config/scenes/:id/run): ejecuta
+  /// lights[] Y entries[] por los chokepoints del backend. La réplica local
+  /// luz por luz no ejecutaba entries (TV/JBL del Modo Cine).
+  Future<void> runScene(String sceneId) async {
+    final resp = await http
+        .post(
+          Uri.parse(
+            '${config.baseUrl}/config/scenes/${Uri.encodeComponent(sceneId)}/run',
+          ),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 10));
+    if (resp.statusCode >= 300) {
+      throw Exception('Error ${resp.statusCode} corriendo la escena');
+    }
+  }
+
   Future<void> setDeviceState(
     String deviceId,
     Map<String, dynamic> state,

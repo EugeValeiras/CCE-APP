@@ -673,15 +673,14 @@ class AutomationsService extends ChangeNotifier {
     }
   }
 
-  /// Activa una escena CCE luz por luz — misma réplica client-side que el
-  /// modo Simple (la API no expone recall de escenas CCE). Escena
-  /// desconocida → throw, que el caller convierte en warning sin crash.
+  /// Activa una escena CCE server-side — mismo run que applyScene del modo
+  /// Simple (POST /config/scenes/:id/run corre lights[] Y entries[]; la
+  /// réplica luz por luz vieja no ejecutaba entries). Escena desconocida →
+  /// throw, que el caller convierte en warning sin crash.
   Future<void> _applyScene(String sceneId) async {
     final scene = devices.scenes.firstWhereOrNull((s) => s.id == sceneId);
     if (scene == null) throw Exception('Escena $sceneId no encontrada');
-    for (final l in scene.lights) {
-      await _putState(l.lightId, l.toStateBody());
-    }
+    await devices.applyScene(scene);
   }
 
   /// Recall server-side de una escena Hue: mismo endpoint que usa el modo
