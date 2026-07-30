@@ -8,7 +8,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_neo_button.dart';
 import '../theme/components/status_dot.dart';
-import '../utils/vacuum_modes.dart';
+import '../utils/vacuum_state.dart';
 import '../views/vacuum_screen.dart';
 import 'vacuum_tile.dart';
 
@@ -52,18 +52,23 @@ class VacuumHomeCard extends StatelessWidget {
         final d = service.byId(device.id) ?? device;
         final s = d.state;
         final online = s.reachable;
+        // El texto/color/pulse salen de la actividad detallada del sidecar
+        // (mismo etiquetador que el plano y el Dashboard); la acción rápida
+        // sigue keyed al vacuumState de Matter, que es por donde viajan los
+        // comandos.
         final vacState = s.vacuumState;
-        final active = vacState == 'cleaning' || vacState == 'returning';
+        final busy = vacState == 'cleaning' || vacState == 'returning';
+        final active = VacuumTile.statePulse(d);
 
         final accent =
-            online ? VacuumTile.stateColor(vacState) : CceColors.textTertiary;
+            online ? VacuumTile.stateColor(d) : CceColors.textTertiary;
 
         final String sub;
         if (!online) {
           sub = 'Fuera de línea';
         } else {
           final battery = s.battery != null ? ' · ${s.battery}%' : '';
-          sub = vacuumStateLabel(vacState) + battery;
+          sub = (vacuumStateLabel(d) ?? 'Sin estado') + battery;
         }
 
         final dotColor = online ? accent : CceColors.textTertiary;
@@ -157,18 +162,18 @@ class VacuumHomeCard extends StatelessWidget {
                 trailing!
               else if (online)
                 CceNeoSvgIconButton(
-                  svg: active
+                  svg: busy
                       ? CceIcons.pause
                       : (vacState == 'paused'
                           ? CceIcons.stepForward
                           : CceIcons.play),
                   size: 40,
-                  tooltip: active
+                  tooltip: busy
                       ? 'Pausar'
                       : (vacState == 'paused' ? 'Reanudar' : 'Limpiar'),
                   onPressed: () => service.vacuumCommand(
                       d,
-                      active
+                      busy
                           ? 'pause'
                           : (vacState == 'paused' ? 'resume' : 'clean')),
                 )

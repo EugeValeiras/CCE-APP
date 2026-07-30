@@ -8,27 +8,10 @@
 /// el label REAL es el value — jamás se inventa un modo).
 library;
 
-/// Estado del robot → label español (espejo de vacStateLabel del Dashboard).
-String vacuumStateLabel(String? state) {
-  switch (state) {
-    case 'cleaning':
-      return 'Limpiando';
-    case 'docked':
-      return 'En base';
-    case 'paused':
-      return 'Pausada';
-    case 'returning':
-      return 'Volviendo a la base';
-    case 'error':
-      return 'Error';
-    case 'stopped':
-      return 'Detenida';
-    case 'idle':
-      return 'En espera';
-    default:
-      return 'Sin estado';
-  }
-}
+// El label del estado del robot vive en utils/vacuum_state.dart
+// (vacuumStateLabel(Device)): lee `vacuumActivity` del sidecar, igual que el
+// Dashboard. El viejo etiquetador por `vacuumState` de Matter que vivía acá
+// mostraba "En base" con el robot cargando o lavando la mopa.
 
 /// Matriz potencia × función derivada de los cleanModes reales.
 class VacuumModeMatrix {

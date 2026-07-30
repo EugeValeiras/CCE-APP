@@ -5,7 +5,7 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
-import '../utils/vacuum_modes.dart';
+import '../utils/vacuum_state.dart';
 import '../views/vacuum_screen.dart';
 import '../views/unified_device_screen.dart';
 import 'pulse_on_update.dart';
@@ -32,14 +32,52 @@ class VacuumTile extends StatelessWidget {
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
 
-  static Color stateColor(String? state) {
-    switch (state) {
+  /// Ámbar de pausa (mismo que lock destrabada).
+  static const Color _amber = Color(0xFFFF9F0A);
+
+  /// Color por la actividad detallada del sidecar (la misma que etiqueta
+  /// [vacuumStateLabel]); cae al `vacuumState` de Matter sin sesión del
+  /// sidecar. Mismas familias que siempre: trabajando = info, volviendo =
+  /// motion, pausada = ámbar, en la base = ok, error = danger.
+  static Color stateColor(Device device) {
+    final act = device.state.vacuumActivity;
+    if (act != null) {
+      switch (act) {
+        case 'starting':
+        case 'cleaning':
+        case 'segment_cleaning':
+        case 'zoned_cleaning':
+        case 'spot_cleaning':
+        case 'going_to_target':
+        case 'manual':
+        case 'remote_control':
+        case 'going_to_wash':
+        case 'washing_mop':
+        case 'emptying_bin':
+          return CceColors.info;
+        case 'returning':
+        case 'docking':
+          return CceColors.motion;
+        case 'paused':
+          return _amber;
+        case 'charging':
+        case 'charge_complete':
+        case 'idle':
+          return CceColors.ok;
+        case 'error':
+        case 'charging_error':
+          return CceColors.danger;
+        default:
+          return CceColors.textSecondary;
+      }
+    }
+    switch (device.state.vacuumState) {
       case 'cleaning':
         return CceColors.info;
       case 'docked':
         return CceColors.ok;
       case 'paused':
-        return const Color(0xFFFF9F0A); // ámbar (mismo que lock destrabada)
+        return _amber;
       case 'returning':
         return CceColors.motion;
       case 'error':
@@ -49,15 +87,25 @@ class VacuumTile extends StatelessWidget {
     }
   }
 
+  /// ¿Alerta visual (borde + glow)? Sólo los errores.
+  static bool stateAlert(Device device) {
+    final act = device.state.vacuumActivity;
+    if (act != null) return act == 'error' || act == 'charging_error';
+    return device.state.vacuumState == 'error';
+  }
+
+  /// ¿Pulse del dot? Trabajando de verdad; una pausa es quietud.
+  static bool statePulse(Device device) =>
+      vacuumWorking(device) && device.state.vacuumActivity != 'paused';
+
   @override
   Widget build(BuildContext context) {
-    final String? vacState = device.state.vacuumState;
-    final String stateLabel = vacuumStateLabel(vacState);
-    final Color color = stateColor(vacState);
+    final String stateLabel = vacuumStateLabel(device) ?? 'Sin estado';
+    final Color color = stateColor(device);
     // Solo el error es alerta visual (borde + glow); limpiar es actividad
     // normal y se comunica con el pulse del dot.
-    final bool alert = vacState == 'error';
-    final bool active = vacState == 'cleaning' || vacState == 'returning';
+    final bool alert = stateAlert(device);
+    final bool active = statePulse(device);
 
     final double glyphSize = size.iconSize + 8;
     final Color glyphColor = alert ? CceTint.textOn(color) : color;

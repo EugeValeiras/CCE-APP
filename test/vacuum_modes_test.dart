@@ -16,23 +16,6 @@ const realModes = [
 ];
 
 void main() {
-  group('vacuumStateLabel', () {
-    test('mapea los estados conocidos al español (espejo del Dashboard)', () {
-      expect(vacuumStateLabel('cleaning'), 'Limpiando');
-      expect(vacuumStateLabel('docked'), 'En base');
-      expect(vacuumStateLabel('paused'), 'Pausada');
-      expect(vacuumStateLabel('returning'), 'Volviendo a la base');
-      expect(vacuumStateLabel('error'), 'Error');
-      expect(vacuumStateLabel('stopped'), 'Detenida');
-      expect(vacuumStateLabel('idle'), 'En espera');
-    });
-
-    test('desconocido/null cae a Sin estado', () {
-      expect(vacuumStateLabel(null), 'Sin estado');
-      expect(vacuumStateLabel('whatever'), 'Sin estado');
-    });
-  });
-
   group('VacuumModeMatrix.tryBuild', () {
     test('arma la matriz 3x3 con los modos reales del Qrevo', () {
       final m = VacuumModeMatrix.tryBuild(realModes);

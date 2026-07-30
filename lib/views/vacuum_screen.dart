@@ -10,6 +10,7 @@ import '../theme/components/cce_neo_press.dart';
 import '../theme/components/cce_segmented.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/vacuum_modes.dart';
+import '../utils/vacuum_state.dart';
 import '../widgets/vacuum_tile.dart';
 
 /// Control neumórfico del robot aspiradora (Roborock Qrevo vía Matter RVC +
@@ -402,10 +403,9 @@ class _StateBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = device.state.vacuumState;
-    final color = VacuumTile.stateColor(s);
-    final label = vacuumStateLabel(s);
-    final active = s == 'cleaning' || s == 'returning';
+    final color = VacuumTile.stateColor(device);
+    final label = vacuumStateLabel(device) ?? 'Sin estado';
+    final active = VacuumTile.statePulse(device);
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 24),
