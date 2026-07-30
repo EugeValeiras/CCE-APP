@@ -184,13 +184,25 @@ List<Widget> _sceneSectionList({
     out.add(sectionWrap(cce, hue));
   }
 
-  // Escenas sin plano/room (o de rooms Hue no vinculados a ningún plano).
+  // Escenas CCE sin plano.
   final looseCce = cceScenes.where((s) => !usedCce.contains(s.id)).toList();
+  if (looseCce.isNotEmpty) {
+    out.add(label('Sin plano'));
+    out.add(sectionWrap(looseCce, const []));
+  }
+
+  // Rooms de Hue que ningún plano vinculó: sección propia con el NOMBRE del
+  // room y la leyenda "sin vincular" (decisión 30/07, espejo del Dashboard) —
+  // el bucket genérico 'Otras' escondía de qué room era cada escena.
   final looseHue = hueScenes.where((s) => !usedHue.contains(s.id)).toList()
     ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-  if (looseCce.isNotEmpty || looseHue.isNotEmpty) {
-    out.add(label('Otras'));
-    out.add(sectionWrap(looseCce, looseHue));
+  final byRoom = <String, List<HueScene>>{};
+  for (final s in looseHue) {
+    byRoom.putIfAbsent(s.roomName ?? 'Room desconocido', () => []).add(s);
+  }
+  for (final e in byRoom.entries) {
+    out.add(label('${e.key} · sin vincular'));
+    out.add(sectionWrap(const [], e.value));
   }
   return out;
 }
