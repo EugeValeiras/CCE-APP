@@ -11,6 +11,7 @@ import '../theme/components/cce_segmented.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/vacuum_modes.dart';
 import '../utils/vacuum_state.dart';
+import '../widgets/vacuum_map_view.dart';
 import '../widgets/vacuum_tile.dart';
 
 /// Control neumórfico del robot aspiradora (Roborock Qrevo vía Matter RVC +
@@ -78,6 +79,18 @@ class _VacuumScreenState extends State<VacuumScreen> {
       const SizedBox(height: 22),
       _transport(d),
       ..._modeSection(d),
+      // Mapa (capability vacuum_map, sidecar): tocar una habitación en el mapa
+      // togglea la MISMA selección que los chips de abajo. El widget colapsa
+      // solo (label incluido) si el backend no tiene mapa para dar.
+      if (d.hasCapability('vacuum_map'))
+        VacuumMapView(
+          device: d,
+          service: widget.service,
+          selectedSegments: _selectedRooms,
+          onSegmentTap: (seg) => setState(() {
+            if (!_selectedRooms.remove(seg)) _selectedRooms.add(seg);
+          }),
+        ),
       ..._roomsSection(d),
       ..._fanSection(d),
       const SizedBox(height: 22),

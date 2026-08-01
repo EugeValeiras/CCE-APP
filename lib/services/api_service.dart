@@ -12,6 +12,7 @@ import '../models/scene.dart';
 import '../models/hue_room.dart';
 import '../models/light_group.dart';
 import '../models/capability.dart';
+import '../models/vacuum_map.dart';
 
 class ApiService {
   final ServerConfig config;
@@ -1237,6 +1238,33 @@ class ApiService {
     return data is Map<String, dynamic>
         ? data
         : Map<String, dynamic>.from(data as Map);
+  }
+
+  // ── Mapa Roborock (capability vacuum_map) ──────────────────────────────────
+
+  /// Mapa actual del robot (GET /roborock/devices/:id/map). El backend arma el
+  /// RRMap on-demand contra la nube Roborock y puede tardar hasta ~20s la
+  /// primera vez — timeout de 25s para no cortar antes que el server.
+  /// Defensivo como getInstalledTvApps: ante CUALQUIER fallo (404 = robot no
+  /// atado, 502 = nube caída, JSON raro, timeout) devuelve null y la pantalla
+  /// esconde la sección de mapa — nunca rompe.
+  Future<VacuumMapData?> getVacuumMap(String deviceId) async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse(
+              '${config.baseUrl}/roborock/devices/${Uri.encodeComponent(deviceId)}/map',
+            ),
+            headers: ServerConfig.tokenHeaders,
+          )
+          .timeout(const Duration(seconds: 25));
+      if (resp.statusCode != 200) return null;
+      final data = jsonDecode(resp.body);
+      if (data is! Map || data['map'] is! Map) return null;
+      return VacuumMapData.fromJson(Map<String, dynamic>.from(data['map'] as Map));
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── Cerradura EZVIZ ──────────────────────────────────────────────────────
