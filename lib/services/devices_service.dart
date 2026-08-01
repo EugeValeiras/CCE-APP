@@ -11,6 +11,7 @@ import '../models/light_group.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../models/server_config.dart';
+import '../models/vacuum_map.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/light_color.dart';
 import 'api_service.dart';
@@ -379,6 +380,11 @@ class DevicesService extends ChangeNotifier {
       _notifyCommandError(displayName(d));
     }
   }
+
+  /// Mapa del robot (capability vacuum_map). Passthrough al API: sin estado
+  /// optimista ni cache acá — el TTL vive en el backend y la pantalla decide
+  /// su propio ritmo de refresh. null = sin mapa (la sección se esconde).
+  Future<VacuumMapData?> fetchVacuumMap(Device d) => _api.getVacuumMap(d.id);
 
   /// Brillo, optimista con revert al estado previo si el PUT falla (mismo
   /// patrón que el termostato) + snackbar global.
