@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
+import '../models/vacuum_map.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
@@ -418,9 +421,23 @@ class _PlanCanvas extends StatelessWidget {
     return (minX: 0.0, minY: 0.0, w: 800.0, h: 600.0);
   }
 
+  /// Robot a dibujar en vivo sobre ESTE plano, o null (el caso normal: todos
+  /// los planos dibujados a mano no tienen ancla). Pide las tres cosas: que el
+  /// plano haya nacido del mapa del robot, que el device exista y que esté
+  /// trabajando — con el criterio de siempre, [vacuumWorking].
+  VacuumPosition? _vacuumPosition() {
+    final anchor = plan.vacuumAnchor;
+    if (anchor == null) return null;
+    final robot = service.byId(anchor.deviceId);
+    if (robot == null || !vacuumWorking(robot)) return null;
+    return robot.state.vacuumPosition;
+  }
+
   @override
   Widget build(BuildContext context) {
     final vb = _viewBox();
+    final anchor = plan.vacuumAnchor;
+    final vacuumPos = _vacuumPosition();
     return LayoutBuilder(
       builder: (context, constraints) {
         final availW = constraints.maxWidth - 32;
@@ -512,6 +529,21 @@ class _PlanCanvas extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              // El robot moviéndose, sobre el SVG y debajo de
+                              // los marcadores. Sólo existe en los planos
+                              // generados desde el mapa; en el resto ni se
+                              // monta y la pantalla queda igual que siempre.
+                              if (anchor != null && vacuumPos != null)
+                                Positioned.fill(
+                                  child: IgnorePointer(
+                                    child: _VacuumLiveLayer(
+                                      anchor: anchor,
+                                      position: vacuumPos,
+                                      viewBox: vb,
+                                      scale: scale,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -598,6 +630,265 @@ class _PlanCanvas extends StatelessWidget {
       },
     );
   }
+}
+
+/// Diferencia entre dos ángulos por el camino corto. Sin esto, pasar de 350° a
+/// 10° hace girar al robot casi una vuelta entera para el lado equivocado.
+double _shortestAngleDelta(double from, double to) {
+  final d = (to - from) % 360;
+  return d > 180 ? d - 360 : d;
+}
+
+/// Capa en vivo del robot sobre el plano: dónde está, hacia dónde mira y por
+/// dónde viene. El chip de estado dice QUÉ hace; esto dice DÓNDE.
+///
+/// La posición se refresca cada ~10 s (el ritmo del poll del sidecar), así que
+/// el marcador se ANIMA de una lectura a la siguiente en vez de saltar. Con la
+/// app en background Flutter no produce frames: no se anima nada, y al volver
+/// el marcador retoma el tramo donde había quedado.
+class _VacuumLiveLayer extends StatefulWidget {
+  final VacuumAnchor anchor;
+  final VacuumPosition position;
+  final ({double minX, double minY, double w, double h}) viewBox;
+
+  /// Píxeles de pantalla por unidad del plano (el del viewBox, no el del ancla).
+  final double scale;
+
+  const _VacuumLiveLayer({
+    required this.anchor,
+    required this.position,
+    required this.viewBox,
+    required this.scale,
+  });
+
+  @override
+  State<_VacuumLiveLayer> createState() => _VacuumLiveLayerState();
+}
+
+class _VacuumLiveLayerState extends State<_VacuumLiveLayer>
+    with SingleTickerProviderStateMixin {
+  /// Estela corta: las últimas ~30 lecturas (5 minutos a 10 s). La trayectoria
+  /// completa la muestra la sección MAPA de la pantalla del robot.
+  static const _trailMax = 30;
+
+  /// Diámetro real del Qrevo: 35 cm = 7 píxeles de RRMap (50 mm cada uno).
+  /// Mismo criterio que el dashboard, para que las dos pantallas se vean igual.
+  static const _robotMapPx = 7.0;
+
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  /// Lecturas ya consumidas, en unidades del plano.
+  final _trail = <Offset>[];
+  Offset _from = Offset.zero;
+  Offset _to = Offset.zero;
+  double? _fromAngle;
+  double? _toAngle;
+  int? _lastAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _consume(animate: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant _VacuumLiveLayer old) {
+    super.didUpdateWidget(old);
+    if (old.anchor != widget.anchor) {
+      // Cambió la transformada: la estela vieja quedó en otro sistema de
+      // coordenadas y dibujaría una línea inventada.
+      _trail.clear();
+      _consume(animate: false);
+    } else if (old.position != widget.position) {
+      _consume(animate: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Offset get _currentPoint => Offset.lerp(_from, _to, _ctrl.value)!;
+
+  double? get _currentAngle {
+    final a = _fromAngle, b = _toAngle;
+    if (b == null) return a;
+    if (a == null) return b;
+    return a + _shortestAngleDelta(a, b) * _ctrl.value;
+  }
+
+  void _consume({required bool animate}) {
+    final p = widget.position;
+    final plan = widget.anchor.toPlan(p.x, p.y);
+    final target = Offset(plan.x, plan.y);
+    // El ángulo viene en el espacio del mapa: si el ancla rota el plano, el
+    // tick de orientación rota con ella. Sin ángulo se conserva el anterior.
+    final angle =
+        p.angle == null ? _toAngle : p.angle! + widget.anchor.rotationDeg;
+
+    if (_trail.isEmpty || _trail.last != target) {
+      _trail.add(target);
+      if (_trail.length > _trailMax) _trail.removeAt(0);
+    }
+
+    if (!animate) {
+      _from = _to = target;
+      _fromAngle = _toAngle = angle;
+      _lastAt = p.at;
+      _ctrl.value = 1;
+      return;
+    }
+    // Arranca desde lo que se está VIENDO, no desde la lectura anterior: si
+    // llega una posición nueva a mitad del tramo, el marcador sigue de largo
+    // en vez de pegar un tirón hacia atrás.
+    _from = _currentPoint;
+    _fromAngle = _currentAngle;
+    _to = target;
+    _toAngle = angle;
+    _ctrl.duration = _legDuration(_lastAt, p.at);
+    _lastAt = p.at;
+    _ctrl.forward(from: 0);
+  }
+
+  /// El robot se mueve a velocidad constante, así que el tramo se recorre en el
+  /// tiempo REAL que pasó entre las dos lecturas: eso es lo que lo hace ver
+  /// caminando. Tope de 6 s para que el marcador nunca quede más atrás que eso
+  /// de la realidad si las lecturas vinieron espaciadas.
+  static Duration _legDuration(int? prevAt, int? at) {
+    final delta = (prevAt != null && at != null) ? at - prevAt : 0;
+    return Duration(milliseconds: delta > 0 ? delta.clamp(700, 6000) : 1200);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _VacuumLivePainter(
+        t: _ctrl,
+        from: _from,
+        to: _to,
+        fromAngle: _fromAngle,
+        toAngle: _toAngle,
+        trail: List.of(_trail),
+        viewBox: widget.viewBox,
+        scale: widget.scale,
+        radiusPlan: _robotMapPx / 2 * widget.anchor.scale,
+      ),
+    );
+  }
+}
+
+class _VacuumLivePainter extends CustomPainter {
+  final Animation<double> t;
+  final Offset from;
+  final Offset to;
+  final double? fromAngle;
+  final double? toAngle;
+
+  /// Lecturas en unidades del plano; la última es [to].
+  final List<Offset> trail;
+  final ({double minX, double minY, double w, double h}) viewBox;
+  final double scale;
+
+  /// Radio del robot en unidades del plano (35 cm reales).
+  final double radiusPlan;
+
+  _VacuumLivePainter({
+    required this.t,
+    required this.from,
+    required this.to,
+    required this.fromAngle,
+    required this.toAngle,
+    required this.trail,
+    required this.viewBox,
+    required this.scale,
+    required this.radiusPlan,
+  }) : super(repaint: t);
+
+  /// Unidades del plano → píxeles del canvas. Misma proyección que los dots de
+  /// luces, pero SIN clamp: el clamp mentiría sobre dónde está el robot.
+  Offset _screen(Offset p) =>
+      Offset((p.dx - viewBox.minX) * scale, (p.dy - viewBox.minY) * scale);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final head = _screen(Offset.lerp(from, to, t.value)!);
+    // Piso de 5 px: en un plano de una habitación entera el robot real mide
+    // apenas unos píxeles y quedaría invisible.
+    final r = math.max(radiusPlan * scale, 5.0);
+
+    // Estela: los tramos ya recorridos, desvaneciéndose hacia el pasado. El
+    // último llega hasta donde se está viendo al robot, no hasta la lectura.
+    if (trail.length > 1) {
+      final pts = [
+        for (var i = 0; i < trail.length - 1; i++) _screen(trail[i]),
+        head,
+      ];
+      for (var i = 0; i < pts.length - 1; i++) {
+        canvas.drawLine(
+          pts[i],
+          pts[i + 1],
+          Paint()
+            ..strokeWidth = 2
+            ..strokeCap = StrokeCap.round
+            ..color = _vacuumTeal.withValues(
+                alpha: 0.10 + 0.35 * ((i + 1) / (pts.length - 1))),
+        );
+      }
+    }
+
+    // Robot: halo, disco y aro — el mismo criterio visual que el marcador del
+    // mapa en la pantalla del robot, con el teal del plano.
+    canvas.drawCircle(
+      head,
+      r * 1.9,
+      Paint()
+        ..color = _vacuumTeal.withValues(alpha: 0.35)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, r * 1.2),
+    );
+    canvas.drawCircle(
+        head, r, Paint()..color = Colors.white.withValues(alpha: 0.92));
+    canvas.drawCircle(
+      head,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = math.max(r * 0.28, 1.2)
+        ..color = _vacuumTeal,
+    );
+
+    // Tick de orientación (hacia dónde mira), sólo si el robot la reportó.
+    final a = fromAngle, b = toAngle;
+    final angle = b == null
+        ? a
+        : (a == null ? b : a + _shortestAngleDelta(a, b) * t.value);
+    if (angle != null) {
+      final rad = angle * math.pi / 180;
+      canvas.drawLine(
+        head,
+        head + Offset(math.cos(rad), math.sin(rad)) * (r * 1.55),
+        Paint()
+          ..strokeWidth = math.max(r * 0.3, 1.5)
+          ..strokeCap = StrokeCap.round
+          ..color = _vacuumTeal,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_VacuumLivePainter old) =>
+      old.from != from ||
+      old.to != to ||
+      old.fromAngle != fromAngle ||
+      old.toAngle != toAngle ||
+      old.trail.length != trail.length ||
+      old.viewBox != viewBox ||
+      old.scale != scale ||
+      old.radiusPlan != radiusPlan;
 }
 
 class _DeviceDot extends StatefulWidget {
