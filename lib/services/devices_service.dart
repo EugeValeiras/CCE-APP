@@ -1056,13 +1056,33 @@ class DevicesService extends ChangeNotifier {
         'battery': ev.state!['battery'] ?? d.state.battery,
         'fanSpeed': ev.state!['fanSpeed'] ?? d.state.fanSpeed,
         'fanSpeeds': ev.state!['fanSpeeds'] ?? d.state.fanSpeeds,
-        // OJO: rooms NO va acá — el fallback serían objetos VacuumRoom (no JSON
-        // crudo) y fromJson los descartaría. Se preserva vía copyWith abajo.
+        // Sin estos dos el robot se ve dormido apenas llega cualquier evento:
+        // vacuumState (Matter) se queda pegado y el detalle real lo trae
+        // vacuumActivity, que es lo que lee vacuumWorking/vacuumStateLabel.
+        'vacuumActivity': ev.state!['vacuumActivity'] ?? d.state.vacuumActivity,
+        'vacuumRoomName': ev.state!['vacuumRoomName'] ?? d.state.vacuumRoomName,
+        // OJO: rooms/roomQueue/vacuumPosition NO llevan fallback acá — sería un
+        // objeto ya parseado (no JSON crudo) y fromJson lo descartaría. Se
+        // preservan vía copyWith abajo.
         'rooms': ev.state!['rooms'],
+        'roomQueue': ev.state!['roomQueue'],
+        'vacuumPosition': ev.state!['vacuumPosition'],
       });
-      d.state = (partial.rooms == null && d.state.rooms != null)
-          ? partial.copyWith(rooms: d.state.rooms)
-          : partial;
+      var next = partial;
+      if (partial.rooms == null && d.state.rooms != null) {
+        next = next.copyWith(rooms: d.state.rooms);
+      }
+      // A diferencia de rooms, estos dos SÍ se limpian cuando el evento manda
+      // la clave explícita: el sidecar publica `vacuumPosition: null` al dejar
+      // de trabajar, y esa es la señal de que la capa en vivo se apaga.
+      if (partial.roomQueue == null && !ev.state!.containsKey('roomQueue')) {
+        next = next.copyWith(roomQueue: d.state.roomQueue);
+      }
+      if (partial.vacuumPosition == null &&
+          !ev.state!.containsKey('vacuumPosition')) {
+        next = next.copyWith(vacuumPosition: d.state.vacuumPosition);
+      }
+      d.state = next;
       changed = true;
     }
     if (ev.sensor != null && ev.sensor!.isNotEmpty) {
