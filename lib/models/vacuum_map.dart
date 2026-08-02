@@ -21,6 +21,69 @@ class VacuumMapPoint {
   }
 }
 
+/// Posición en vivo del robot: campo de estado `vacuumPosition`, que el
+/// sidecar publica mientras trabaja y apaga cuando termina. Llega sola por el
+/// stream (son 4 números, a diferencia del mapa entero, que va por HTTP).
+///
+/// OJO: acá las coordenadas son píxeles ABSOLUTOS del lienzo RRMap (el DTO del
+/// mapa, en cambio, va en píxeles del recorte). Es lo que permite anclarlas a
+/// un plano sin que se corran cuando el robot descubre área nueva.
+class VacuumPosition {
+  final double x;
+  final double y;
+
+  /// Grados en espacio pantalla (0 = mirando a +x, horario); null si el robot
+  /// no reportó orientación — mismo criterio que [VacuumMapData.robotAngle].
+  final double? angle;
+
+  /// Segmento en el que está parado, o null si el robot no lo dice.
+  final int? segmentId;
+
+  /// ms epoch de la lectura: sirve para saber cuánto duró el tramo entre dos
+  /// posiciones y así interpolar a la velocidad real.
+  final int? at;
+
+  const VacuumPosition({
+    required this.x,
+    required this.y,
+    this.angle,
+    this.segmentId,
+    this.at,
+  });
+
+  /// null ante cualquier forma inesperada (el backend manda `null` cuando el
+  /// robot deja de trabajar): la capa del robot simplemente no se dibuja.
+  static VacuumPosition? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final x = json['x'], y = json['y'];
+    if (x is! num || y is! num) return null;
+    if (!x.toDouble().isFinite || !y.toDouble().isFinite) return null;
+    final angle = json['angle'];
+    final segmentId = json['segmentId'];
+    final at = json['at'];
+    return VacuumPosition(
+      x: x.toDouble(),
+      y: y.toDouble(),
+      angle:
+          (angle is num && angle.toDouble().isFinite) ? angle.toDouble() : null,
+      segmentId: segmentId is num ? segmentId.toInt() : null,
+      at: at is num ? at.toInt() : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is VacuumPosition &&
+      other.x == x &&
+      other.y == y &&
+      other.angle == angle &&
+      other.segmentId == segmentId &&
+      other.at == at;
+
+  @override
+  int get hashCode => Object.hash(x, y, angle, segmentId, at);
+}
+
 class VacuumMapData {
   final int width;
   final int height;

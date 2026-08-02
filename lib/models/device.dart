@@ -1,3 +1,5 @@
+import 'vacuum_map.dart';
+
 /// Habitación reportada por el sidecar Roborock (capability vacuum_rooms).
 /// `segmentId` es el id numérico que consume el verbo cleanRooms.
 class VacuumRoom {
@@ -108,6 +110,11 @@ class DeviceState {
   /// que armamos nosotros.
   final String? vacuumRoomName;
 
+  /// Dónde está el robot AHORA, en píxeles absolutos del lienzo del RRMap.
+  /// Sólo viaja mientras trabaja; la consume la capa en vivo del plano cruzada
+  /// con `floorPlans[].vacuumAnchor`.
+  final VacuumPosition? vacuumPosition;
+
   DeviceState({
     this.on = false,
     this.bri = 0,
@@ -140,6 +147,7 @@ class DeviceState {
     this.roomQueue,
     this.vacuumActivity,
     this.vacuumRoomName,
+    this.vacuumPosition,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -187,6 +195,7 @@ class DeviceState {
       roomQueue: VacuumRoomQueue.fromJson(json['roomQueue']),
       vacuumActivity: json['vacuumActivity'] as String?,
       vacuumRoomName: json['vacuumRoomName'] as String?,
+      vacuumPosition: VacuumPosition.fromJson(json['vacuumPosition']),
       fanSpeeds: (json['fanSpeeds'] is List)
           ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
           : null,
@@ -229,6 +238,7 @@ class DeviceState {
     VacuumRoomQueue? roomQueue,
     String? vacuumActivity,
     String? vacuumRoomName,
+    VacuumPosition? vacuumPosition,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -262,6 +272,7 @@ class DeviceState {
       roomQueue: roomQueue ?? this.roomQueue,
       vacuumActivity: vacuumActivity ?? this.vacuumActivity,
       vacuumRoomName: vacuumRoomName ?? this.vacuumRoomName,
+      vacuumPosition: vacuumPosition ?? this.vacuumPosition,
     );
   }
 }
