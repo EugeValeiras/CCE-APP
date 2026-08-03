@@ -31,7 +31,6 @@ abstract final class PlanSvgTheme {
   // ── Paleta dark. Tiene que seguir a `CceColors`; se repite acá para que el
   //    theming sea texto→texto puro y testeable sin material. ──
   static const String _wall = '#9BA3B5'; // CceColors.planWall
-  static const String _wallOpacity = '0.92';
   static const String _text = '#C6CCD8';
   static const String _light = '#ffffff';
 
@@ -145,8 +144,10 @@ abstract final class PlanSvgTheme {
         case _Role.wall:
           // El corazón del arreglo: la pared se aclara valga como `fill`
           // (exportador nuevo) o como `stroke` (planos viejos).
+          // El relleno va OPACO: con alpha, dos cuerpos de muro que se solapan
+          // en una unión suman y el encuentro se lee como una mancha.
           return attr == 'fill'
-              ? 'fill="$_wall" fill-opacity="$_wallOpacity"'
+              ? 'fill="$_wall"'
               : 'stroke="$_wall" stroke-opacity="0.9" stroke-linecap="round"';
 
         case _Role.room:
