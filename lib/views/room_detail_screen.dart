@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
 import '../models/room_ref.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
@@ -44,7 +45,11 @@ class RoomDetailScreen extends StatefulWidget {
     this.room,
     this.tv,
     this.jbl,
+    this.automations,
   });
+
+  /// Opcional: alimenta el indicador de automatizaciones de los tiles.
+  final AutomationsService? automations;
 
   @override
   State<RoomDetailScreen> createState() => _RoomDetailScreenState();
@@ -402,7 +407,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: service,
+      // También escucha a las automatizaciones: sin esto, el indicador de los
+      // tiles se quedaría con el conteo del momento en que se abrió la
+      // pantalla — pausar una automatización desde otro lado no lo movería.
+      animation: widget.automations == null
+          ? service
+          : Listenable.merge([service, widget.automations!]),
       builder: (context, _) {
         final devices =
             widget.deviceIds.map(service.byId).whereType<Device>().toList();
@@ -588,7 +598,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                                 device: d,
                                 service: service,
                                 size: TileSize.medium,
-                                neo: true);
+                                neo: true,
+                                automations: widget.automations);
                           },
                         ),
                         childCount: lights.length + (hasHueRoom ? 1 : 0),

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/device.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
@@ -28,7 +29,12 @@ class LightTile extends StatefulWidget {
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
+    this.automations,
   });
+
+  /// Opcional: si se provee, el tile indica cuántas automatizaciones activas
+  /// gobiernan esta luz. Sin él, el tile se comporta igual que antes.
+  final AutomationsService? automations;
 
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
@@ -277,6 +283,8 @@ class _LightTileState extends State<LightTile> {
           stateLabel: stateLabel,
           height: widget.height,
           neo: widget.neo,
+          automationCount:
+              widget.automations?.activeCountForDevice(d) ?? 0,
           // El switch de la franja prende/apaga directo.
           onToggle: reachable ? (_) => _toggle() : null,
         ),

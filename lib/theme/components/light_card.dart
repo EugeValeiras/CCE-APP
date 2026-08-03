@@ -22,6 +22,7 @@ class LightCard extends StatelessWidget {
     this.height = 132,
     this.onToggle,
     this.neo = false,
+    this.automationCount = 0,
   });
 
   final String name;
@@ -38,6 +39,14 @@ class LightCard extends StatelessWidget {
 
   /// OPT-IN: relieve neumórfico (default false ⇒ render idéntico al actual).
   final bool neo;
+
+  /// Cuántas automatizaciones ACTIVAS gobiernan esta luz. > 0 dibuja el
+  /// indicador de rayo.
+  ///
+  /// Existe porque frente a un dispositivo la pregunta más frecuente es "¿esto
+  /// lo maneja algo?" — y para contestarla había que ir a la lista general de
+  /// automatizaciones y leer los triggers y las acciones de cada una.
+  final int automationCount;
 
   /// Mutea el color para luces sin conexión (sat × 0.4).
   static Color _muted(Color c) {
@@ -228,9 +237,32 @@ class LightCard extends StatelessWidget {
             // Sin conexión: ícono chico arriba a la derecha (como Hue).
             if (!reachable)
               Positioned(
-                top: 8,
-                right: 8,
+                top: CceSpace.sm,
+                right: CceSpace.sm,
                 child: Icon(Icons.wifi_off, size: 14, color: fgSub),
+              ),
+            // "Algo maneja esta luz". Arriba a la IZQUIERDA para no pelear con
+            // el indicador de sin-conexión, y en texto terciario porque es
+            // contexto, no estado: no debe competir con el color de la luz,
+            // que es lo que el tile viene a comunicar.
+            if (automationCount > 0)
+              Positioned(
+                top: CceSpace.sm,
+                left: CceSpace.sm,
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt,
+                        size: 13, color: CceColors.textTertiary),
+                    if (automationCount > 1)
+                      Text(
+                        '$automationCount',
+                        style: CceText.caption.copyWith(
+                          color: CceColors.textTertiary,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
               ),
           ],
         ),

@@ -207,23 +207,23 @@ class _AutomationsViewState extends State<AutomationsView> {
       borderRadius: BorderRadius.circular(CceRadii.pill),
       child: Container(
         height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
         decoration: BoxDecoration(
-          color: CceColors.accent.withValues(alpha: 0.24),
+          // Acción principal de la pantalla: fill de acento, sin borde.
+          // El acento al 24% sobre el lienzo daba un marrón apagado con
+          // contorno — no se leía ni como botón primario ni como secundario.
+          color: CceColors.accent,
           borderRadius: BorderRadius.circular(CceRadii.pill),
-          border:
-              Border.all(color: CceColors.accent.withValues(alpha: 0.6)),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CceIcon(CceIcons.plus, size: 16, color: CceColors.textPrimary),
-            SizedBox(width: 6),
+            const CceIcon(CceIcons.plus, size: 16, color: CceTint.inkOnPastel),
+            SizedBox(width: CceSpace.sm),
             Text(
               'Nueva',
-              style: TextStyle(
-                color: CceColors.textPrimary,
-                fontSize: 13.5,
+              style: CceText.label.copyWith(
+                color: CceTint.inkOnPastel,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -434,9 +434,18 @@ class _AutomationsViewState extends State<AutomationsView> {
                   Row(
                     children: [
                       const Expanded(
-                        child:
-                            Text('Automatizaciones', style: CceText.display),
+                        // `title` (20), no `display` (32): "Automatizaciones"
+                        // es la palabra más larga de la navegación y a 32 no
+                        // entra junto al botón — se partía en dos líneas,
+                        // cortada como "Automatizacion / es".
+                        child: Text(
+                          'Automatizaciones',
+                          style: CceText.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
+                      SizedBox(width: CceSpace.md),
                       _newPill(),
                     ],
                   ),

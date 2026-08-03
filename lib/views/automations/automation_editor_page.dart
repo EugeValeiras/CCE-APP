@@ -565,7 +565,9 @@ class _AutomationEditorPageState extends State<AutomationEditorPage> {
                       children: [
                         CceSwitch(
                           value: draft.enabled,
-                          accent: CceColors.ok,
+                          // Acento del sistema: `ok` es el verde de "correcto",
+                          // y acá lo que se dice es "activa", que es estado.
+                          accent: CceColors.accent,
                           onChanged: (v) => setState(() => draft.enabled = v),
                         ),
                         const SizedBox(height: 4),
