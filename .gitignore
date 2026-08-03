@@ -43,3 +43,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secretos locales (NUNCA commitear — este repo es público)
+.codemagic.env
+*.local.env
+.secrets/

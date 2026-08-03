@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#
+# cm — consulta rápida de Codemagic para CCE-APP.
+#
+# Las credenciales viven en .codemagic.env (ignorado por git: este repo es
+# PÚBLICO). Este script NO contiene secretos, así que sí se commitea.
+#
+#   ./tools/cm builds [n]   últimos n builds (default 5)
+#   ./tools/cm status       estado del último build, paso por paso
+#   ./tools/cm log [id]     log del build (default: el último)
+#   ./tools/cm run [branch] dispara un build (default: main)
+#
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_FILE="$ROOT/.codemagic.env"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Falta $ENV_FILE (token de Codemagic). Ver tools/cm para el formato." >&2
+  exit 1
+fi
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+
+api() {
+  curl -s --max-time 30 -H "x-auth-token: $CODEMAGIC_API_TOKEN" "$@"
+}
+
+cmd_builds() {
+  local n="${1:-5}"
+  api "https://api.codemagic.io/builds?appId=$CODEMAGIC_APP_ID&limit=$n" | python3 -c '
+import json, sys
+for b in json.load(sys.stdin).get("builds", []):
+    st = b.get("status", "?")
+    mark = {"finished": "OK", "failed": "FALLO", "building": "..", "queued": "cola"}.get(st, st)
+    print(f'"'"'{mark:6s} #{b.get("index")}  v{b.get("version")}  {b.get("branch")}  {(b.get("startedAt") or "")[:19]}'"'"')
+'
+}
+
+cmd_status() {
+  api "https://api.codemagic.io/builds?appId=$CODEMAGIC_APP_ID&limit=1" | python3 -c '
+import json, sys
+b = json.load(sys.stdin)["builds"][0]
+print(f'"'"'build #{b.get("index")}  v{b.get("version")}  [{b.get("status")}]  branch={b.get("branch")}'"'"')
+print()
+for s in b.get("buildActions", []):
+    print(f'"'"'  {s.get("status","?"):9s} {s.get("name")}'"'"')
+'
+}
+
+cmd_log() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    id=$(api "https://api.codemagic.io/builds?appId=$CODEMAGIC_APP_ID&limit=1" \
+      | python3 -c 'import json,sys; print(json.load(sys.stdin)["builds"][0]["_id"])')
+  fi
+  api "https://api.codemagic.io/builds/$id" | python3 -c '
+import json, sys
+b = json.load(sys.stdin).get("build", {})
+for s in b.get("buildActions", []):
+    if s.get("status") == "failed":
+        print("=== PASO QUE FALLÓ:", s.get("name"), "===")
+        print((s.get("output") or "")[-3000:])
+'
+}
+
+cmd_run() {
+  local branch="${1:-main}"
+  api -X POST "https://api.codemagic.io/builds" \
+    -H "Content-Type: application/json" \
+    -d "{\"appId\":\"$CODEMAGIC_APP_ID\",\"workflowId\":\"ios-testflight\",\"branch\":\"$branch\"}" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); print("disparado:", d.get("buildId") or d)'
+}
+
+case "${1:-status}" in
+  builds) shift; cmd_builds "$@" ;;
+  status) shift; cmd_status "$@" ;;
+  log)    shift; cmd_log "$@" ;;
+  run)    shift; cmd_run "$@" ;;
+  *) sed -n '3,14p' "$0"; exit 1 ;;
+esac
