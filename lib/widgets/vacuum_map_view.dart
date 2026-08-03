@@ -50,11 +50,21 @@ class VacuumMapView extends StatefulWidget {
 class _VacuumMapViewState extends State<VacuumMapView> {
   VacuumMapData? _map;
   ui.Image? _image;
+
+  /// Capa con SÓLO las habitaciones elegidas (transparente en el resto). Se
+  /// dibuja sobre el velo de atenuación; null cuando no hay selección.
+  ui.Image? _selImage;
+
+  /// Celdas del grid por segmento. Se arma junto con la imagen base y evita
+  /// tener que recorrer el grid entero cada vez que cambia la selección.
+  Map<int, List<int>> _segmentIndex = const {};
+
   bool _loading = true;
   Timer? _refreshTimer;
   /// Generación del raster: si llega un mapa nuevo mientras el anterior aún se
   /// rasteriza, el callback viejo no debe pisar al nuevo.
   int _rasterGen = 0;
+  int _selGen = 0;
 
   static const _refreshInterval = Duration(seconds: 10);
 
@@ -73,7 +83,8 @@ class _VacuumMapViewState extends State<VacuumMapView> {
   void didUpdateWidget(covariant VacuumMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!_sameSelection(oldWidget.selectedSegments, widget.selectedSegments)) {
-      _rasterize();
+      // Sólo la capa de selección: la base no cambió.
+      _rasterizeSelection();
     }
   }
 
@@ -81,6 +92,9 @@ class _VacuumMapViewState extends State<VacuumMapView> {
   void dispose() {
     _refreshTimer?.cancel();
     _rasterGen++; // invalida callbacks de raster en vuelo
+    _selGen++;
+    _image?.dispose();
+    _selImage?.dispose();
     super.dispose();
   }
 
@@ -109,31 +123,26 @@ class _VacuumMapViewState extends State<VacuumMapView> {
   /// Color de piso por segmento: hue estable derivado del id (paleta calma,
   /// misma receta de clamps que CceTint — nada de colores crudos).
   ///
-  /// Tres estados, no dos. Cuando hay ALGUNA habitación elegida, las demás se
-  /// atenúan ([dimmed]): con sólo subirle el brillo a la elegida, la
-  /// diferencia era de unos pocos puntos de saturación sobre un plano lleno de
-  /// colores, y había que buscarla. Apagando el resto, la selección salta sin
-  /// que haya que compararla con nada.
-  static Color segmentColor(
-    int seg, {
-    required bool selected,
-    bool dimmed = false,
-  }) {
+  /// Dos estados: reposo y elegida. La ATENUACIÓN del resto no vive acá — la
+  /// resuelve el painter con un velo sobre todo el plano, que es gratis y no
+  /// obliga a re-rasterizar cuando cambia la selección.
+  static Color segmentColor(int seg, {required bool selected}) {
     final hue = (seg * 47) % 360;
-    final double sat, light;
-    if (selected) {
-      sat = 0.60;
-      light = 0.58;
-    } else if (dimmed) {
-      sat = 0.14;
-      light = 0.20;
-    } else {
-      sat = 0.32;
-      light = 0.34;
-    }
-    return HSLColor.fromAHSL(1, hue.toDouble(), sat, light).toColor();
+    return HSLColor.fromAHSL(
+      1,
+      hue.toDouble(),
+      selected ? 0.60 : 0.32,
+      selected ? 0.58 : 0.34,
+    ).toColor();
   }
 
+  /// Rasteriza el plano BASE (colores de reposo). Sólo depende del mapa, así
+  /// que corre una vez por mapa nuevo — no en cada toque.
+  ///
+  /// Antes esta función se ejecutaba entera en cada tap: recorría el millón de
+  /// celdas del grid en Dart y decodificaba una imagen nueva, con el frame
+  /// bloqueado mientras tanto. Por eso seleccionar una habitación se sentía
+  /// lento. Ahora el toque no rasteriza nada: sólo repinta (ver [_rasterizeSelection]).
   void _rasterize() {
     final map = _map;
     if (map == null) return;
@@ -141,38 +150,30 @@ class _VacuumMapViewState extends State<VacuumMapView> {
 
     const floorPlain = Color(0xFF2A2E3A); // piso sin segmento
     final rgba = Uint8List(map.width * map.height * 4);
-    // Cache de colores por byte de píxel (32 segmentos × 2 estados a lo sumo).
     final colorCache = <int, int>{};
 
-    // ¿Hay alguna habitación elegida? Entonces las NO elegidas se atenúan.
-    final hasSelection = widget.selectedSegments.isNotEmpty;
+    // Índice de celdas por segmento: se arma en esta misma pasada y es lo que
+    // después permite pintar una habitación sin volver a recorrer el grid.
+    final index = <int, List<int>>{};
 
     for (var i = 0; i < map.grid.length; i++) {
       final px = map.grid[i];
       final kind = px & 0x07;
       if (kind == 0) continue; // fuera del mapa: transparente (deja el well)
-      final selectedBit =
-          widget.selectedSegments.contains((px & 0xf8) >> 3) ? 0x100 : 0;
-      final cacheKey = px | selectedBit;
-      var packed = colorCache[cacheKey];
+      final seg = (px & 0xf8) >> 3;
+      if (kind != 1 && seg != 0) (index[seg] ??= <int>[]).add(i);
+      var packed = colorCache[px];
       if (packed == null) {
         final Color c;
         if (kind == 1) {
           c = CceColors.planWall;
         } else {
-          final seg = (px & 0xf8) >> 3;
-          c = seg == 0
-              ? floorPlain
-              : segmentColor(
-                  seg,
-                  selected: selectedBit != 0,
-                  dimmed: hasSelection && selectedBit == 0,
-                );
+          c = seg == 0 ? floorPlain : segmentColor(seg, selected: false);
         }
         packed = (((c.r * 255).round() & 0xff)) |
             (((c.g * 255).round() & 0xff) << 8) |
             (((c.b * 255).round() & 0xff) << 16);
-        colorCache[cacheKey] = packed;
+        colorCache[px] = packed;
       }
       final o = i * 4;
       rgba[o] = packed & 0xff;
@@ -180,6 +181,7 @@ class _VacuumMapViewState extends State<VacuumMapView> {
       rgba[o + 2] = (packed >> 16) & 0xff;
       rgba[o + 3] = 0xff;
     }
+    _segmentIndex = index;
 
     ui.decodeImageFromPixels(
       rgba,
@@ -194,6 +196,65 @@ class _VacuumMapViewState extends State<VacuumMapView> {
         setState(() {
           _image?.dispose();
           _image = img;
+        });
+        // El overlay depende de la base recién hecha (y del índice).
+        _rasterizeSelection();
+      },
+    );
+  }
+
+  /// Rasteriza SÓLO las habitaciones elegidas, sobre fondo transparente.
+  ///
+  /// Es lo único que corre al tocar, y recorre nada más que las celdas de esos
+  /// segmentos (vía [_segmentIndex]) en vez del grid entero. El resto del
+  /// plano se atenúa con un velo que dibuja el painter, que es gratis.
+  void _rasterizeSelection() {
+    final map = _map;
+    if (map == null) return;
+
+    final sel = widget.selectedSegments;
+    if (sel.isEmpty) {
+      if (_selImage != null) {
+        setState(() {
+          _selImage?.dispose();
+          _selImage = null;
+        });
+      }
+      return;
+    }
+
+    final gen = ++_selGen;
+    // Arranca en ceros = totalmente transparente.
+    final rgba = Uint8List(map.width * map.height * 4);
+    for (final seg in sel) {
+      final cells = _segmentIndex[seg];
+      if (cells == null) continue;
+      final c = segmentColor(seg, selected: true);
+      final r = (c.r * 255).round() & 0xff;
+      final g = (c.g * 255).round() & 0xff;
+      final b = (c.b * 255).round() & 0xff;
+      for (final i in cells) {
+        final o = i * 4;
+        rgba[o] = r;
+        rgba[o + 1] = g;
+        rgba[o + 2] = b;
+        rgba[o + 3] = 0xff;
+      }
+    }
+
+    ui.decodeImageFromPixels(
+      rgba,
+      map.width,
+      map.height,
+      ui.PixelFormat.rgba8888,
+      (img) {
+        if (!mounted || gen != _selGen) {
+          img.dispose();
+          return;
+        }
+        setState(() {
+          _selImage?.dispose();
+          _selImage = img;
         });
       },
     );
@@ -277,6 +338,7 @@ class _VacuumMapViewState extends State<VacuumMapView> {
               size: Size(map.width * scale, map.height * scale),
               painter: _VacuumMapPainter(
                 image: _image,
+                selImage: _selImage,
                 map: map,
                 scale: scale,
                 names: nameOf,
@@ -313,12 +375,16 @@ class _VacuumMapViewState extends State<VacuumMapView> {
 
 class _VacuumMapPainter extends CustomPainter {
   final ui.Image? image;
+
+  /// Capa con sólo las habitaciones elegidas. null = no hay selección.
+  final ui.Image? selImage;
   final VacuumMapData map;
   final double scale;
   final Map<int, String> names;
 
   _VacuumMapPainter({
     required this.image,
+    required this.selImage,
     required this.map,
     required this.scale,
     required this.names,
@@ -326,12 +392,28 @@ class _VacuumMapPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final dst = Rect.fromLTWH(0, 0, size.width, size.height);
     final img = image;
     if (img != null) {
       canvas.drawImageRect(
         img,
         Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-        Rect.fromLTWH(0, 0, size.width, size.height),
+        dst,
+        Paint()..filterQuality = FilterQuality.none,
+      );
+    }
+
+    // Selección en dos pasadas, ambas baratas: un velo que apaga todo el
+    // plano y encima las habitaciones elegidas a pleno color. Antes esto se
+    // resolvía re-rasterizando el mapa entero con otros colores, que es lo que
+    // hacía que el toque tardara.
+    final sel = selImage;
+    if (sel != null) {
+      canvas.drawRect(dst, Paint()..color = const Color(0x9E000000));
+      canvas.drawImageRect(
+        sel,
+        Rect.fromLTWH(0, 0, sel.width.toDouble(), sel.height.toDouble()),
+        dst,
         Paint()..filterQuality = FilterQuality.none,
       );
     }
@@ -448,6 +530,7 @@ class _VacuumMapPainter extends CustomPainter {
   @override
   bool shouldRepaint(_VacuumMapPainter old) =>
       old.image != image ||
+      old.selImage != selImage ||
       old.map != map ||
       old.scale != scale ||
       old.names != names;

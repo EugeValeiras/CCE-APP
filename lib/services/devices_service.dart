@@ -366,6 +366,36 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Cancela la cola de habitaciones en curso (verbo `cancelRoomQueue`).
+  ///
+  /// El backend la expone desde siempre; sin esto, una vez lanzada una cola de
+  /// seis habitaciones no había forma de frenarla desde la app salvo mandar el
+  /// robot a la base.
+  Future<bool> cancelVacuumRoomQueue(Device d) async {
+    try {
+      await _api.invokeAction(d.id, 'cancelRoomQueue', const {});
+      return true;
+    } catch (e) {
+      debugPrint('cancelVacuumRoomQueue error: $e');
+      _notifyCommandError(displayName(d));
+      return false;
+    }
+  }
+
+  /// Reinicia el contador de vida útil de un consumible tras cambiarlo o
+  /// limpiarlo (verbo `resetConsumable`; `part` = mainBrush | sideBrush |
+  /// filter | sensor).
+  Future<bool> resetVacuumConsumable(Device d, String part) async {
+    try {
+      await _api.invokeAction(d.id, 'resetConsumable', {'part': part});
+      return true;
+    } catch (e) {
+      debugPrint('resetVacuumConsumable error: $e');
+      _notifyCommandError(displayName(d));
+      return false;
+    }
+  }
+
   /// Potencia de succión (label real del robot, sidecar).
   Future<void> setVacuumFanSpeed(Device d, String level) async {
     final prev = d.state;

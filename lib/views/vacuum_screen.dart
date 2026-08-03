@@ -6,7 +6,6 @@ import '../services/devices_service.dart';
 import '../services/app_messenger.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/cce_segmented.dart';
 import '../utils/vacuum_modes.dart';
 import '../utils/vacuum_state.dart';
 import '../widgets/vacuum_map_view.dart';
@@ -201,34 +200,150 @@ class _VacuumScreenState extends State<VacuumScreen> {
     );
   }
 
-  /// Línea entre el mapa y los controles: dice qué hacer cuando no elegiste
-  /// nada, y qué elegiste cuando sí. Ocupa el mismo alto en los dos casos para
-  /// que el panel no salte al tocar la primera habitación.
+  /// Línea entre el mapa y los controles. Tres cosas, por prioridad:
+  ///  1. Si hay una cola en curso: en qué habitación va y cuántas faltan.
+  ///  2. Si elegiste habitaciones: cuáles.
+  ///  3. Si no: qué se puede hacer.
+  ///
+  /// El progreso de la cola (`roomQueue`) y la habitación en curso
+  /// (`vacuumRoomName`) los publicaba el backend desde siempre y la app nunca
+  /// los mostró: mientras el robot limpiaba por habitaciones, la pantalla se
+  /// veía igual que en reposo.
   Widget _selectionLine(Device d) {
     final rooms = d.state.rooms ?? const <VacuumRoom>[];
     if (rooms.isEmpty) return const SizedBox.shrink();
-    final n = _selectedRooms.length;
-    final names = [
-      for (final r in rooms)
-        if (_selectedRooms.contains(r.segmentId)) r.name,
-    ];
+
+    final q = d.state.roomQueue;
+    final live = d.state.vacuumRoomName;
+
+    String text;
+    Color color;
+    if (q != null) {
+      final total = q.segments.length;
+      final idx = (q.current + 1).clamp(1, total);
+      final name = q.currentSegment != null
+          ? rooms
+              .where((r) => r.segmentId == q.currentSegment)
+              .map((r) => r.name)
+              .firstOrNull
+          : null;
+      text = name != null
+          ? 'Limpiando $name · $idx de $total'
+          : 'Limpiando · $idx de $total';
+      color = CceColors.accent;
+    } else if (live != null && live.isNotEmpty) {
+      text = 'Limpiando $live';
+      color = CceColors.accent;
+    } else if (_selectedRooms.isNotEmpty) {
+      text = [
+        for (final r in rooms)
+          if (_selectedRooms.contains(r.segmentId)) r.name,
+      ].join(' · ');
+      color = CceColors.accent;
+    } else {
+      text = 'Tocá una habitación en el plano';
+      color = CceColors.textTertiary;
+    }
+
     return SizedBox(
       height: 22,
       child: Row(
         children: [
           Expanded(
             child: Text(
-              n == 0
-                  ? 'Tocá una habitación en el plano'
-                  : names.join(' · '),
+              text,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: CceText.caption.copyWith(
-                color: n == 0 ? CceColors.textTertiary : CceColors.accent,
-              ),
+              style: CceText.caption.copyWith(color: color),
             ),
           ),
+          // Mantenimiento: sólo aparece cuando algo está por debajo del 20%.
+          // No es un panel permanente — es un aviso que sale cuando sirve.
+          if (_lowestConsumable(d) != null)
+            GestureDetector(
+              onTap: () => _showMaintenance(d),
+              child: Row(
+                children: [
+                  const Icon(Icons.build_outlined,
+                      size: 13, color: CceColors.contact),
+                  SizedBox(width: CceSpace.xs),
+                  Text(
+                    'Mantenimiento',
+                    style: CceText.caption.copyWith(color: CceColors.contact),
+                  ),
+                ],
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  /// Consumible más gastado, si alguno bajó del 20%.
+  MapEntry<String, int>? _lowestConsumable(Device d) {
+    final c = d.state.consumables;
+    if (c == null || c.isEmpty) return null;
+    MapEntry<String, int>? worst;
+    for (final e in c.entries) {
+      if (worst == null || e.value < worst.value) worst = e;
+    }
+    return (worst != null && worst.value <= 20) ? worst : null;
+  }
+
+  static const _consumableNames = {
+    'mainBrush': 'Cepillo principal',
+    'sideBrush': 'Cepillo lateral',
+    'filter': 'Filtro',
+    'sensor': 'Sensores',
+  };
+
+  void _showMaintenance(Device device) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: CceColors.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
+      ),
+      builder: (_) => AnimatedBuilder(
+        animation: widget.service,
+        builder: (context, __) {
+          final d = widget.service.byId(device.id) ?? device;
+          final c = d.state.consumables ?? const <String, int>{};
+          final total = d.state.cleanSummary?['count'];
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                CceSpace.lg,
+                0,
+                CceSpace.lg,
+                CceSpace.lg,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Mantenimiento', style: CceText.title),
+                  if (total != null) ...[
+                    SizedBox(height: CceSpace.xs),
+                    Text('${total.round()} limpiezas completadas',
+                        style: CceText.caption),
+                  ],
+                  SizedBox(height: CceSpace.lg),
+                  for (final e in c.entries) ...[
+                    _ConsumableRow(
+                      label: _consumableNames[e.key] ?? e.key,
+                      pct: e.value,
+                      onReset: () => widget.service.resetVacuumConsumable(d, e.key),
+                    ),
+                    SizedBox(height: CceSpace.md),
+                  ],
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -302,21 +417,29 @@ class _VacuumScreenState extends State<VacuumScreen> {
 
     if (matrix != null && parts != null) {
       return [
-        CceSegmented<String>(
+        _IconPicker(
           value: parts.power,
-          segments: [
+          options: [
             for (final p in matrix.powers)
-              CceSegment(value: p, label: vacuumPowerLabel(p)),
+              _PickerOption(
+                value: p,
+                label: vacuumPowerLabel(p),
+                svg: _powerIcon(vacuumPowerLabel(p)),
+              ),
           ],
           onChanged: (p) => widget.service
               .setVacuumCleanMode(d, matrix.compose(p, parts.function)),
         ),
         SizedBox(height: CceSpace.sm),
-        CceSegmented<String>(
+        _IconPicker(
           value: parts.function,
-          segments: [
+          options: [
             for (final f in matrix.functions)
-              CceSegment(value: f, label: vacuumFunctionLabel(f)),
+              _PickerOption(
+                value: f,
+                label: vacuumFunctionLabel(f),
+                svg: _functionIcon(vacuumFunctionLabel(f)),
+              ),
           ],
           onChanged: (f) => widget.service
               .setVacuumCleanMode(d, matrix.compose(parts.power, f)),
@@ -358,11 +481,20 @@ class _VacuumScreenState extends State<VacuumScreen> {
     final n = _selectedRooms.length;
     final enabled = d.state.reachable && !_sending;
 
+    final queue = d.state.roomQueue;
+
     final String primaryLabel;
     final VoidCallback? primaryTap;
     if (_sending) {
       primaryLabel = 'Enviando…';
       primaryTap = null;
+    } else if (queue != null) {
+      // Con una cola en curso lo que hace falta es poder frenarla: el backend
+      // ya tenía el verbo y la app no lo usaba, así que una vez lanzadas seis
+      // habitaciones no había forma de cancelar sin mandarlo a la base.
+      primaryLabel = 'Cancelar limpieza';
+      primaryTap =
+          enabled ? () => widget.service.cancelVacuumRoomQueue(d) : null;
     } else if (cleaning) {
       primaryLabel = 'Pausar';
       primaryTap = enabled ? () => _command(d, 'pause') : null;
@@ -423,7 +555,121 @@ class _VacuumScreenState extends State<VacuumScreen> {
   }
 }
 
+/// Ícono por nivel de potencia. Sigue la convención de la app de Roborock:
+/// luna para el modo silencioso, y de ahí para arriba más "energía".
+String _powerIcon(String label) {
+  switch (label) {
+    case 'Silencioso':
+      return CceIcons.moon;
+    case 'Profundo':
+      return CceIcons.sun;
+    default:
+      return CceIcons.gauge;
+  }
+}
+
+/// Ícono por función: aspira, trapea, o las dos cosas.
+String _functionIcon(String label) {
+  switch (label) {
+    case 'Trapear':
+      return CceIcons.droplet;
+    case 'Ambos':
+      return CceIcons.scenes;
+    default:
+      return CceIcons.robotVacuum;
+  }
+}
+
 // ── Piezas ─────────────────────────────────────────────────────────────────
+
+class _PickerOption {
+  final String value;
+  final String label;
+  final String svg;
+  const _PickerOption({
+    required this.value,
+    required this.label,
+    required this.svg,
+  });
+}
+
+/// Selector de opciones con ÍCONO + etiqueta.
+///
+/// Reemplaza al segmented de texto plano, donde las tres opciones eran tres
+/// palabras del mismo peso y había que leerlas para saber cuál era cuál. Con
+/// un glyph por opción se reconocen de un vistazo —que es como se usa esto:
+/// mirando de reojo mientras el robot ya está andando— y además se parece a lo
+/// que la app de Roborock enseñó a leer.
+class _IconPicker extends StatelessWidget {
+  final String value;
+  final List<_PickerOption> options;
+  final ValueChanged<String> onChanged;
+
+  const _IconPicker({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (var i = 0; i < options.length; i++) ...[
+          if (i > 0) SizedBox(width: CceSpace.sm),
+          Expanded(child: _tile(options[i])),
+        ],
+      ],
+    );
+  }
+
+  Widget _tile(_PickerOption o) {
+    final selected = o.value == value;
+    return Material(
+      color: selected ? CceColors.accentWash : CceColors.surface,
+      borderRadius: BorderRadius.circular(CceRadii.control),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: selected
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                onChanged(o.value);
+              },
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: CceSpace.md),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(CceRadii.control),
+            border: Border.all(
+              color: selected ? CceColors.accent : CceColors.stroke,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CceIcon(
+                o.svg,
+                size: 22,
+                color: selected ? CceColors.accent : CceColors.textTertiary,
+                emboss: false,
+              ),
+              SizedBox(height: CceSpace.xs),
+              Text(
+                o.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CceText.label.copyWith(
+                  color: selected ? CceColors.accent : CceColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Acción principal de la pantalla: fill de acento, ancho completo.
 class _PrimaryButton extends StatelessWidget {
@@ -498,6 +744,64 @@ class _IconAction extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Una pieza consumible con su vida útil y el botón para reiniciarla.
+///
+/// El color de la barra es el semántico del sistema: ámbar de "algo pasa" por
+/// debajo del 20%, rojo por debajo del 10%.
+class _ConsumableRow extends StatelessWidget {
+  final String label;
+  final int pct;
+  final VoidCallback onReset;
+
+  const _ConsumableRow({
+    required this.label,
+    required this.pct,
+    required this.onReset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = (pct / 100).clamp(0.0, 1.0);
+    final color = pct <= 10
+        ? CceColors.danger
+        : (pct <= 20 ? CceColors.contact : CceColors.accent);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(label, style: CceText.label)),
+                  Text('$pct%',
+                      style: CceText.data.copyWith(fontSize: 13, color: color)),
+                ],
+              ),
+              SizedBox(height: CceSpace.sm),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(CceRadii.pill),
+                child: LinearProgressIndicator(
+                  value: t,
+                  minHeight: 6,
+                  backgroundColor: CceColors.surfaceSunken,
+                  valueColor: AlwaysStoppedAnimation(color),
+                ),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: CceSpace.md),
+        TextButton(
+          onPressed: onReset,
+          child: Text('Reiniciar',
+              style: CceText.label.copyWith(color: CceColors.accent)),
+        ),
+      ],
     );
   }
 }

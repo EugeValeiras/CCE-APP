@@ -110,6 +110,15 @@ class DeviceState {
   /// que armamos nosotros.
   final String? vacuumRoomName;
 
+  /// Vida útil restante de los consumibles, 0-100 por pieza: `mainBrush`,
+  /// `sideBrush`, `filter`, `sensor`. El sidecar ya los publicaba y la app los
+  /// tiraba: son la única forma de enterarse de que hay que limpiar un sensor
+  /// o cambiar un cepillo antes de que el robot empiece a fallar.
+  final Map<String, int>? consumables;
+
+  /// Resumen histórico del robot (`count` = limpiezas completadas).
+  final Map<String, num>? cleanSummary;
+
   /// Dónde está el robot AHORA, en píxeles absolutos del lienzo del RRMap.
   /// Sólo viaja mientras trabaja; la consume la capa en vivo del plano cruzada
   /// con `floorPlans[].vacuumAnchor`.
@@ -147,6 +156,8 @@ class DeviceState {
     this.roomQueue,
     this.vacuumActivity,
     this.vacuumRoomName,
+    this.consumables,
+    this.cleanSummary,
     this.vacuumPosition,
   });
 
@@ -195,6 +206,18 @@ class DeviceState {
       roomQueue: VacuumRoomQueue.fromJson(json['roomQueue']),
       vacuumActivity: json['vacuumActivity'] as String?,
       vacuumRoomName: json['vacuumRoomName'] as String?,
+      consumables: json['consumables'] is Map
+          ? {
+              for (final e in (json['consumables'] as Map).entries)
+                if (e.value is num) e.key.toString(): (e.value as num).round(),
+            }
+          : null,
+      cleanSummary: json['cleanSummary'] is Map
+          ? {
+              for (final e in (json['cleanSummary'] as Map).entries)
+                if (e.value is num) e.key.toString(): e.value as num,
+            }
+          : null,
       vacuumPosition: VacuumPosition.fromJson(json['vacuumPosition']),
       fanSpeeds: (json['fanSpeeds'] is List)
           ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
@@ -238,6 +261,8 @@ class DeviceState {
     VacuumRoomQueue? roomQueue,
     String? vacuumActivity,
     String? vacuumRoomName,
+    Map<String, int>? consumables,
+    Map<String, num>? cleanSummary,
     VacuumPosition? vacuumPosition,
   }) {
     return DeviceState(
@@ -272,6 +297,8 @@ class DeviceState {
       roomQueue: roomQueue ?? this.roomQueue,
       vacuumActivity: vacuumActivity ?? this.vacuumActivity,
       vacuumRoomName: vacuumRoomName ?? this.vacuumRoomName,
+      consumables: consumables ?? this.consumables,
+      cleanSummary: cleanSummary ?? this.cleanSummary,
       vacuumPosition: vacuumPosition ?? this.vacuumPosition,
     );
   }
