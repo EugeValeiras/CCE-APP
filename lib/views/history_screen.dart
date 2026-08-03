@@ -255,31 +255,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final selected = f == _filter;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
-            // Chip neumórfico monocromo: seleccionado = relieve neo + texto/
-            // borde neoText; inactivo = plano con hairline + neoTextSub.
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(100),
-                boxShadow: selected ? CceShadows.neo(blur: 7, offset: 3) : null,
+            // Filtro seleccionado = fill de acento + borde de acento. Antes el
+            // fondo era el MISMO color en ambos estados y la diferencia la
+            // llevaba una sombra: el estado activo de un filtro tiene que
+            // leerse de un vistazo, no adivinarse por el relieve.
+            child: ChoiceChip(
+              label: Text(f.label),
+              selected: selected,
+              showCheckmark: false,
+              onSelected: (_) => setState(() => _filter = f),
+              shape: const StadiumBorder(),
+              backgroundColor: CceColors.surface,
+              selectedColor: CceColors.accentWash,
+              labelStyle: CceText.label.copyWith(
+                color: selected ? CceColors.accent : CceColors.textSecondary,
               ),
-              child: ChoiceChip(
-                label: Text(f.label),
-                selected: selected,
-                showCheckmark: false,
-                onSelected: (_) => setState(() => _filter = f),
-                shape: const StadiumBorder(),
-                backgroundColor: CceColors.neoBase,
-                selectedColor: CceColors.neoBase,
-                labelStyle: TextStyle(
-                  color: selected ? CceColors.neoText : CceColors.neoTextSub,
-                  fontWeight: FontWeight.w600,
-                ),
-                side: BorderSide(
-                  color: selected
-                      ? CceColors.neoText.withValues(alpha: 0.45)
-                      : _Glass.glassBorder,
-                  width: selected ? 1.2 : 1,
-                ),
+              side: BorderSide(
+                color: selected ? CceColors.accent : CceColors.stroke,
+                width: 1,
               ),
             ),
           );
@@ -661,7 +654,12 @@ class _GroupRow extends StatelessWidget {
   }
 }
 
-/// Pill ×N (20 px, fondo color@0.18, texto 11 px w700).
+/// Pill ×N: cuántas veces se repitió el evento agrupado.
+///
+/// NEUTRO a propósito. Antes heredaba el color semántico del evento (azul de
+/// movimiento, rojo de alerta…), así que la cantidad se pintaba con el mismo
+/// código de color que el tipo de evento — dos significados en un color. El
+/// ícono de la fila ya dice de qué se trata; esto sólo dice cuántas veces.
 class _CountPill extends StatelessWidget {
   final int count;
   final Color color;
@@ -671,19 +669,18 @@ class _CountPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       height: 20,
-      padding: const EdgeInsets.symmetric(horizontal: 7),
+      padding: EdgeInsets.symmetric(horizontal: CceSpace.sm),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        border: Border.all(color: color.withValues(alpha: 0.30)),
+        color: CceColors.surfaceHigh,
+        border: Border.all(color: CceColors.stroke),
         borderRadius: BorderRadius.circular(CceRadii.pill),
       ),
       child: Text(
         '×$count',
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
+        style: CceText.section.copyWith(
+          color: CceColors.textSecondary,
+          letterSpacing: 0,
         ),
       ),
     );
@@ -874,12 +871,12 @@ class _Glass {
 
   // CARD off-home: fill = fondo + relieve neo (CceShadows.neo en la fila);
   // radio un poco más fino.
-  static const double cardRadius = 18;
-  static const Color cardFill = CceColors.neoBase;
-  static const Color cardBorder = Color(0x12FFFFFF); // hairline sutil
-
-  // CHIPS / BOTONES neumórficos.
-  static const Color glassBorder = Color(0x14FFFFFF);
+  // Tokens del sistema, no valores propios: esta pantalla tenía su radio (18)
+  // y su hairline (0x12FFFFFF) paralelos a los globales, con la desviación
+  // justa para notarse al navegar entre pantallas.
+  static const double cardRadius = CceRadii.card;
+  static const Color cardFill = CceColors.surface;
+  static const Color cardBorder = CceColors.stroke;
 }
 
 /// Botón circular neumórfico (raised) para los actions del AppBar

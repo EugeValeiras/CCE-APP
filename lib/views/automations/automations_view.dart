@@ -424,7 +424,7 @@ class _AutomationsViewState extends State<AutomationsView> {
         }
 
         return Scaffold(
-          backgroundColor: CceColors.neoBase,
+          backgroundColor: CceColors.bg,
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),

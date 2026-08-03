@@ -109,7 +109,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
         ];
 
         return Scaffold(
-          backgroundColor: CceColors.neoBase,
+          backgroundColor: CceColors.bg,
           body: SafeArea(
             child: Column(
               children: [

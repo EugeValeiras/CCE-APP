@@ -361,7 +361,7 @@ class RoomPanel extends StatelessWidget {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             sliver: const SliverToBoxAdapter(
-              child: SectionHeader(title: 'Devices'),
+              child: SectionHeader(title: 'Dispositivos'),
             ),
           ),
           SliverPadding(

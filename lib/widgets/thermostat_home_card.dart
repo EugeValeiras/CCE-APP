@@ -48,11 +48,6 @@ class ThermostatHomeCard extends StatelessWidget {
     this.trailing,
   });
 
-  bool _isCool(DeviceState s) {
-    final m = (s.systemMode ?? '').toLowerCase();
-    return m.contains('cool') || m.contains('frio') || m.contains('frío');
-  }
-
   /// Formatea temperaturas: 0.5 con decimal, enteros sin decimal (igual que
   /// [ThermostatScreen]).
   String _fmt(double n) =>
@@ -69,14 +64,14 @@ class ThermostatHomeCard extends StatelessWidget {
         final s = d.state;
         final online = s.reachable;
         final on = s.on;
-        final cool = _isCool(s);
 
-        // Acento semántico (espeja ThermostatTile): calor = cálido, frío = info;
-        // off/offline cae a los grises.
+        // Acento del sistema. El modo frío/calor es información real, pero se
+        // lee en el texto (objetivo vs. actual) y en el detalle: en la home,
+        // un azul entre ámbares rompía la familia de la lista.
         final accent = !online
             ? CceColors.textTertiary
             : (on
-                ? (cool ? CceColors.info : CceColors.warm)
+                ? CceColors.accent
                 : CceColors.textSecondary);
 
         final target = s.targetTemp;
@@ -197,7 +192,7 @@ class ThermostatHomeCard extends StatelessWidget {
               else if (online)
                 CceSwitch(
                   value: on,
-                  accent: cool ? CceColors.info : CceColors.warm,
+                  accent: CceColors.accent,
                   onChanged: (v) => service.setThermostatPower(d, v),
                 )
               else

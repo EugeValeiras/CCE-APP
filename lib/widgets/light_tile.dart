@@ -10,7 +10,6 @@ import '../theme/components/light_card.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 import '../views/light_color_screen.dart';
-import 'pulse_on_update.dart';
 
 /// Tile de luz estilo Hue (los gestos viven acá; el render es [LightCard]).
 /// - Tap (sobre la card): abre la pantalla de color/temperatura.
@@ -246,11 +245,14 @@ class _LightTileState extends State<LightTile> {
       stateLabel = 'Apagada';
     }
 
-    return PulseOnUpdate(
-      triggerAt: d.lastEventAt,
-      color: on ? color : CceColors.info,
-      borderRadius: CceRadii.hueCard,
-      child: GestureDetector(
+    // SIN PulseOnUpdate.
+    //
+    // El pulso existe para avisar que llegó un evento que NO se ve — el caso
+    // de un sensor, donde nada cambia en pantalla. Una luz es lo contrario:
+    // su cambio de estado ES visible, y LightCard ya lo anima. Encimarle un
+    // halo de 900 ms hacía que cada encendido se leyera dos veces, la segunda
+    // tarde y sin corresponder a nada.
+    return GestureDetector(
         // Tap en la card abre la pantalla de color (también offline, como Hue).
         onTap: _openColor,
         onLongPressStart: reachable ? _onLongPressStart : null,
@@ -278,7 +280,6 @@ class _LightTileState extends State<LightTile> {
           // El switch de la franja prende/apaga directo.
           onToggle: reachable ? (_) => _toggle() : null,
         ),
-      ),
     );
   }
 }

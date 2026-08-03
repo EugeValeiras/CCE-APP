@@ -4,10 +4,24 @@ import '../cce_icons.dart';
 import '../cce_tokens.dart';
 import 'cce_neo_press.dart';
 
-/// Interpola dos pares de sombra (raised ↔ inset) por `t` (0..1) para el
-/// "hundido" animado de los botones neumórficos.
+/// Interpola dos listas de sombra por `t` (0..1) para el hundido animado de
+/// los botones.
+///
+/// Tolera listas de LARGO DISTINTO: la que se queda corta aporta una sombra
+/// transparente. Es necesario porque los estados del sistema ya no tienen la
+/// misma cantidad de sombras (el estado hundido no lleva ninguna), y asumir
+/// simetría hacía estallar el índice en cada frame de la animación.
 List<BoxShadow> _lerpShadow(List<BoxShadow> a, List<BoxShadow> b, double t) {
-  return [for (var i = 0; i < a.length; i++) BoxShadow.lerp(a[i], b[i], t)!];
+  const empty = BoxShadow(color: Color(0x00000000), blurRadius: 0);
+  final n = a.length > b.length ? a.length : b.length;
+  return [
+    for (var i = 0; i < n; i++)
+      BoxShadow.lerp(
+        i < a.length ? a[i] : empty,
+        i < b.length ? b[i] : empty,
+        t,
+      )!,
+  ];
 }
 
 /// IconButton neumórfico raised (size cycle, refresh). Diámetro fijo 44.

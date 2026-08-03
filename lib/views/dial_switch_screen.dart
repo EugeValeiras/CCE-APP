@@ -106,7 +106,7 @@ class _DialSwitchScreenState extends State<DialSwitchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       body: SafeArea(
         child: AnimatedBuilder(
           animation: widget.service,

@@ -62,11 +62,11 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       endDrawer: ThreadHistoryDrawer(service: _service),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: CceColors.neoBase,
+        backgroundColor: CceColors.bg,
         elevation: 0,
         scrolledUnderElevation: 0,
         // Hairline de luz en lugar del borde duro: la transición a la lista

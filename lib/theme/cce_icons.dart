@@ -414,29 +414,22 @@ abstract final class CceIcons {
       _hueRoomIcons[archetype] ?? room;
 }
 
-/// Tokens del relieve neumorfico ("hoja que sobresale"): luz arriba-izquierda
-/// + sombra abajo-derecha. UNA sola fuente de verdad, compartida por [CceIcon]
-/// (ghost SVG) y el IconTheme global de `CceTheme` (Icon de Material/Mdi), para
-/// que ambas tecnicas converjan en el mismo relieve app-wide.
+/// RETIRADO: el relieve neumórfico de iconos.
+///
+/// Un ícono de 20px con una sombra de 2px de blur y un realce blanco a -1.1px
+/// no se lee como volumen: se lee como un glyph mal renderizado. En pantallas
+/// @3x el halo claro es exactamente lo que hacía que la interfaz se viera
+/// sucia. Los iconos ahora se distinguen por color y peso de trazo.
+///
+/// Los tokens sobreviven como listas vacías para no romper los ~77 call sites
+/// mientras se migran.
 abstract final class CceEmboss {
-  /// Sombra proyectada abajo-derecha (da el volumen).
-  static const Shadow shadow = Shadow(
-    color: Color(0xCC05060A),
-    offset: Offset(1.3, 2.2),
-    blurRadius: 2.0,
-  );
+  static const Shadow shadow = Shadow(color: Color(0x00000000));
+  static const Shadow highlight = Shadow(color: Color(0x00000000));
 
-  /// Realce tenue arriba-izquierda (luz neumorfica).
-  static const Shadow highlight = Shadow(
-    color: Color(0x1FFFFFFF),
-    offset: Offset(-1.1, -1.4),
-    blurRadius: 1.1,
-  );
+  /// Vacío a propósito — ver doc de la clase.
+  static const List<Shadow> iconShadows = <Shadow>[];
 
-  /// Lista lista para `IconThemeData.shadows` / `Icon.shadows` (Material/Mdi).
-  static const List<Shadow> iconShadows = [shadow, highlight];
-
-  /// Por debajo de este tamano el ghost-blur ensucia el glyph -> sin emboss.
   static const double minSize = 18.0;
 }
 
@@ -506,38 +499,15 @@ class EmbossedGlyph extends StatelessWidget {
     );
   }
 
-  /// Copia recoloreada+desenfocada+desplazada detras del glyph real ("ghost").
-  Widget _ghost(Color tint, Offset off) {
-    return Transform.translate(
-      offset: off,
-      child: ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: ColorFiltered(
-          colorFilter: ColorFilter.mode(tint, BlendMode.srcATop),
-          child: _flat(),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // Glyph chico: el blur ensuciaria -> solo base plana, sin emboss.
-    if (size < CceEmboss.minSize) return _flat();
-    return RepaintBoundary(
-      child: SizedBox.square(
-        dimension: size,
-        child: Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            _ghost(shadow, shadowOffset),
-            _ghost(highlight, highlightOffset),
-            _flat(),
-          ],
-        ),
-      ),
-    );
+    // RETIRADO el relieve. Las dos copias desenfocadas detrás del glyph no se
+    // leían como volumen sino como halo sucio, y costaban 2 capas de blur por
+    // ícono. El glyph ahora se apoya en su color y su trazo.
+    //
+    // El widget sobrevive (con su API intacta) para no tocar sus ~25 call
+    // sites; `highlight`/`shadow`/`blur` quedan sin efecto.
+    return _flat();
   }
 
   /// Deriva el par (highlight, shadow) de una superficie de color: luz = el

@@ -390,7 +390,7 @@ class _LockScreenState extends State<LockScreen> {
     // alineado ARRIBA, para historial largo (patrón confiable: nada de
     // FittedBox/minHeight que dejaban el render vacío en versiones previas).
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),

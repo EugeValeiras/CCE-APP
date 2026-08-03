@@ -8,6 +8,7 @@ import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_segmented.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 
@@ -56,8 +57,8 @@ class _LightColorScreenState extends State<LightColorScreen>
   static const double _mergeThr = 0.12; // proximidad (frac) para fusionar
   static const double _grabPx = 34.0; // radio de agarre en px (cubre toda la pin)
 
-  // Saltito del pin (estilo Google Maps) al entrar o al cambiar de luz: sube y
-  // cae con un rebote sutil. El offset es en píxeles (negativo = arriba).
+  // Realce del pin al entrar o al cambiar de luz: sube y vuelve, con
+  // deceleración. En píxeles (negativo = arriba). Ver initState.
   late final AnimationController _hopController;
   late final Animation<double> _hopOffset;
 
@@ -86,22 +87,24 @@ class _LightColorScreenState extends State<LightColorScreen>
       }
       if (n > 0) _bri = (sum / n).clamp(0, 254).toDouble();
     }
+    // Acuse de recibo al tomar una luz. Antes era un "saltito" de 620ms con
+    // Curves.bounceOut — un rebote de mapa, prestado de otro dominio, y lo que
+    // más hacía que el selector se leyera como un juguete. Ahora es un realce
+    // corto con deceleración: confirma la selección y se va.
     _hopController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 620),
+      duration: const Duration(milliseconds: 220),
     );
     _hopOffset = TweenSequence<double>([
-      // Despegue: 0 → arriba (easeOut, rápido).
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: -14.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 32,
+        tween: Tween(begin: 0.0, end: -6.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 40,
       ),
-      // Caída + rebote sutil al aterrizar sobre el punto.
       TweenSequenceItem(
-        tween: Tween(begin: -14.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.bounceOut)),
-        weight: 68,
+        tween: Tween(begin: -6.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOutCubic)),
+        weight: 60,
       ),
     ]).animate(_hopController);
     // Salto de entrada (tras el primer frame, ya con layout listo).
@@ -223,11 +226,13 @@ class _LightColorScreenState extends State<LightColorScreen>
   /// está en foco. Si no, es un dot.
   bool _isPin(int g, List<String> members) => members.length > 1 || g == _focus;
 
-  /// Posición (frac) del centro de la CABEZA del pin cuya punta está en [tip].
-  /// La cabeza está ~(tipY-headCy) px ARRIBA de la punta; es lo que el usuario
-  /// ve y alinea contra los dots, así que la usamos para agarrar y fusionar.
-  Offset _pinHead(Offset tip) => Offset(
-      tip.dx, tip.dy - (_Marker.tipY - _Marker.headCy) / _diskSize);
+  /// Posición (frac) del centro visual del marcador.
+  ///
+  /// Con el pin de mapa esto restaba el offset punta→cabeza: lo que veías
+  /// estaba 43 px más arriba de lo que el gesto tomaba como punto. Con el
+  /// marcador circular el centro ES el punto, así que la corrección desaparece
+  /// — y con ella la sensación de que el marcador "no agarra donde tocás".
+  Offset _pinHead(Offset tip) => tip;
 
   /// Saca [id] a su propio grupo y lo pone en foco (lo selecciona solo). Si
   /// estaba agrupada, el resto del grupo sigue junto.
@@ -493,42 +498,45 @@ class _LightColorScreenState extends State<LightColorScreen>
     return Scaffold(
       backgroundColor: CceColors.bg,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0.0, -0.18),
-            radius: 1.05,
-            colors: [CceColors.neoBase, Color(0xFF141620), CceColors.neoDark],
-            stops: [0.0, 0.55, 1.0],
-          ),
-        ),
+        // Mismo lienzo que el resto de la app. El RadialGradient propio que
+        // tenía esta pantalla era una de las nueve superficies distintas que
+        // convivían: al navegar, el fondo cambiaba de tono sin motivo.
+        color: CceColors.bg,
         child: SafeArea(
           child: AnimatedBuilder(
             animation: widget.service,
             builder: (context, _) {
+            // Un solo eje vertical, de lo principal a lo secundario: qué luces
+            // estás editando (barra), con qué color (disco), en qué modo, con
+            // cuánto brillo, y recién al final cuáles del ambiente. Antes el
+            // modo y el brillo compartían una fila con un hueco en el medio y
+            // la tira de luces se comía 156 px del fondo.
             return Column(
               children: [
                 _topBar(),
+                // El disco se queda con TODO el espacio sobrante y se centra
+                // en él; los controles van pegados abajo, en su orden de uso.
+                // Con el layout anterior el bloque entero se centraba y
+                // quedaba un hueco muerto de ~200 px entre el brillo y las
+                // fichas.
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, c) {
                       final size = math
-                          .min(c.maxWidth * 0.70, c.maxHeight * 0.66)
-                          .clamp(240.0, 480.0)
+                          .min(c.maxWidth * 0.86, c.maxHeight * 0.92)
+                          .clamp(240.0, 460.0)
                           .toDouble();
-                      return Column(
-                        children: [
-                          const Spacer(),
-                          _buildDisk(size),
-                          const SizedBox(height: 28),
-                          _controlsRow(),
-                          const Spacer(),
-                        ],
-                      );
+                      return Center(child: _buildDisk(size));
                     },
                   ),
                 ),
+                SizedBox(height: CceSpace.xl),
+                _modeRow(),
+                SizedBox(height: CceSpace.xl),
+                _brightnessRow(),
+                SizedBox(height: CceSpace.xl),
                 _deviceStrip(),
-                const SizedBox(height: 16),
+                SizedBox(height: CceSpace.lg),
               ],
             );
           },
@@ -690,29 +698,28 @@ class _LightColorScreenState extends State<LightColorScreen>
                   .copyWith(fontSize: 17, fontWeight: FontWeight.w600),
             ),
           ),
-          const SizedBox(width: 12),
-          // Chip pill "Listo".
+          SizedBox(width: CceSpace.md),
+          // "Listo" cierra la pantalla: es la acción principal, así que lleva
+          // el acento en fill. Antes era un chip gris con relieve, del mismo
+          // peso visual que cualquier control secundario.
           Material(
-            color: CceColors.surfaceHigh,
+            color: CceColors.accent,
             borderRadius: BorderRadius.circular(CceRadii.pill),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
               onTap: () => Navigator.of(context).pop(),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CceRadii.pill),
-                  border: Border.all(color: CceColors.stroke, width: 1),
-                  boxShadow:
-                      CceShadows.neo(blur: 10, offset: 4, intensity: 0.8),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: CceSpace.xl,
+                  vertical: CceSpace.md,
                 ),
-                child: const Text('Listo',
-                    style: TextStyle(
-                        color: CceColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2)),
+                child: Text(
+                  'Listo',
+                  style: CceText.label.copyWith(
+                    color: CceTint.inkOnPastel,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
           ),
@@ -721,31 +728,29 @@ class _LightColorScreenState extends State<LightColorScreen>
     );
   }
 
-  Widget _controlsRow() {
+  /// Modo color / blanco. Sólo aparece si la selección soporta ambos.
+  Widget _modeRow() {
     final focus = _membersOf(_focus);
     final anyColor =
         focus.any((id) => widget.service.byId(id)?.supportsColor ?? false);
     final anyCt =
         focus.any((id) => widget.service.byId(id)?.supportsCT ?? false);
+    if (!(anyColor && anyCt)) return const SizedBox.shrink();
+    return _ModeToggle(mode: _mode, onChanged: _setMode);
+  }
+
+  Widget _brightnessRow() {
+    final focus = _membersOf(_focus);
     final anyBri =
         focus.any((id) => widget.service.byId(id)?.supportsBrightness ?? false);
+    if (!anyBri) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Row(
-        children: [
-          if (anyColor && anyCt)
-            _ModeToggle(mode: _mode, onChanged: _setMode)
-          else
-            const SizedBox.shrink(),
-          const Spacer(),
-          if (anyBri)
-            _BrightnessPill(
-              value: _bri,
-              count: focus.length,
-              onChanged: _onBrightness,
-              onEnd: _commitBrightness,
-            ),
-        ],
+      padding: EdgeInsets.symmetric(horizontal: CceSpace.xl),
+      child: _BrightnessBar(
+        value: _bri,
+        count: focus.length,
+        onChanged: _onBrightness,
+        onEnd: _commitBrightness,
       ),
     );
   }
@@ -754,32 +759,23 @@ class _LightColorScreenState extends State<LightColorScreen>
     final lights = _roomLights();
     if (lights.isEmpty) return const SizedBox.shrink();
     return SizedBox(
-      height: 156,
+      height: _LightChip.height,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: EdgeInsets.symmetric(horizontal: CceSpace.xl),
         itemCount: lights.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, __) => SizedBox(width: CceSpace.sm),
         itemBuilder: (context, i) {
           final d = widget.service.byId(lights[i].id) ?? lights[i];
           final r = resolveLightColor(d.state);
           final tint = r.isWhite ? CceColors.warm : r.color;
-          return _DeviceMiniCard(
+          return _LightChip(
             name: widget.service.displayName(d),
-            iconBuilder: (c) => IconResolver.widget(
-              d,
-              configuredIcon: widget.service.iconFor(d.id),
-              customIcons: widget.service.customIcons,
-              displayName: widget.service.displayName(d),
-              size: 22,
-              color: c,
-            ),
             tint: tint,
             on: d.state.on,
             reachable: d.state.reachable,
             selected: _groupOf[d.id] == _focus,
             onTap: () => _onLightTap(d),
-            onToggle: (_) => widget.service.toggleLight(d),
           );
         },
       ),
@@ -848,15 +844,15 @@ class _ColorDisk extends StatelessWidget {
                         ],
                         stops: [0.0, 0.42, 0.6, 1.0],
                       ),
+                // Halo contenido. Antes eran dos capas (34 y 90 px de blur)
+                // que lavaban medio fondo de la pantalla y le quitaban al
+                // disco su borde: con el halo tan abierto, el disco dejaba de
+                // tener una forma definida y se leía como una mancha.
                 boxShadow: [
                   BoxShadow(
-                    color: glowColor.withValues(alpha: 0.22),
-                    blurRadius: 34,
-                  ),
-                  BoxShadow(
-                    color: glowColor.withValues(alpha: 0.12),
-                    blurRadius: 90,
-                    spreadRadius: -6,
+                    color: glowColor.withValues(alpha: 0.16),
+                    blurRadius: 28,
+                    spreadRadius: -8,
                   ),
                 ],
               ),
@@ -930,16 +926,22 @@ class _Dot extends StatelessWidget {
   }
 }
 
-/// Pin color-aware estilo Google Maps: cabeza circular ANCHA arriba (con el
-/// ícono/contador) que se afina por dos lados tangentes hasta una PUNTA inferior
-/// que marca el lugar exacto. Va RELLENO con el color seleccionado (el color
-/// viaja con el marcador), con gloss superior y un DOBLE contorno (keyline
-/// oscuro + aro blanco) que lo separa de cualquier fondo del disco. El contenido
-/// usa tinta auto-contraste [ink].
+/// Marcador de selección sobre el disco: un CÍRCULO relleno con el color
+/// elegido, con aro blanco y sombra de contacto.
+///
+/// Antes era un pin de mapa (cabeza ancha arriba + punta abajo señalando el
+/// punto). Ese patrón viene de la cartografía, donde el marcador tiene que
+/// señalar un lugar SIN taparlo. Acá pasa exactamente lo contrario: lo que
+/// estás eligiendo es el color que está debajo del dedo, así que el marcador
+/// tiene que MOSTRARLO, no apuntarlo. Con el pin, el color seleccionado quedaba
+/// a 70 px de donde tenías el dedo, y por eso la selección se sentía imprecisa.
+///
+/// Ahora el centro del círculo ES el punto: lo que ves adentro es exactamente
+/// el color que se va a aplicar. Es lo que hace la app de Hue.
 class _Marker extends StatelessWidget {
   final Widget? child; // ícono del device (cluster de 1), ya teñido con [ink]
   final String? label; // contador (cluster > 1)
-  final Color color; // color seleccionado bajo la punta (rellena el cuerpo)
+  final Color color; // color seleccionado bajo el marcador (rellena el cuerpo)
   final Color ink; // tinta auto-contraste para ícono/contador (CceTint.textOn)
   const _Marker({
     this.child,
@@ -948,11 +950,11 @@ class _Marker extends StatelessWidget {
     required this.ink,
   });
 
-  static const double w = 56; // ancho total (= diámetro de la cabeza + aire)
-  static const double headR = 23; // radio de la cabeza circular (ancha arriba)
-  static const double headCy = 27; // centro vertical de la cabeza (zona ícono)
-  static const double tipY = 70; // punta inferior = punto de color exacto
-  static const double h = 76; // alto total (cabeza + punta + aire para sombra)
+  static const double w = 52; // diámetro del marcador
+  static const double h = w;
+
+  /// El punto exacto es el CENTRO del círculo (antes era la punta inferior).
+  static const double tipY = w / 2;
 
   /// Tinta auto-contraste para el contenido sobre [c]. Reusa el token del DS
   /// para no divergir del resto de la app.
@@ -965,40 +967,28 @@ class _Marker extends StatelessWidget {
             label!,
             style: TextStyle(
               color: ink,
-              fontSize: 19,
+              fontSize: 17,
               fontWeight: FontWeight.w600,
               letterSpacing: -0.2,
             ),
           )
         : child;
-    // SizedBox tight → el CustomPaint pinta en EXACTAMENTE w×h (si no, al tener
-    // child el CustomPaint se mide por el child y headCy del painter no coincide
-    // con el centro real → ícono descentrado). El contenido se posiciona con su
-    // centro clavado en el de la cabeza: (w/2, headCy).
-    return SizedBox(
+    return Container(
       width: w,
       height: h,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned.fill(
-            child: CustomPaint(painter: _PinPainter(color: color, ink: ink)),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            height: 2 * headCy, // caja [0, 2*headCy] → centro vertical = headCy
-            // El pin es un fill de color saturado: se aplana el relieve del
-            // glyph (sombra oscura ensuciaria la cabeza). `shadows: []` apaga
-            // el emboss del Icon de Material y del CceIcon por igual. (Text no
-            // se ve afectado.)
-            child: IconTheme.merge(
-              data: const IconThemeData(shadows: <Shadow>[]),
-              child: Center(child: content),
-            ),
-          ),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        // Aro blanco: separa el marcador de cualquier color del disco, incluso
+        // cuando el color elegido es casi el mismo que el de su vecindad.
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: const [
+          BoxShadow(color: Color(0x59000000), blurRadius: 8, offset: Offset(0, 2)),
         ],
+      ),
+      child: IconTheme.merge(
+        data: const IconThemeData(shadows: <Shadow>[]),
+        child: Center(child: content),
       ),
     );
   }
@@ -1008,101 +998,15 @@ class _Marker extends StatelessWidget {
 /// triángulo tangente hasta la punta) rellena SÓLIDA con el color seleccionado,
 /// con sheen sutil, una hairline blanca fina y sombra baja. La PUNTA inferior
 /// (con núcleo blanco) marca el lugar exacto.
-class _PinPainter extends CustomPainter {
-  final Color color; // relleno (color seleccionado, literal)
-  final Color ink; // tinta del contenido (para repintar al cambiar color)
-  const _PinPainter({required this.color, required this.ink});
 
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width;
-    const headR = _Marker.headR;
-    const headCy = _Marker.headCy;
-    const tipY = _Marker.tipY;
-    final cx = w / 2;
-
-    // --- Silueta tipo gota: cabeza circular ∪ triángulo tangente a la punta -
-    // Los lados del triángulo son TANGENTES a la cabeza → la unión es suave
-    // (sin muescas). beta = semiángulo desde el centro hacia los puntos de
-    // tangencia, vistos desde la punta a distancia d.
-    final headC = Offset(cx, headCy);
-    final d = tipY - headCy;
-    final beta = math.acos(headR / d);
-    final sinB = math.sin(beta), cosB = math.cos(beta);
-    final pa = Offset(cx - headR * sinB, headCy + headR * cosB); // tangente izq
-    final pb = Offset(cx + headR * sinB, headCy + headR * cosB); // tangente der
-
-    final head = Path()
-      ..addOval(Rect.fromCircle(center: headC, radius: headR));
-    final tail = Path()
-      ..moveTo(pa.dx, pa.dy)
-      ..lineTo(cx, tipY)
-      ..lineTo(pb.dx, pb.dy)
-      ..close();
-    final body = Path.combine(PathOperation.union, head, tail);
-
-    // --- 1) Sombra suave y baja (despega sin "stickerear") ----------------
-    canvas.drawShadow(body, Colors.black.withValues(alpha: 0.22), 3, true);
-
-    // --- 2) Relleno SÓLIDO con el color seleccionado (opaco, no transparente)
-    canvas.drawPath(
-      body,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.fill
-        ..isAntiAlias = true,
-    );
-
-    // --- 3) Sheen sutil en la cabeza --------------------------------------
-    final sheen = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          Colors.white.withValues(alpha: 0.18),
-          Colors.white.withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.5],
-      ).createShader(Rect.fromLTWH(
-          cx - headR, headCy - headR, 2 * headR, 2 * headR));
-    canvas.save();
-    canvas.clipPath(head);
-    canvas.drawRect(
-        Rect.fromLTWH(cx - headR, headCy - headR, 2 * headR, 2 * headR), sheen);
-    canvas.restore();
-
-    // --- 4) Contorno: UNA hairline fina (elegante, no el doble contorno) ---
-    canvas.drawPath(
-      body,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.65)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.2
-        ..strokeJoin = StrokeJoin.round
-        ..isAntiAlias = true,
-    );
-
-    // --- 5) Núcleo en la punta → marca el punto EXACTO aunque el color del
-    //     pin iguale el fondo (siempre hay blanco-sobre-color ahí).
-    canvas.drawCircle(
-      Offset(cx, tipY - 5),
-      3.0,
-      Paint()..color = Colors.black.withValues(alpha: 0.18),
-    );
-    canvas.drawCircle(
-      Offset(cx, tipY - 5),
-      2.2,
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.92)
-        ..isAntiAlias = true,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _PinPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.ink != ink;
-}
-
+/// Elige entre disco de color y disco de temperatura de blanco.
+///
+/// Antes eran dos círculos con gradiente (arcoíris y ámbar) y la selección se
+/// marcaba engrosando un borde blanco. Tenía dos problemas: se leía como un
+/// switch de encendido en vez de como dos opciones, y el círculo del modo
+/// "blanco" era ámbar — o sea que el swatch decía justo lo contrario de lo que
+/// la opción significa. Con etiquetas no hay nada que adivinar, y usa el
+/// segmented del sistema en vez de un control propio de esta pantalla.
 class _ModeToggle extends StatelessWidget {
   final _Mode mode;
   final ValueChanged<_Mode> onChanged;
@@ -1110,55 +1014,15 @@ class _ModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: CceColors.surfaceHigh,
-        borderRadius: BorderRadius.circular(CceRadii.pill),
-        boxShadow: CceShadows.neo(blur: 10, offset: 4, intensity: 0.7),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _opt(
-            selected: mode == _Mode.color,
-            onTap: () => onChanged(_Mode.color),
-            gradient: const SweepGradient(colors: _ColorDisk.wheel),
-          ),
-          const SizedBox(width: 6),
-          _opt(
-            selected: mode == _Mode.white,
-            onTap: () => onChanged(_Mode.white),
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFD08A), Color(0xFFFFB46B)],
-            ),
-          ),
+    return SizedBox(
+      width: 208,
+      child: CceSegmented<_Mode>(
+        value: mode,
+        onChanged: onChanged,
+        segments: const [
+          CceSegment(value: _Mode.color, label: 'Color'),
+          CceSegment(value: _Mode.white, label: 'Blanco'),
         ],
-      ),
-    );
-  }
-
-  Widget _opt({
-    required bool selected,
-    required VoidCallback onTap,
-    required Gradient gradient,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        padding: const EdgeInsets.all(3),
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected ? Colors.white : Colors.white.withValues(alpha: 0.14),
-            width: selected ? 2.5 : 1.5,
-          ),
-        ),
-        child: Container(
-          decoration: BoxDecoration(shape: BoxShape.circle, gradient: gradient),
-        ),
       ),
     );
   }
@@ -1168,24 +1032,32 @@ class _ModeToggle extends StatelessWidget {
 /// proporcional, % grande arriba e ícono de sol. Arrastrar (o tap) sobre la pista
 /// fija el brillo; `onEnd` commitea vía el servicio. Con varias luces en foco
 /// ([count] > 1) muestra "N luces" debajo para dejar claro que afecta al grupo.
-class _BrightnessPill extends StatelessWidget {
+/// Barra de brillo HORIZONTAL, a todo el ancho bajo el disco.
+///
+/// Antes era una píldora vertical de 58×168 flotando en el margen derecho.
+/// Tres problemas: un gesto vertical en el borde de la pantalla compite con el
+/// scroll y con el gesto de volver de iOS; el recorrido útil era de 168 px
+/// contra los ~330 que da el ancho; y visualmente dejaba a la izquierda un
+/// hueco que desbalanceaba toda la pantalla.
+///
+/// Horizontal, el pulgar la barre de una pasada, el recorrido se duplica y la
+/// composición queda en un eje: disco → modo → brillo → luces.
+class _BrightnessBar extends StatelessWidget {
   final double value; // 0..254
   final int count; // cantidad de luces en foco (para el caso multi-luz)
   final ValueChanged<double> onChanged;
   final VoidCallback onEnd;
-  const _BrightnessPill({
+  const _BrightnessBar({
     required this.value,
     required this.count,
     required this.onChanged,
     required this.onEnd,
   });
 
-  static const double _trackH = 168;
-  static const double _trackW = 58;
+  static const double _trackH = 56;
 
-  // Brillo a partir de la posición Y local (0 arriba = 100%, _trackH abajo = 0%).
-  double _briForDy(double dy) =>
-      ((1 - (dy / _trackH)) * 254).clamp(0, 254).toDouble();
+  double _briForDx(double dx, double w) =>
+      ((dx / w) * 254).clamp(0, 254).toDouble();
 
   @override
   Widget build(BuildContext context) {
@@ -1193,273 +1065,188 @@ class _BrightnessPill extends StatelessWidget {
     final t = (value / 254).clamp(0.0, 1.0);
     return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // % grande y legible.
-        Text('$pct%',
-            style: const TextStyle(
-                color: CceColors.textPrimary,
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-                height: 1.0)),
-        if (count > 1) ...[
-          const SizedBox(height: 2),
-          Text('$count luces',
-              style: const TextStyle(
-                  color: CceColors.textTertiary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3)),
-        ],
-        const SizedBox(height: 10),
-        // Track vertical (pista neumórfica hundida + relleno cálido proporcional).
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragUpdate: (d) =>
-              onChanged(_briForDy(d.localPosition.dy)),
-          onVerticalDragEnd: (_) => onEnd(),
-          onTapDown: (d) => onChanged(_briForDy(d.localPosition.dy)),
-          onTapUp: (_) => onEnd(),
-          child: Container(
-            width: _trackW,
-            height: _trackH,
-            decoration: BoxDecoration(
-              color: CceColors.neoBase,
-              borderRadius: BorderRadius.circular(_trackW / 2),
-              boxShadow: CceShadows.neoInset(blur: 8, offset: 3, intensity: 0.9),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                // Relleno proporcional (de abajo hacia arriba), gradiente cálido.
-                FractionallySizedBox(
-                  heightFactor: t == 0 ? 0.0001 : t,
-                  widthFactor: 1,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [Color(0xFFFFB46B), Color(0xFFFFD9A0)],
+        Row(
+          children: [
+            Text('Brillo', style: CceText.label),
+            const Spacer(),
+            Text('$pct%', style: CceText.data),
+            if (count > 1) ...[
+              Text(' · ', style: CceText.caption),
+              Text('$count luces', style: CceText.caption),
+            ],
+          ],
+        ),
+        SizedBox(height: CceSpace.sm),
+        LayoutBuilder(
+          builder: (context, c) {
+            final w = c.maxWidth;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (d) =>
+                  onChanged(_briForDx(d.localPosition.dx, w)),
+              onHorizontalDragEnd: (_) => onEnd(),
+              onTapDown: (d) => onChanged(_briForDx(d.localPosition.dx, w)),
+              onTapUp: (_) => onEnd(),
+              child: Container(
+                height: _trackH,
+                // Ancho explícito: dentro de un Column con crossAxisAlignment
+                // .start, un Container sin width colapsa al tamaño de su
+                // contenido — el track quedaba tan largo como el relleno, así
+                // que la barra se veía cortada en vez de llena hasta el valor.
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  // El track usa surfaceHigh, no surfaceSunken: sobre un
+                  // lienzo casi negro, un hueco todavía más oscuro es
+                  // invisible, y la barra se leía CORTADA en el punto del
+                  // relleno en vez de llena hasta ahí. El recorrido completo
+                  // tiene que verse para que el porcentaje signifique algo.
+                  color: CceColors.surfaceHigh,
+                  borderRadius: BorderRadius.circular(CceRadii.control),
+                  border: Border.all(color: CceColors.stroke),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    // Relleno. Color plano, no gradiente: el degradado hacia
+                    // crema hacía que el extremo derecho se aclarara justo
+                    // donde termina, y la barra parecía seguir más allá de su
+                    // propio borde.
+                    FractionallySizedBox(
+                      widthFactor: t == 0 ? 0.0001 : t,
+                      heightFactor: 1,
+                      child: const ColoredBox(color: CceColors.accent),
+                    ),
+                    // ASA. Es lo que le faltaba: sin una marca en el extremo
+                    // del relleno, la barra no dice dónde estás parado ni que
+                    // se puede arrastrar — al 100% se lee como un bloque de
+                    // color, no como un control.
+                    if (t > 0.02)
+                      LayoutBuilder(
+                        builder: (context, cc) {
+                          const grip = 5.0;
+                          final x = (cc.maxWidth * t - grip - CceSpace.sm)
+                              .clamp(0.0, cc.maxWidth - grip - CceSpace.sm);
+                          return Padding(
+                            padding: EdgeInsets.only(left: x),
+                            child: Container(
+                              width: grip,
+                              height: 24,
+                              decoration: BoxDecoration(
+                                color: CceTint.inkOnPastel.withValues(alpha: 0.45),
+                                borderRadius: BorderRadius.circular(grip / 2),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
+                      child: CceIcon(
+                        CceIcons.sun,
+                        size: 22,
+                        // Sobre el relleno la tinta se invierte; con el brillo
+                        // bajo el ícono queda sobre el hueco oscuro.
+                        color: t > 0.12
+                            ? CceTint.inkOnPastel
+                            : CceColors.textSecondary,
+                        emboss: false,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                // Ícono de sol arriba (icons0.dev / lucide), contraste sobre la
-                // pista; tinta oscura cuando el relleno llega arriba.
-                Positioned(
-                  top: 12,
-                  child: CceIcon(
-                    CceIcons.sun,
-                    size: 24,
-                    color: t > 0.86
-                        ? CceTint.textOn(const Color(0xFFFFB46B))
-                        : CceColors.textPrimary,
-                    emboss: false,
-                  ),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ],
     );
   }
 }
 
-class _DeviceMiniCard extends StatelessWidget {
+/// Ficha de una luz del ambiente en la tira inferior.
+///
+/// COMPACTA: swatch del color real + nombre, en una fila de 56 px. Antes era
+/// una card de 124×156 con ícono, nombre, estado y switch adentro — un tercio
+/// de la pantalla dedicado a *elegir cuál* luz estás editando, que es lo
+/// secundario acá. El disco es lo que importa y necesita ese espacio.
+///
+/// El switch se fue de la ficha: apagar una luz desde el selector de color es
+/// una acción de otra pantalla (la del ambiente), y su presencia hacía que la
+/// mitad de los toques en la tira cambiaran el estado en vez de la selección.
+/// Acá el toque hace una sola cosa: elegir qué luz estás pintando.
+class _LightChip extends StatelessWidget {
   final String name;
-  final Widget Function(Color color) iconBuilder;
-  final Color tint; // color real de la luz (para teñir la card como Hue)
+  final Color tint; // color real de la luz
   final bool on, reachable, selected;
   final VoidCallback onTap;
-  final ValueChanged<bool> onToggle;
-  const _DeviceMiniCard({
+  const _LightChip({
     required this.name,
-    required this.iconBuilder,
     required this.tint,
     required this.on,
     required this.reachable,
     required this.selected,
     required this.onTap,
-    required this.onToggle,
   });
 
+  static const double height = 56;
+
   @override
   Widget build(BuildContext context) {
-    // Card teñida con el pastel del color de la luz cuando está encendida.
-    final mid = CceTint.pastel(tint);
-    final fg = on ? CceTint.textOn(mid) : CceColors.textPrimary;
-    final fgSub = on ? CceTint.subTextOn(mid) : CceColors.textTertiary;
+    final swatch = CceTint.pastel(tint);
     return GestureDetector(
       onTap: onTap,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-        width: 124,
-        decoration: BoxDecoration(
-          color: on ? null : CceColors.surface,
-          gradient: on ? CceGradients.huePastel([tint]) : null,
-          borderRadius: BorderRadius.circular(CceRadii.hueCard),
-          // Selección NOTORIA: borde más grueso con el tinte de la luz + glow.
-          border: Border.all(
-            color: selected
-                ? mid
-                : (on
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : CceColors.stroke),
-            width: selected ? 3 : 1,
-          ),
-          // Glow reforzado al seleccionar: halo del tinte + un poco de flote.
-          boxShadow: selected
-              ? [
-                  ...CceShadows.glowOn(mid),
-                  ...CceShadows.glowDot(mid),
-                ]
-              : (on ? CceShadows.cardFloat(intensity: 0.6) : null),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 13, 10, 4),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: on
-                            ? Colors.white.withValues(alpha: 0.16)
-                            : CceColors.surfaceHigh,
-                      ),
-                      child: Center(child: iconBuilder(fg)),
-                    ),
-                    const SizedBox(height: 7),
-                    Text(
-                      name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: fg,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        height: 1.1,
-                        letterSpacing: -0.1,
-                      ),
-                    ),
-                    if (!reachable) ...[
-                      const SizedBox(height: 3),
-                      Text('Sin conexión'.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: fgSub,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.6,
-                          )),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 11),
-              child: _HueSwitch(
-                value: on,
-                onChanged: onToggle,
-                onColor:
-                    on ? CceTint.inkOnPastel.withValues(alpha: 0.28) : null,
-              ),
-            ),
-          ],
-        ),
-      ),
-          // Badge de selección (check icons0.dev / lucide) en la esquina sup-der:
-          // confirma de un vistazo qué luz/grupo está seleccionado.
-          if (selected)
-            Positioned(
-              top: -6,
-              right: -6,
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: mid,
-                  border: Border.all(color: CceColors.bg, width: 2),
-                  boxShadow: CceShadows.glowDot(mid),
-                ),
-                child: Center(
-                  child: CceIcon(
-                    CceIcons.check,
-                    size: 15,
-                    color: CceTint.textOn(mid),
-                    emboss: false,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Switch estilo Hue: pista pill + thumb circular blanco (reemplaza el Switch
-/// verde de iOS). [onColor] tiñe la pista cuando está encendido.
-class _HueSwitch extends StatelessWidget {
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final Color? onColor;
-  const _HueSwitch({required this.value, required this.onChanged, this.onColor});
-
-  @override
-  Widget build(BuildContext context) {
-    const w = 46.0, h = 28.0, thumb = 22.0;
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onChanged(!value);
-      },
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        width: w,
-        height: h,
-        padding: const EdgeInsets.all(3),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        height: height,
+        padding: EdgeInsets.symmetric(horizontal: CceSpace.md),
         decoration: BoxDecoration(
-          color: value
-              ? (onColor ?? Colors.white.withValues(alpha: 0.45))
-              : Colors.white.withValues(alpha: 0.10),
-          borderRadius: BorderRadius.circular(h / 2),
-        ),
-        child: AnimatedAlign(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOut,
-          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: thumb,
-            height: thumb,
-            decoration: BoxDecoration(
-              color: value ? Colors.white : const Color(0xFFCFCFD4),
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
-                ),
-              ],
-            ),
+          gradient: CceGradients.cardSurface(
+            selected ? CceColors.surfaceHigh : CceColors.surface,
           ),
+          borderRadius: BorderRadius.circular(CceRadii.control),
+          border: Border.all(
+            color: selected ? CceColors.accent : CceColors.stroke,
+            width: selected ? 1.5 : 1,
+          ),
+          boxShadow: CceShadows.raised,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Swatch: el color real de la lámpara. Apagada o sin conexión, el
+            // círculo queda hueco — no hay color que mostrar si no hay luz.
+            Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: (on && reachable) ? swatch : CceColors.surfaceSunken,
+                border: Border.all(
+                  color: (on && reachable)
+                      ? Colors.white.withValues(alpha: 0.35)
+                      : CceColors.stroke,
+                ),
+              ),
+            ),
+            SizedBox(width: CceSpace.sm),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CceText.label.copyWith(
+                color: selected ? CceColors.textPrimary : CceColors.textSecondary,
+              ),
+            ),
+            if (!reachable) ...[
+              SizedBox(width: CceSpace.sm),
+              // Mismo glyph que usa LightCard para el estado sin conexión.
+              const Icon(Icons.wifi_off, size: 14, color: CceColors.textMuted),
+            ],
+          ],
         ),
       ),
     );

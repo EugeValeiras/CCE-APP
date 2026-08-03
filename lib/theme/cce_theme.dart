@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 
-import 'cce_icons.dart'; // CceEmboss: tokens del relieve neumorfico
 import 'cce_tokens.dart';
 
-/// ThemeData global del rebranding estilo Hue.
+/// ThemeData global de CCE Home.
+///
+/// Fija el contrato del sistema para todo lo que Material dibuja por su cuenta
+/// (switches, sliders, chips, sheets): un solo acento, una sola familia de
+/// superficies, sin relieve. Ver [CceColors] para la dirección de diseño.
 abstract final class CceTheme {
   static ThemeData dark() {
     final scheme = ColorScheme.fromSeed(
       seedColor: CceColors.accent,
       brightness: Brightness.dark,
+      surface: CceColors.surface,
     );
 
     return ThemeData(
@@ -16,15 +20,14 @@ abstract final class CceTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: CceColors.bg,
       canvasColor: CceColors.bg,
-      // Relieve neumorfico app-wide para TODO Icon(Icons.*)/Icon(Mdi.*)
-      // que no fije shadows propios (Icon usa `widget.shadows ?? iconTheme`).
-      // Mismos tokens que el ghost de CceIcon -> Material y SVG convergen.
+      // Sin sombras: un ícono se distingue por color y trazo. El relieve
+      // app-wide era lo que ensuciaba cada glyph (ver CceEmboss).
       iconTheme: const IconThemeData(
         color: CceColors.textSecondary,
-        shadows: CceEmboss.iconShadows,
+        size: 22,
       ),
       dividerTheme: const DividerThemeData(
-        color: CceColors.stroke,
+        color: CceColors.strokeSoft,
         thickness: 1,
         space: 1,
       ),
@@ -38,46 +41,50 @@ abstract final class CceTheme {
         titleTextStyle: CceText.title,
         iconTheme: IconThemeData(
           color: CceColors.textSecondary,
-          shadows: CceEmboss.iconShadows,
+          size: 22,
         ),
       ),
+      // Nav y rail comparten el fondo del lienzo. Pintarlos de otro color
+      // partía la pantalla en "mundo de la barra" y "mundo del contenido"; un
+      // hairline alcanza para separarlos.
       navigationBarTheme: NavigationBarThemeData(
         height: 72,
-        backgroundColor: CceColors.surface,
+        backgroundColor: CceColors.bg,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: CceColors.accent.withValues(alpha: 0.24),
+        indicatorColor: CceColors.accentWash,
         indicatorShape: const StadiumBorder(),
-        labelTextStyle: const WidgetStatePropertyAll(CceText.caption),
+        labelTextStyle: const WidgetStatePropertyAll(CceText.label),
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
             color: states.contains(WidgetState.selected)
-                ? CceColors.textPrimary
+                ? CceColors.accent
                 : CceColors.textTertiary,
           ),
         ),
       ),
       navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: CceColors.surface,
+        backgroundColor: CceColors.bg,
         useIndicator: true,
-        indicatorColor: CceColors.accent.withValues(alpha: 0.24),
+        indicatorColor: CceColors.accentWash,
         indicatorShape: const StadiumBorder(),
-        selectedIconTheme: const IconThemeData(color: CceColors.textPrimary),
+        selectedIconTheme: const IconThemeData(color: CceColors.accent),
         unselectedIconTheme: const IconThemeData(color: CceColors.textTertiary),
-        selectedLabelTextStyle: CceText.caption.copyWith(
+        selectedLabelTextStyle: CceText.label.copyWith(
           color: CceColors.textPrimary,
         ),
-        unselectedLabelTextStyle: CceText.caption.copyWith(
+        unselectedLabelTextStyle: CceText.label.copyWith(
           color: CceColors.textTertiary,
         ),
       ),
       sliderTheme: SliderThemeData(
         trackHeight: 6,
         activeTrackColor: CceColors.accent,
-        inactiveTrackColor: CceColors.surfaceHigh,
-        thumbColor: Colors.white,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-        overlayColor: CceColors.accent.withValues(alpha: 0.12),
+        // El track vacío es un HUECO, no una superficie elevada.
+        inactiveTrackColor: CceColors.surfaceSunken,
+        thumbColor: CceColors.textPrimary,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+        overlayColor: CceColors.accentWash,
       ),
       bottomSheetTheme: const BottomSheetThemeData(
         backgroundColor: CceColors.surface,
@@ -90,18 +97,32 @@ abstract final class CceTheme {
         ),
       ),
       switchTheme: SwitchThemeData(
-        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        // Apagado: thumb atenuado sobre hueco. Encendido: thumb claro sobre
+        // ámbar. El estado se lee por VALOR (claro/oscuro), no sólo por color
+        // — sirve igual con poca luz y con daltonismo.
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? CceColors.textPrimary
+              : CceColors.textMuted,
+        ),
         trackColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
               ? CceColors.accent
-              : CceColors.surfaceHigh,
+              : CceColors.surfaceSunken,
         ),
-        trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
+        // Un switch apagado DEBE verse: sin este borde se funde con la card y
+        // parece que no hay control.
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.transparent
+              : CceColors.strokeStrong,
+        ),
+        trackOutlineWidth: const WidgetStatePropertyAll(1),
       ),
       chipTheme: ChipThemeData(
         backgroundColor: CceColors.surfaceHigh,
-        selectedColor: CceColors.accent.withValues(alpha: 0.28),
-        labelStyle: CceText.caption,
+        selectedColor: CceColors.accentWash,
+        labelStyle: CceText.label,
         side: const BorderSide(color: CceColors.stroke),
         shape: const StadiumBorder(),
       ),

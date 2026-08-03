@@ -26,7 +26,7 @@ class ThermometerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.transparent,

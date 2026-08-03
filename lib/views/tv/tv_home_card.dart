@@ -43,9 +43,11 @@ class TvHomeCard extends StatefulWidget {
 }
 
 class _TvHomeCardState extends State<TvHomeCard> {
-  // Acento "vivo" del TV (ON): azul info de la marca/UI, espejo del jblOrange
-  // de la card del soundbar.
-  static const Color _tvAccent = CceColors.info;
+  // Acento del sistema, no el azul de la marca. En la home lo que se comunica
+  // es "encendido", y eso tiene que verse igual en todos los dispositivos: un
+  // color por marca convertía la lista en un semáforo donde nada destaca.
+  // La identidad de Samsung vive en el detalle del TV.
+  static const Color _tvAccent = CceColors.accent;
 
   @override
   void initState() {
@@ -114,11 +116,14 @@ class _TvHomeCardState extends State<TvHomeCard> {
                     // Color del glyph: accent ON / neoTextSub en espera-offline
                     // (neo); accent histórico en plano.
                     color: neo
-                        ? (online && on ? _tvAccent : CceColors.neoTextSub)
+                        ? (online && on ? _tvAccent : CceColors.textTertiary)
                         : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
-                    child: const CceIcon(CceIcons.samsung, size: 34),
+                    // Ícono del sistema, no el logotipo de Samsung: en una
+                    // lista, un logo de marca compite con el contenido y rompe
+                    // la familia visual de los demás glyphs.
+                    child: const CceIcon(CceIcons.tv, size: 30),
                   ),
                 ),
               ),

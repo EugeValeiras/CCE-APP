@@ -14,8 +14,8 @@ import 'hue_badge.dart';
 /// el ícono de su `archetype` (el mismo que tiene en la app de Philips), así que
 /// el texto sólo sumaba ruido; [name] sobrevive como semantics.
 ///
-/// Encendida, el borde es el gradiente arcoíris de Philips y el glyph prende en
-/// verde (any_on, igual que Hue). Apagada no lleva borde, como el resto.
+/// Encendida, lleva hairline de acento y el glyph prende en acento — igual que
+/// cualquier card activa del sistema. Apagada no lleva borde, como el resto.
 class HueRoomCard extends StatelessWidget {
   const HueRoomCard({
     super.key,
@@ -46,16 +46,14 @@ class HueRoomCard extends StatelessWidget {
   /// switch quede a la misma altura cuando las dos cards conviven.
   static const double _switchBar = 56;
 
-  /// Grosor del borde de marca cuando la room está encendida.
-  static const double _borderWidth = 1.4;
-
   @override
   Widget build(BuildContext context) {
     final borderRadius = BorderRadius.circular(CceRadii.hueScene);
     final isOn = on == true;
-    // Encendido tiñe de verde (ícono + switch); apagado deja el glyph neutro,
-    // igual que LightCard con una luz apagada.
-    final accent = isOn ? CceColors.ok : CceColors.textPrimary;
+    // Encendido = acento del sistema. El verde de Hue (`ok`) es el color
+    // semántico de "correcto" en esta app: usarlo para "hay luz prendida"
+    // decía otra cosa, y además metía un cuarto color en la grilla.
+    final accent = isOn ? CceColors.accent : CceColors.textTertiary;
 
     Widget glyph = SizedBox(
       width: _iconSize,
@@ -92,11 +90,6 @@ class HueRoomCard extends StatelessWidget {
       );
     }
 
-    // Borde con el GRADIENTE de marca sólo cuando está encendida. Flutter no
-    // sabe pintar un Border con gradiente, así que el truco es un Container con
-    // el gradiente + _borderWidth de padding, y la card real encima tapando el
-    // centro: lo que asoma por los bordes ES el borde. Apagada no lleva
-    // contenedor externo y queda sin borde, como el resto de las cards.
     final card = Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -142,14 +135,14 @@ class HueRoomCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     top: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.10),
+                      color: CceColors.strokeSoft,
                     ),
                   ),
                 ),
                 alignment: Alignment.center,
                 child: CceSwitch(
                   value: isOn,
-                  accent: CceColors.ok,
+                  accent: CceColors.accent,
                   onChanged: busy ? null : (_) => onTap(),
                 ),
               ),
@@ -159,25 +152,23 @@ class HueRoomCard extends StatelessWidget {
       ),
     );
 
-    // Encendida: el borde ES el gradiente de marca, con un glow suave del mismo
-    // color para que se lea a distancia en la grilla.
-    // Sin alto propio: lo fija el grid que la hospeda (la de luces usa 156, la
-    // de escenas 132). Fijarlo acá la desalineaba al moverla de sección.
+    // Encendida: hairline de acento, igual que cualquier otra card activa del
+    // sistema.
+    //
+    // Antes el borde era el arcoíris completo de Philips más un glow verde.
+    // El resultado era que la card más llamativa de la pantalla —la que se
+    // llevaba la mirada antes que la temperatura, las escenas o cualquier luz—
+    // era la marca de un proveedor. Una marca de terceros puede identificar,
+    // no puede liderar la jerarquía de una pantalla propia; el badge de Hue,
+    // que sigue adentro, ya dice de quién es el grupo.
+    //
+    // Sin alto propio: lo fija el grid que la hospeda.
     if (!isOn) return card;
     return SizedBox.expand(
       child: Container(
-        padding: const EdgeInsets.all(_borderWidth),
         decoration: BoxDecoration(
-          // Gradiente de MARCA compartido (los stops del logo, misma fuente
-          // que [HueBadge] y los chips de escenas Hue del editor).
-          gradient: CceGradients.hueBrand,
+          border: Border.all(color: CceColors.accent, width: 1.5),
           borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF40D6AC).withValues(alpha: 0.22),
-              blurRadius: 14,
-            ),
-          ],
         ),
         child: card,
       ),

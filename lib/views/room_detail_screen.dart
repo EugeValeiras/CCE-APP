@@ -156,7 +156,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               leading: const Icon(Icons.swap_vert, color: CceColors.textPrimary),
               title: const Text('Reordenar secciones',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Cambiá el orden de Escenas, Luces y Devices',
+              subtitle: const Text('Cambiá el orden de Escenas, Luces y Dispositivos',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -188,7 +188,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   String _sectionLabel(String key) => switch (key) {
         'scenes' => 'Escenas',
         'lights' => 'Luces',
-        _ => 'Devices',
+        _ => 'Dispositivos',
       };
 
   IconData _sectionIcon(String key) => switch (key) {
@@ -380,7 +380,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         setState(() => _lightOrder = List.of(lo));
                         _saveItemOrder('light', lo);
                       }),
-                      section('Devices', so, (oldI, newI) {
+                      section('Dispositivos', so, (oldI, newI) {
                         setSheet(() {
                           if (newI > oldI) newI -= 1;
                           so.insert(newI, so.removeAt(oldI));
@@ -605,7 +605,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   const SliverPadding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
-                      child: SectionHeader(title: 'Devices'),
+                      child: SectionHeader(title: 'Dispositivos'),
                     ),
                   ),
                   SliverPadding(
@@ -687,9 +687,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         };
 
         return Scaffold(
-          backgroundColor: CceColors.neoBase,
+          backgroundColor: CceColors.bg,
           appBar: AppBar(
-            backgroundColor: CceColors.neoBase,
+            backgroundColor: CceColors.bg,
             // Sin flecha de atrás: se vuelve con el swipe nativo de iOS.
             automaticallyImplyLeading: false,
             titleSpacing: 16,

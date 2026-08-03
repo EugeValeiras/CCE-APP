@@ -108,7 +108,7 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       body: SafeArea(
         child: AnimatedBuilder(
           animation: widget.service,
