@@ -30,12 +30,17 @@ class VacuumMapView extends StatefulWidget {
   final Set<int> selectedSegments;
   final ValueChanged<int> onSegmentTap;
 
+  /// Sin encabezado "MAPA" ni contenedor propio: dibuja sólo el plano y deja
+  /// que quien lo hospeda ponga el marco. Se usa cuando el mapa ES la pantalla.
+  final bool bare;
+
   const VacuumMapView({
     super.key,
     required this.device,
     required this.service,
     required this.selectedSegments,
     required this.onSegmentTap,
+    this.bare = false,
   });
 
   @override
@@ -103,14 +108,30 @@ class _VacuumMapViewState extends State<VacuumMapView> {
 
   /// Color de piso por segmento: hue estable derivado del id (paleta calma,
   /// misma receta de clamps que CceTint — nada de colores crudos).
-  static Color segmentColor(int seg, {required bool selected}) {
+  ///
+  /// Tres estados, no dos. Cuando hay ALGUNA habitación elegida, las demás se
+  /// atenúan ([dimmed]): con sólo subirle el brillo a la elegida, la
+  /// diferencia era de unos pocos puntos de saturación sobre un plano lleno de
+  /// colores, y había que buscarla. Apagando el resto, la selección salta sin
+  /// que haya que compararla con nada.
+  static Color segmentColor(
+    int seg, {
+    required bool selected,
+    bool dimmed = false,
+  }) {
     final hue = (seg * 47) % 360;
-    return HSLColor.fromAHSL(
-      1,
-      hue.toDouble(),
-      selected ? 0.55 : 0.32,
-      selected ? 0.56 : 0.34,
-    ).toColor();
+    final double sat, light;
+    if (selected) {
+      sat = 0.60;
+      light = 0.58;
+    } else if (dimmed) {
+      sat = 0.14;
+      light = 0.20;
+    } else {
+      sat = 0.32;
+      light = 0.34;
+    }
+    return HSLColor.fromAHSL(1, hue.toDouble(), sat, light).toColor();
   }
 
   void _rasterize() {
@@ -122,6 +143,9 @@ class _VacuumMapViewState extends State<VacuumMapView> {
     final rgba = Uint8List(map.width * map.height * 4);
     // Cache de colores por byte de píxel (32 segmentos × 2 estados a lo sumo).
     final colorCache = <int, int>{};
+
+    // ¿Hay alguna habitación elegida? Entonces las NO elegidas se atenúan.
+    final hasSelection = widget.selectedSegments.isNotEmpty;
 
     for (var i = 0; i < map.grid.length; i++) {
       final px = map.grid[i];
@@ -139,7 +163,11 @@ class _VacuumMapViewState extends State<VacuumMapView> {
           final seg = (px & 0xf8) >> 3;
           c = seg == 0
               ? floorPlain
-              : segmentColor(seg, selected: selectedBit != 0);
+              : segmentColor(
+                  seg,
+                  selected: selectedBit != 0,
+                  dimmed: hasSelection && selectedBit == 0,
+                );
         }
         packed = (((c.r * 255).round() & 0xff)) |
             (((c.g * 255).round() & 0xff) << 8) |
@@ -204,38 +232,53 @@ class _VacuumMapViewState extends State<VacuumMapView> {
     final rooms = _device.state.rooms ?? const <VacuumRoom>[];
     final nameOf = {for (final r in rooms) r.segmentId: r.name};
 
+    final mapWidget = LayoutBuilder(
+      builder: (context, c) {
+        // Escala CONTAIN: cuando la altura está acotada (el mapa es el
+        // protagonista de la pantalla y vive en un Expanded), el plano se
+        // ajusta al lado que primero se queda corto y queda entero a la vista.
+        // Con altura infinita —dentro de un scroll— maxHeight es infinity y el
+        // mínimo cae naturalmente en el ancho, que es el comportamiento previo.
+        final byWidth = c.maxWidth / map.width;
+        final byHeight = c.maxHeight.isFinite
+            ? c.maxHeight / map.height
+            : double.infinity;
+        final scale = math.min(byWidth, byHeight);
+        return Center(
+          child: GestureDetector(
+            onTapUp: (d) => _onTapUp(d, scale),
+            child: CustomPaint(
+              size: Size(map.width * scale, map.height * scale),
+              painter: _VacuumMapPainter(
+                image: _image,
+                map: map,
+                scale: scale,
+                names: nameOf,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    // `bare`: sin encabezado ni contenedor propio — el mapa es todo lo que se
+    // dibuja y quien lo hospeda decide el marco.
+    if (widget.bare) return mapWidget;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 22),
         Text('MAPA', style: CceText.section),
         const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, c) {
-            final scale = c.maxWidth / map.width;
-            return Container(
-              decoration: BoxDecoration(
-                color: CceColors.neoSunken,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: GestureDetector(
-                  onTapUp: (d) => _onTapUp(d, scale),
-                  child: CustomPaint(
-                    size: Size(c.maxWidth, map.height * scale),
-                    painter: _VacuumMapPainter(
-                      image: _image,
-                      map: map,
-                      scale: scale,
-                      names: nameOf,
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
+        Container(
+          decoration: BoxDecoration(
+            color: CceColors.surfaceSunken,
+            borderRadius: BorderRadius.circular(CceRadii.card),
+            border: Border.all(color: CceColors.stroke),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: mapWidget,
         ),
       ],
     );

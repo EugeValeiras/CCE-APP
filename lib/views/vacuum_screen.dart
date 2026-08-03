@@ -1,28 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../services/app_messenger.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/cce_neo_button.dart';
-import '../theme/components/cce_neo_press.dart';
 import '../theme/components/cce_segmented.dart';
-import '../theme/components/status_dot.dart';
 import '../utils/vacuum_modes.dart';
 import '../utils/vacuum_state.dart';
 import '../widgets/vacuum_map_view.dart';
 import '../widgets/vacuum_tile.dart';
 
-/// Control neumórfico del robot aspiradora (Roborock Qrevo vía Matter RVC +
-/// sidecar). Mismo canon que el remote de TV / panel JBL: carcasa flotante
-/// neoBase radius 40 sobre fondo [CceColors.bg], sin AppBar (volver = swipe).
+/// Pantalla del robot aspiradora (Roborock Qrevo vía Matter RVC + sidecar).
 ///
-/// Secciones: estado grande (disco + glow por color de estado) · métricas
-/// (batería/modo) · transporte contextual (Limpiar/Pausar/Reanudar/A la base)
-/// · modo de limpieza (matriz potencia×función si los cleanModes la forman,
-/// lista cruda si no) · habitaciones y potencia de succión (solo cuando el
-/// sidecar los publica en el estado).
+/// EL MAPA ES LA PANTALLA. Ocupa todo el espacio que sobra y es además el
+/// selector de habitaciones: se tocan las piezas del plano para elegir dónde
+/// limpiar. Alrededor hay lo mínimo — una barra de estado arriba y un panel de
+/// control abajo — y nada de eso hace scroll.
+///
+/// La versión anterior era una pila vertical donde el mapa entraba último,
+/// después del estado, las métricas, el transporte y los modos: para verlo
+/// había que scrollear hasta el fondo, y llegaba recortado. Además duplicaba
+/// tres cosas:
+///
+///  - Las habitaciones estaban en el mapa Y en una lista de chips con los
+///    mismos nueve nombres. El plano es el selector natural: dice dónde queda
+///    cada ambiente, cosa que una lista de nombres no puede.
+///  - La potencia estaba en "MODO DE LIMPIEZA" (matriz traducida) Y en
+///    "POTENCIA DE SUCCIÓN" (`fanSpeeds` crudos del robot, en inglés y con
+///    "Max+" repetido). Son dos APIs para lo mismo: ahora manda la matriz, y
+///    los fanSpeeds sólo aparecen si el robot no publica matriz.
+///  - Las métricas de arriba (POTENCIA / FUNCIÓN) repetían el valor que ya
+///    mostraban seleccionado los segmented de abajo.
 class VacuumScreen extends StatefulWidget {
   final Device device;
   final DevicesService service;
@@ -34,12 +44,11 @@ class VacuumScreen extends StatefulWidget {
 }
 
 class _VacuumScreenState extends State<VacuumScreen> {
-  /// Selección local de habitaciones (segmentIds) para cleanRooms.
+  /// Selección de habitaciones (segmentIds) para cleanRooms.
   final Set<int> _selectedRooms = <int>{};
-  bool _sendingRooms = false;
+  bool _sending = false;
 
-  Device get _device =>
-      widget.service.byId(widget.device.id) ?? widget.device;
+  Device get _device => widget.service.byId(widget.device.id) ?? widget.device;
 
   @override
   Widget build(BuildContext context) {
@@ -50,15 +59,14 @@ class _VacuumScreenState extends State<VacuumScreen> {
           animation: widget.service,
           builder: (context, _) {
             final d = _device;
-            return SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: _shell(d),
-                ),
-              ),
+            return Column(
+              children: [
+                _header(d),
+                if (!d.state.reachable) _offlineBanner(),
+                // El mapa se queda con TODO el espacio sobrante.
+                Expanded(child: _mapArea(d)),
+                _controlPanel(d),
+              ],
             );
           },
         ),
@@ -66,276 +74,186 @@ class _VacuumScreenState extends State<VacuumScreen> {
     );
   }
 
-  /// Carcasa canónica (misma receta que soundbar/tv/termostato).
-  Widget _shell(Device d) {
-    final sections = <Widget>[
-      if (!d.state.reachable) ...[
-        const _OfflineBanner(),
-        const SizedBox(height: 22),
-      ],
-      _StateBlock(device: d, service: widget.service),
-      const SizedBox(height: 22),
-      _metrics(d),
-      const SizedBox(height: 22),
-      _transport(d),
-      ..._modeSection(d),
-      // Mapa (capability vacuum_map, sidecar): tocar una habitación en el mapa
-      // togglea la MISMA selección que los chips de abajo. El widget colapsa
-      // solo (label incluido) si el backend no tiene mapa para dar.
-      if (d.hasCapability('vacuum_map'))
-        VacuumMapView(
+  // ── Header: quién es, cómo está y cuánta batería le queda ────────────────
+
+  Widget _header(Device d) {
+    final color = VacuumTile.stateColor(d);
+    final label = vacuumStateLabel(d) ?? 'Sin estado';
+    final battery = d.state.battery;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(CceSpace.sm, CceSpace.sm, CceSpace.lg, CceSpace.md),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+            color: CceColors.textSecondary,
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.service.displayName(d),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: CceText.title,
+                ),
+                SizedBox(height: CceSpace.xs),
+                // Estado y batería en UNA línea. Antes el estado era un disco
+                // de 132px con glow que se comía un tercio de la pantalla para
+                // decir una palabra.
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: color,
+                      ),
+                    ),
+                    SizedBox(width: CceSpace.sm),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: CceText.caption,
+                      ),
+                    ),
+                    if (battery != null) ...[
+                      Text(' · ', style: CceText.caption),
+                      Text('$battery%', style: CceText.data.copyWith(
+                        fontSize: 13,
+                        color: CceColors.textSecondary,
+                      )),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _offlineBanner() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: CceSpace.lg),
+      padding: EdgeInsets.symmetric(
+        horizontal: CceSpace.md,
+        vertical: CceSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: CceColors.surface,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        border: Border.all(color: CceColors.danger.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off, size: 16, color: CceColors.danger),
+          SizedBox(width: CceSpace.sm),
+          Expanded(
+            child: Text('Sin conexión con el robot', style: CceText.caption),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── El mapa ──────────────────────────────────────────────────────────────
+
+  Widget _mapArea(Device d) {
+    final hasMap = d.hasCapability('vacuum_map');
+    final rooms = d.state.rooms ?? const <VacuumRoom>[];
+
+    if (!hasMap) {
+      // Sin mapa el plano no puede ser el selector, así que las habitaciones
+      // vuelven a ser una lista. Es el modo degradado, no el principal.
+      return _roomListFallback(rooms);
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
+      child: Container(
+        decoration: BoxDecoration(
+          color: CceColors.surfaceSunken,
+          borderRadius: BorderRadius.circular(CceRadii.card),
+          border: Border.all(color: CceColors.stroke),
+        ),
+        clipBehavior: Clip.antiAlias,
+        // Nada superpuesto: el plano es información, y taparlo con un cartel
+        // flotante escondía justo la habitación que estaba debajo. La pista de
+        // uso y el conteo de selección viven en el panel de control.
+        child: VacuumMapView(
+          bare: true,
           device: d,
           service: widget.service,
           selectedSegments: _selectedRooms,
           onSegmentTap: (seg) => setState(() {
+            HapticFeedback.selectionClick();
             if (!_selectedRooms.remove(seg)) _selectedRooms.add(seg);
           }),
         ),
-      ..._roomsSection(d),
-      ..._fanSection(d),
-      const SizedBox(height: 22),
-      const _Wordmark('ROBOROCK QREVO'),
-    ];
-    return Container(
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(40),
-        boxShadow: const [
-          BoxShadow(color: Color(0x73000000), blurRadius: 28, offset: Offset(10, 10)),
-          BoxShadow(color: Color(0x402A2D37), blurRadius: 20, offset: Offset(-6, -6)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: sections,
       ),
     );
   }
 
-  // ── Métricas: wells hundidos (batería / modo) ─────────────────────────────
-
-  Widget _metrics(Device d) {
-    final matrix = VacuumModeMatrix.tryBuild(d.state.cleanModes);
-    final parts = matrix?.split(d.state.cleanMode);
-    final metrics = <Widget>[
-      _Metric(
-        svg: CceIcons.batteryMedium,
-        value: d.state.battery != null ? '${d.state.battery}%' : '—',
-        label: 'BATERÍA',
-      ),
-      _Metric(
-        svg: CceIcons.gauge,
-        // Sin matriz o sin modo conocido no se inventa nada: '—' (el modo
-        // compuesto entero es ilegible en un well de 1/3 de ancho).
-        value: parts != null ? vacuumPowerLabel(parts.power) : '—',
-        label: 'POTENCIA',
-      ),
-      _Metric(
-        svg: CceIcons.robotVacuum,
-        value: parts != null ? vacuumFunctionLabel(parts.function) : '—',
-        label: 'FUNCIÓN',
-      ),
+  /// Línea entre el mapa y los controles: dice qué hacer cuando no elegiste
+  /// nada, y qué elegiste cuando sí. Ocupa el mismo alto en los dos casos para
+  /// que el panel no salte al tocar la primera habitación.
+  Widget _selectionLine(Device d) {
+    final rooms = d.state.rooms ?? const <VacuumRoom>[];
+    if (rooms.isEmpty) return const SizedBox.shrink();
+    final n = _selectedRooms.length;
+    final names = [
+      for (final r in rooms)
+        if (_selectedRooms.contains(r.segmentId)) r.name,
     ];
-    return LayoutBuilder(
-      builder: (context, c) {
-        final gap = c.maxWidth < 360 ? 8.0 : 12.0;
-        final children = <Widget>[];
-        for (var i = 0; i < metrics.length; i++) {
-          if (i > 0) children.add(SizedBox(width: gap));
-          children.add(Expanded(child: metrics[i]));
-        }
-        // OJO: sin CrossAxisAlignment.stretch (Row dentro de scroll ilimitado).
-        return Row(children: children);
-      },
-    );
-  }
-
-  // ── Transporte contextual ────────────────────────────────────────────────
-
-  Widget _transport(Device d) {
-    final s = d.state.vacuumState;
-    final canClean = s != 'cleaning' && s != 'returning';
-    final canPause = s == 'cleaning' || s == 'returning';
-    final canResume = s == 'paused';
-    final canDock = s != 'docked' && s != 'returning';
-
-    Widget key(String svg, String label, bool enabled, String verb) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
+    return SizedBox(
+      height: 22,
+      child: Row(
         children: [
-          CceNeoSvgIconButton(
-            svg: svg,
-            size: 56,
-            onPressed: enabled
-                ? () => widget.service.vacuumCommand(d, verb)
-                : null,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.4,
-              color: enabled ? CceColors.textSecondary : CceColors.textTertiary,
+          Expanded(
+            child: Text(
+              n == 0
+                  ? 'Tocá una habitación en el plano'
+                  : names.join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CceText.caption.copyWith(
+                color: n == 0 ? CceColors.textTertiary : CceColors.accent,
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _roomListFallback(List<VacuumRoom> rooms) {
+    if (rooms.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: EdgeInsets.all(CceSpace.xl),
+          child: Text(
+            'El robot todavía no compartió el plano de la casa.',
+            textAlign: TextAlign.center,
+            style: CceText.caption,
+          ),
+        ),
       );
     }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionLabel('CONTROLES'),
-        const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            key(CceIcons.play, 'Limpiar', canClean, 'clean'),
-            key(CceIcons.pause, 'Pausar', canPause, 'pause'),
-            key(CceIcons.stepForward, 'Reanudar', canResume, 'resume'),
-            key(CceIcons.allHouse, 'A la base', canDock, 'dock'),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // ── Modo de limpieza: matriz potencia×función o lista cruda ──────────────
-
-  List<Widget> _modeSection(Device d) {
-    final modes = d.state.cleanModes;
-    if (modes == null || modes.isEmpty) return const [];
-    final matrix = VacuumModeMatrix.tryBuild(modes);
-
-    if (matrix == null) {
-      // Modos que no forman matriz: selector crudo vía bottom sheet (labels
-      // REALES del robot, mismo criterio que el Dashboard).
-      return [
-        const SizedBox(height: 22),
-        const _SectionLabel('MODO DE LIMPIEZA'),
-        const SizedBox(height: 12),
-        _ModePickerRow(
-          current: d.state.cleanMode ?? modes.first,
-          onTap: () => _showRawModeSheet(d, modes),
-        ),
-      ];
-    }
-
-    final parts = matrix.split(d.state.cleanMode);
-    if (parts == null) {
-      // cleanMode aún desconocido (estado parcial temprano) o fuera de la
-      // matriz: los segmented fingirían una selección y un tap compondría con
-      // esa mitad fantasma. Se ofrece el picker crudo, que no inventa nada.
-      return [
-        const SizedBox(height: 22),
-        const _SectionLabel('MODO DE LIMPIEZA'),
-        const SizedBox(height: 12),
-        _ModePickerRow(
-          current: d.state.cleanMode ?? '—',
-          onTap: () => _showRawModeSheet(d, modes),
-        ),
-      ];
-    }
-    final power = parts.power;
-    final function = parts.function;
-
-    return [
-      const SizedBox(height: 22),
-      const _SectionLabel('MODO DE LIMPIEZA'),
-      const SizedBox(height: 12),
-      CceSegmented<String>(
-        neo: true,
-        value: power,
-        segments: [
-          for (final p in matrix.powers)
-            CceSegment(value: p, label: vacuumPowerLabel(p)),
-        ],
-        onChanged: (p) => widget.service
-            .setVacuumCleanMode(d, matrix.compose(p, function)),
-      ),
-      const SizedBox(height: 10),
-      CceSegmented<String>(
-        neo: true,
-        value: function,
-        segments: [
-          for (final f in matrix.functions)
-            CceSegment(value: f, label: vacuumFunctionLabel(f)),
-        ],
-        onChanged: (f) =>
-            widget.service.setVacuumCleanMode(d, matrix.compose(power, f)),
-      ),
-    ];
-  }
-
-  void _showRawModeSheet(Device device, List<String> fallbackModes) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: CceColors.neoBase,
-      showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(CceRadii.sheet)),
-      ),
-      // Reactivo: re-resuelve el device por id en cada notify para no mostrar
-      // un cleanMode/lista stale si el estado cambia con el sheet abierto.
-      builder: (sheetCtx) => AnimatedBuilder(
-        animation: widget.service,
-        builder: (context, _) {
-          final d = widget.service.byId(device.id) ?? device;
-          final modes = d.state.cleanModes ?? fallbackModes;
-          return SafeArea(
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              children: [
-                Center(child: Text('Modo de limpieza', style: CceText.title)),
-                const SizedBox(height: 10),
-                for (final m in modes)
-                  ListTile(
-                    title: Text(
-                      m,
-                      style: TextStyle(
-                        color: m == d.state.cleanMode
-                            ? CceColors.info
-                            : CceColors.textPrimary,
-                        fontWeight: m == d.state.cleanMode
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                      ),
-                    ),
-                    trailing: m == d.state.cleanMode
-                        ? const Icon(Icons.check, color: CceColors.info, size: 20)
-                        : null,
-                    onTap: () {
-                      Navigator.of(sheetCtx).pop();
-                      widget.service.setVacuumCleanMode(d, m);
-                    },
-                  ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  // ── Habitaciones (sidecar): chips multi-select + limpiar seleccionadas ───
-
-  List<Widget> _roomsSection(Device d) {
-    final rooms = d.state.rooms;
-    if (rooms == null || rooms.isEmpty) return const [];
-    return [
-      const SizedBox(height: 22),
-      const _SectionLabel('LIMPIAR HABITACIONES'),
-      const SizedBox(height: 12),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
+      child: Wrap(
+        spacing: CceSpace.sm,
+        runSpacing: CceSpace.sm,
         children: [
           for (final r in rooms)
-            _VacChip(
+            _RoomChip(
               label: r.name,
               selected: _selectedRooms.contains(r.segmentId),
               onTap: () => setState(() {
@@ -346,43 +264,81 @@ class _VacuumScreenState extends State<VacuumScreen> {
             ),
         ],
       ),
-      const SizedBox(height: 12),
-      CceNeoActionButton(
-        label: _sendingRooms ? 'Enviando…' : 'Limpiar seleccionadas',
-        onPressed: _selectedRooms.isEmpty || _sendingRooms
-            ? null
-            : () => _cleanSelectedRooms(d),
+    );
+  }
+
+  // ── Panel de control ─────────────────────────────────────────────────────
+
+  Widget _controlPanel(Device d) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        CceSpace.lg,
+        CceSpace.lg,
+        CceSpace.lg,
+        CceSpace.sm,
       ),
-    ];
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _selectionLine(d),
+          SizedBox(height: CceSpace.md),
+          ..._modeControls(d),
+          SizedBox(height: CceSpace.lg),
+          _actions(d),
+        ],
+      ),
+    );
   }
 
-  Future<void> _cleanSelectedRooms(Device d) async {
-    setState(() => _sendingRooms = true);
-    final ok = await widget.service
-        .cleanVacuumRooms(d, _selectedRooms.toList()..sort());
-    if (!mounted) return;
-    setState(() {
-      _sendingRooms = false;
-      if (ok) _selectedRooms.clear();
-    });
-    if (!ok) showAppError('No se pudo limpiar las habitaciones');
-  }
+  /// Potencia y función. Una sola fuente: la matriz de `cleanModes` si el robot
+  /// la publica; si no, los `fanSpeeds` crudos.
+  List<Widget> _modeControls(Device d) {
+    final modes = d.state.cleanModes;
+    final matrix = modes == null || modes.isEmpty
+        ? null
+        : VacuumModeMatrix.tryBuild(modes);
+    final parts = matrix?.split(d.state.cleanMode);
 
-  // ── Potencia de succión (sidecar): chips single-select ───────────────────
+    if (matrix != null && parts != null) {
+      return [
+        CceSegmented<String>(
+          value: parts.power,
+          segments: [
+            for (final p in matrix.powers)
+              CceSegment(value: p, label: vacuumPowerLabel(p)),
+          ],
+          onChanged: (p) => widget.service
+              .setVacuumCleanMode(d, matrix.compose(p, parts.function)),
+        ),
+        SizedBox(height: CceSpace.sm),
+        CceSegmented<String>(
+          value: parts.function,
+          segments: [
+            for (final f in matrix.functions)
+              CceSegment(value: f, label: vacuumFunctionLabel(f)),
+          ],
+          onChanged: (f) => widget.service
+              .setVacuumCleanMode(d, matrix.compose(parts.power, f)),
+        ),
+      ];
+    }
 
-  List<Widget> _fanSection(Device d) {
+    // Fallback: los fanSpeeds del robot. Se DEDUPLICAN — el Qrevo publica
+    // "Max+" dos veces y la lista mostraba dos chips idénticos.
     final speeds = d.state.fanSpeeds;
     if (speeds == null || speeds.isEmpty) return const [];
+    final unique = <String>[];
+    for (final s in speeds) {
+      if (!unique.contains(s)) unique.add(s);
+    }
     return [
-      const SizedBox(height: 22),
-      const _SectionLabel('POTENCIA DE SUCCIÓN'),
-      const SizedBox(height: 12),
       Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: CceSpace.sm,
+        runSpacing: CceSpace.sm,
         children: [
-          for (final s in speeds)
-            _VacChip(
+          for (final s in unique)
+            _RoomChip(
               label: s,
               selected: s == d.state.fanSpeed,
               onTap: () => widget.service.setVacuumFanSpeed(d, s),
@@ -391,174 +347,168 @@ class _VacuumScreenState extends State<VacuumScreen> {
       ),
     ];
   }
-}
 
-// ── Label de sección (patrón 'FUENTES' del soundbar) ──────────────────────
+  /// Acción principal + secundarias. El botón grande cambia según lo que
+  /// tenga sentido hacer ahora: limpiar todo, limpiar lo seleccionado, o
+  /// pausar si ya está limpiando.
+  Widget _actions(Device d) {
+    final s = d.state.vacuumState;
+    final cleaning = s == 'cleaning' || s == 'returning';
+    final paused = s == 'paused';
+    final n = _selectedRooms.length;
+    final enabled = d.state.reachable && !_sending;
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
+    final String primaryLabel;
+    final VoidCallback? primaryTap;
+    if (_sending) {
+      primaryLabel = 'Enviando…';
+      primaryTap = null;
+    } else if (cleaning) {
+      primaryLabel = 'Pausar';
+      primaryTap = enabled ? () => _command(d, 'pause') : null;
+    } else if (paused) {
+      primaryLabel = 'Reanudar';
+      primaryTap = enabled ? () => _command(d, 'resume') : null;
+    } else if (n > 0) {
+      primaryLabel = n == 1 ? 'Limpiar 1 habitación' : 'Limpiar $n habitaciones';
+      primaryTap = enabled ? () => _cleanSelected(d) : null;
+    } else {
+      primaryLabel = 'Limpiar todo';
+      primaryTap = enabled ? () => _command(d, 'clean') : null;
+    }
 
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(text, style: CceText.section);
-  }
-}
-
-// ── Estado grande: disco cóncavo + glow del color de estado ────────────────
-
-class _StateBlock extends StatelessWidget {
-  final Device device;
-  final DevicesService service;
-
-  const _StateBlock({required this.device, required this.service});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = VacuumTile.stateColor(device);
-    final label = vacuumStateLabel(device) ?? 'Sin estado';
-    final active = VacuumTile.statePulse(device);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: CceShadows.neo(blur: 16, offset: 6),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 132,
-            height: 132,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: CceGradients.concave(CceColors.neoBase),
-              boxShadow: [
-                ...CceShadows.plato(blur: 15, offset: 6),
-                ...CceShadows.glowDot(color),
-              ],
-            ),
-            child: Center(
-              child: CceIcon(
-                CceIcons.robotVacuum,
-                size: 56,
-                color: color,
-                emboss: false,
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          // FittedBox anti-wrap (canon lock_screen): 'Volviendo a la base' con
-          // textScale grande en un teléfono angosto no debe partirse en dos.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                label,
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
-                  color: color,
-                  shadows: [
-                    Shadow(color: color.withValues(alpha: 0.65), blurRadius: 12),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                StatusDot(color, pulse: active, semanticLabel: label),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    service.displayName(device),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: CceColors.textSecondary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+    return Row(
+      children: [
+        Expanded(
+          child: _PrimaryButton(label: primaryLabel, onTap: primaryTap),
+        ),
+        SizedBox(width: CceSpace.sm),
+        // "A la base" es secundaria: nunca es lo que venías a hacer, pero
+        // tiene que estar a mano.
+        _IconAction(
+          svg: CceIcons.allHouse,
+          tooltip: 'A la base',
+          onTap: (enabled && s != 'docked' && s != 'returning')
+              ? () => _command(d, 'dock')
+              : null,
+        ),
+        if (n > 0) ...[
+          SizedBox(width: CceSpace.sm),
+          _IconAction(
+            svg: CceIcons.close,
+            tooltip: 'Quitar selección',
+            onTap: () => setState(_selectedRooms.clear),
           ),
         ],
-      ),
+      ],
     );
+  }
+
+  void _command(Device d, String verb) {
+    HapticFeedback.selectionClick();
+    widget.service.vacuumCommand(d, verb);
+  }
+
+  Future<void> _cleanSelected(Device d) async {
+    HapticFeedback.selectionClick();
+    setState(() => _sending = true);
+    final ok = await widget.service
+        .cleanVacuumRooms(d, _selectedRooms.toList()..sort());
+    if (!mounted) return;
+    setState(() {
+      _sending = false;
+      if (ok) _selectedRooms.clear();
+    });
+    if (!ok) showAppError('No se pudo limpiar las habitaciones');
   }
 }
 
-// ── Well de métrica (mismo patrón que lock_screen._Metric) ────────────────
+// ── Piezas ─────────────────────────────────────────────────────────────────
 
-class _Metric extends StatelessWidget {
-  final String svg;
-  final String value;
+/// Acción principal de la pantalla: fill de acento, ancho completo.
+class _PrimaryButton extends StatelessWidget {
   final String label;
+  final VoidCallback? onTap;
 
-  const _Metric({required this.svg, required this.value, required this.label});
+  const _PrimaryButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CceIcon(svg, size: 22, color: CceColors.textSecondary, emboss: false),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: CceColors.textPrimary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
+    final enabled = onTap != null;
+    return Material(
+      color: enabled ? CceColors.accent : CceColors.surfaceHigh,
+      borderRadius: BorderRadius.circular(CceRadii.control),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: 52,
+          alignment: Alignment.center,
+          child: Text(
             label,
-            style: const TextStyle(
-              fontSize: 9.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.6,
-              color: CceColors.textTertiary,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: CceText.headline.copyWith(
+              color: enabled ? CceTint.inkOnPastel : CceColors.textMuted,
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-// ── Chip seleccionable (habitaciones / potencia) ──────────────────────────
+/// Acción secundaria: cuadrada, del alto del botón principal.
+class _IconAction extends StatelessWidget {
+  final String svg;
+  final String tooltip;
+  final VoidCallback? onTap;
 
-class _VacChip extends StatelessWidget {
+  const _IconAction({
+    required this.svg,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: CceColors.surface,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            width: 52,
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(CceRadii.control),
+              border: Border.all(color: CceColors.stroke),
+            ),
+            child: CceIcon(
+              svg,
+              size: 20,
+              color: enabled ? CceColors.textSecondary : CceColors.textMuted,
+              emboss: false,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Chip de habitación (modo degradado) y de fanSpeed.
+class _RoomChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _VacChip({
+  const _RoomChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -566,156 +516,29 @@ class _VacChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CceNeoPress(
-      onTap: onTap,
-      builder: (context, t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-        decoration: BoxDecoration(
-          color: CceColors.neoBase,
-          gradient: selected ? null : CceGradients.convex(CceColors.neoBase),
-          borderRadius: BorderRadius.circular(CceRadii.pill),
-          // Seleccionado = hundido (inset); libre = convexo raised.
-          boxShadow: selected
-              ? CceShadows.neoInset(blur: 6, offset: 2)
-              : CceShadows.neo(blur: 8, offset: 3),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
-            color: selected ? CceColors.info : CceColors.textSecondary,
-            shadows: selected
-                ? [
-                    Shadow(
-                      color: CceColors.info.withValues(alpha: 0.55),
-                      blurRadius: 10,
-                    ),
-                  ]
-                : null,
+    return Material(
+      color: selected ? CceColors.accentWash : CceColors.surface,
+      borderRadius: BorderRadius.circular(CceRadii.pill),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: CceSpace.md,
+            vertical: CceSpace.sm,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── Fila de modo crudo (fallback sin matriz) ───────────────────────────────
-
-class _ModePickerRow extends StatelessWidget {
-  final String current;
-  final VoidCallback onTap;
-
-  const _ModePickerRow({required this.current, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return CceNeoPress(
-      onTap: onTap,
-      builder: (context, t) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        decoration: BoxDecoration(
-          color: CceColors.neoBase,
-          borderRadius: BorderRadius.circular(CceRadii.control),
-          boxShadow: CceShadows.neoInset(blur: 6, offset: 2),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                current,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: CceColors.textPrimary,
-                ),
-              ),
-            ),
-            CceIcon(
-              CceIcons.chevronDown,
-              size: 18,
-              color: CceColors.textTertiary,
-              emboss: false,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ── Banner sin conexión (patrón _OfflineBanner del TV) ─────────────────────
-
-class _OfflineBanner extends StatelessWidget {
-  const _OfflineBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: CceColors.neoBase,
-        borderRadius: BorderRadius.circular(CceRadii.control),
-        boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
-      ),
-      child: const Row(
-        children: [
-          StatusDot(CceColors.textTertiary, semanticLabel: 'Sin conexión'),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Sin conexión',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: CceColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'El robot está inalcanzable. Los comandos pueden fallar '
-                  'hasta que vuelva a estar en línea.',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.25,
-                    color: CceColors.textTertiary,
-                  ),
-                ),
-              ],
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(CceRadii.pill),
+            border: Border.all(
+              color: selected ? CceColors.accent : CceColors.stroke,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Wordmark de pie (patrón lock/tv) ──────────────────────────────────────
-
-class _Wordmark extends StatelessWidget {
-  final String text;
-
-  const _Wordmark(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 3,
-          color: CceColors.textTertiary,
-          shadows: [
-            Shadow(color: Color(0x80FFFFFF), offset: Offset(-1, -1.2), blurRadius: 1.5),
-            Shadow(color: Color(0xD907080C), offset: Offset(1.4, 2), blurRadius: 3),
-          ],
+          child: Text(
+            label,
+            style: CceText.label.copyWith(
+              color: selected ? CceColors.accent : CceColors.textSecondary,
+            ),
+          ),
         ),
       ),
     );
