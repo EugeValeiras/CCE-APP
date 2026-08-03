@@ -224,10 +224,36 @@ class _VacuumMapViewState extends State<VacuumMapView> {
   @override
   Widget build(BuildContext context) {
     final map = _map;
-    // Sin mapa y sin nada en camino: colapsar TODO (la pantalla no muestra la
-    // sección). Mientras carga el primer fetch no se reserva lugar tampoco —
-    // aparece de golpe cuando está, como las secciones del sidecar.
-    if (map == null) return const SizedBox.shrink();
+    if (map == null) {
+      // En modo `bare` el mapa ES la pantalla y su hueco ya está reservado:
+      // colapsar dejaría un marco grande y vacío sin explicación. Se dice qué
+      // está pasando.
+      if (widget.bare) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: _loading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: CceColors.textTertiary,
+                    ),
+                  )
+                : Text(
+                    'El robot todavía no compartió el plano de la casa.',
+                    textAlign: TextAlign.center,
+                    style: CceText.caption,
+                  ),
+          ),
+        );
+      }
+      // Embebido en un scroll: colapsar TODO (la sección no se muestra).
+      // Mientras carga el primer fetch tampoco se reserva lugar — aparece de
+      // golpe cuando está, como el resto de las secciones del sidecar.
+      return const SizedBox.shrink();
+    }
 
     final rooms = _device.state.rooms ?? const <VacuumRoom>[];
     final nameOf = {for (final r in rooms) r.segmentId: r.name};
