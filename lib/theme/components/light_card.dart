@@ -22,6 +22,7 @@ class LightCard extends StatelessWidget {
     this.height = 132,
     this.onToggle,
     this.neo = false,
+    this.automationCount = 0,
   });
 
   final String name;
@@ -39,6 +40,14 @@ class LightCard extends StatelessWidget {
   /// OPT-IN: relieve neumórfico (default false ⇒ render idéntico al actual).
   final bool neo;
 
+  /// Cuántas automatizaciones ACTIVAS gobiernan esta luz. > 0 dibuja el
+  /// indicador de rayo.
+  ///
+  /// Existe porque frente a un dispositivo la pregunta más frecuente es "¿esto
+  /// lo maneja algo?" — y para contestarla había que ir a la lista general de
+  /// automatizaciones y leer los triggers y las acciones de cada una.
+  final int automationCount;
+
   /// Mutea el color para luces sin conexión (sat × 0.4).
   static Color _muted(Color c) {
     final hsl = HSLColor.fromColor(c);
@@ -52,43 +61,88 @@ class LightCard extends StatelessWidget {
     final base = color ?? CceColors.warm;
     final displayColor = reachable ? base : _muted(base);
     final surfaceBase = neo ? CceColors.neoBase : CceColors.cardOff;
-    final b = (brightness ?? 1.0).clamp(0.0, 1.0).toDouble();
 
-    // La card es SIEMPRE oscura (apagada y encendida). Cuando está ENCENDIDA el
-    // color real de la luz NO llena el fondo: va en el ÍCONO + un borde y un
-    // glow del color (estilo "alerta" del sensor de movimiento / dimmer), cuya
-    // intensidad sube con el brillo. Apagada = card neutra raised.
-    final fgSub = on ? displayColor : CceColors.textSecondary; // estado en color
-
-    // Ícono: color de la luz cuando ON; blanco neutro cuando OFF. Relieve goma
-    // (par fijo CceEmboss) en ambos casos porque la superficie es oscura.
     const double iconSize = 34;
-    final Color glyphColor = on ? displayColor : CceColors.textPrimary;
     final embHi = CceEmboss.highlight.color;
     final embSh = CceEmboss.shadow.color;
 
+    // TRANSICIÓN ENCENDIDO ↔ APAGADO.
+    //
+    // `t` va de 0 (apagada) a 1 (encendida) e interpola TODO lo que cambia:
+    // borde, halo, color del ícono y del texto de estado. Antes no había
+    // ninguna animación acá: la card saltaba de un frame al siguiente, y el
+    // único movimiento venía de un halo difuso de 900 ms que se disparaba
+    // DESPUÉS (PulseOnUpdate) — o sea, el cambio era un corte seco y luego
+    // llegaba tarde un fantasma que ya no correspondía a nada.
+    //
+    // Ahora la transición ES el feedback: la luz se enciende en la pantalla al
+    // mismo tiempo que en la habitación, y a la misma velocidad a la que una
+    // lámpara real levanta.
+    final bool lit = on && reachable;
+    return SizedBox(
+      height: height,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween<double>(end: lit ? 1.0 : 0.0),
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, child) {
+          final Color borderColor = Color.lerp(
+            CceColors.stroke,
+            displayColor.withValues(alpha: 0.75),
+            t,
+          )!;
+          final Color glyphColor =
+              Color.lerp(CceColors.textSecondary, displayColor, t)!;
+          final Color fgSub =
+              Color.lerp(CceColors.textSecondary, displayColor, t)!;
+          return _buildCard(
+            t: t,
+            borderColor: borderColor,
+            glyphColor: glyphColor,
+            fgSub: fgSub,
+            displayColor: displayColor,
+            surfaceBase: surfaceBase,
+            iconSize: iconSize,
+            embHi: embHi,
+            embSh: embSh,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCard({
+    required double t,
+    required Color borderColor,
+    required Color glyphColor,
+    required Color fgSub,
+    required Color displayColor,
+    required Color surfaceBase,
+    required double iconSize,
+    required Color embHi,
+    required Color embSh,
+  }) {
     return SizedBox(
       height: height,
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          // Card oscura SIEMPRE (superficie convexa). El color de la luz va al
-          // borde + glow cuando ON (intensidad ∝ brillo); bevel hairline OFF.
           gradient: CceGradients.cardSurface(surfaceBase),
-          borderRadius: BorderRadius.circular(CceRadii.hueCard),
-          border: on
-              ? Border.all(
-                  color: displayColor.withValues(alpha: 0.50 + 0.30 * b),
-                  width: 1.6,
-                )
-              : Border.all(color: CceColors.cardBevel),
+          borderRadius: BorderRadius.circular(CceRadii.card),
+          // Sin conexión NO lleva borde de encendido aunque el último estado
+          // conocido sea `on`: una lámpara inalcanzable no está iluminando
+          // nada, y mostrarla igual que una encendida es afirmar algo que la
+          // app no sabe.
+          border: Border.all(color: borderColor, width: 1 + 0.5 * t),
           boxShadow: [
             if (neo) ...CceShadows.cardFloat(),
-            if (on)
+            // El halo entra con la transición, no después de ella.
+            if (t > 0.01)
               BoxShadow(
-                color: displayColor.withValues(alpha: 0.18 + 0.22 * b),
-                blurRadius: 14 + 10 * b,
-                spreadRadius: 0,
+                color: displayColor.withValues(alpha: 0.16 * t),
+                blurRadius: 20,
+                offset: const Offset(0, 4),
+                spreadRadius: -6,
               ),
           ],
         ),
@@ -137,26 +191,22 @@ class LightCard extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.1,
-                              height: 1.15,
+                            // height 1.15: el interlineado por defecto del
+                            // sistema (1.2) hace que un nombre de dos líneas
+                            // no entre en el tile y se corte a mitad.
+                            style: CceText.label.copyWith(
                               color: CceColors.textPrimary,
+                              height: 1.15,
                             ),
                           ),
                         ),
                         if (stateLabel != null) ...[
-                          const SizedBox(height: 2),
+                          SizedBox(height: CceSpace.xs),
                           Text(
                             stateLabel!,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w500,
-                              color: fgSub,
-                            ),
+                            style: CceText.caption.copyWith(color: fgSub),
                           ),
                         ],
                       ],
@@ -187,9 +237,32 @@ class LightCard extends StatelessWidget {
             // Sin conexión: ícono chico arriba a la derecha (como Hue).
             if (!reachable)
               Positioned(
-                top: 8,
-                right: 8,
+                top: CceSpace.sm,
+                right: CceSpace.sm,
                 child: Icon(Icons.wifi_off, size: 14, color: fgSub),
+              ),
+            // "Algo maneja esta luz". Arriba a la IZQUIERDA para no pelear con
+            // el indicador de sin-conexión, y en texto terciario porque es
+            // contexto, no estado: no debe competir con el color de la luz,
+            // que es lo que el tile viene a comunicar.
+            if (automationCount > 0)
+              Positioned(
+                top: CceSpace.sm,
+                left: CceSpace.sm,
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt,
+                        size: 13, color: CceColors.textTertiary),
+                    if (automationCount > 1)
+                      Text(
+                        '$automationCount',
+                        style: CceText.caption.copyWith(
+                          color: CceColors.textTertiary,
+                          fontSize: 11,
+                        ),
+                      ),
+                  ],
+                ),
               ),
           ],
         ),

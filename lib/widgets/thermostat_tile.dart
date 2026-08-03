@@ -139,7 +139,7 @@ class ThermostatTile extends StatelessWidget {
                   top: BorderSide(
                     color: neo
                         ? Colors.black.withValues(alpha: 0.16)
-                        : Colors.white.withValues(alpha: 0.07),
+                        : CceColors.strokeSoft,
                   ),
                 ),
               ),
@@ -155,7 +155,7 @@ class ThermostatTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: CceColors.textSecondary,
                       ),

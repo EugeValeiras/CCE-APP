@@ -6,6 +6,7 @@ import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
+import '../../theme/components/cce_switch.dart';
 import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
 import 'automation_phrases.dart';
@@ -332,16 +333,12 @@ class _AutomationCardState extends State<AutomationCard>
             ),
           ),
           const SizedBox(width: 4),
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Switch.adaptive(
-                value: a.enabled,
-                onChanged: widget.onToggleEnabled,
-              ),
-            ),
+          // CceSwitch, no Switch.adaptive: en iOS `adaptive` cae al
+          // CupertinoSwitch verde e ignora el switchTheme, así que este era el
+          // único control de la app fuera de la paleta.
+          CceSwitch(
+            value: a.enabled,
+            onChanged: widget.onToggleEnabled,
           ),
         ],
       );

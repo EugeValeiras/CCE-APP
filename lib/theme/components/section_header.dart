@@ -2,13 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../cce_tokens.dart';
 
-/// Header de seccion estilo Hue: titulo en mayusculas con tracking ancho
-/// y un trailing opcional alineado a la derecha.
+/// Encabezado de sección: título en mayúsculas con tracking ancho y un
+/// trailing opcional a la derecha.
+///
+/// El espaciado es asimétrico A PROPÓSITO y es la única asimetría permitida
+/// del sistema: un encabezado pertenece a lo que viene DEBAJO, así que respira
+/// mucho arriba (xl) y poco abajo (md). Con padding simétrico, el título flota
+/// entre dos grupos sin decir a cuál pertenece.
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,
     required this.title,
     this.trailing,
+    // = (CceSpace.xs, CceSpace.xl, CceSpace.xs, CceSpace.md). Literal para
+    // que el constructor siga siendo const en sus call sites.
     this.padding = const EdgeInsets.fromLTRB(4, 24, 4, 12),
   });
 

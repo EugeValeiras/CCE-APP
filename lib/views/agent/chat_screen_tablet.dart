@@ -78,7 +78,7 @@ class _ChatScreenTabletState extends State<ChatScreenTablet> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CceColors.neoBase,
+      backgroundColor: CceColors.bg,
       body: SafeArea(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,

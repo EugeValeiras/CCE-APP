@@ -10,17 +10,20 @@ import 'cce_card.dart';
 import 'cce_switch.dart';
 import 'status_dot.dart';
 
-/// Card de habitacion (sidebar tablet y lista phone), lenguaje NEOMÓRDICO:
-/// SIEMPRE la MISMA almohada de [CceColors.neoBase] (relieve cardFloat +
-/// gradiente sutil + bevel), tanto apagada como encendida. El estado ENCENDIDO
-/// NO se pinta con un fill de color: se comunica con (a) un GLOW de acento que
-/// se filtra por debajo de la almohada, (b) un anillo de acento de baja opacidad
-/// en el borde, (c) el ícono teñido del color real de las luces y (d) un
-/// StatusDot. La tipografía y la superficie nunca se tiñen.
+/// Card de habitación (sidebar tablet y lista phone).
 ///
-/// Layout congelado (anti-overflow):
-///  - compact == true (phone): altura FIJA 76, NUNCA renderiza slider.
-///  - compact == false (tablet): 76 sin slider; 104 con slider thin (24).
+/// ALTURA UNIFORME ([kHeight]), con slider o sin él. Antes la card medía 76 sin
+/// slider y 104 con slider: en una lista donde unas habitaciones dimean y otras
+/// no, ese salto del 37% aparecía de forma aparentemente aleatoria y era lo que
+/// hacía que la lista "saltara" al recorrerla. Reservar siempre la misma altura
+/// cuesta un poco de densidad y compra ritmo vertical, que a la larga es lo que
+/// hace que una lista se lea como un sistema y no como una pila de cosas.
+///
+/// El estado ENCENDIDO se comunica con el ácento del sistema (ícono + switch +
+/// dot), NO con el color real de las luces: en una lista lo que importa es
+/// *si* algo está prendido, no de qué color está. El color real de cada lámpara
+/// vive en su tile y en el detalle, donde sí es la información principal —
+/// pintarlo acá era lo que convertía la home en un arcoíris de toggles.
 class RoomCard extends StatefulWidget {
   const RoomCard({
     super.key,
@@ -96,6 +99,10 @@ class RoomCard extends StatefulWidget {
 }
 
 class _RoomCardState extends State<RoomCard> {
+  /// Altura única de la fila. 88 = padding 12 + contenido 44 + slider 20 + 12.
+  /// Las cards sin slider centran su contenido en la misma caja.
+  static const double kHeight = 88;
+
   // Drag local del slider: mientras se arrastra (y 800 ms después de
   // soltar) se muestra _dragValue en lugar de widget.brightness, para que
   // el refresh del service no "pelee" con el dedo.
@@ -106,21 +113,6 @@ class _RoomCardState extends State<RoomCard> {
   void dispose() {
     _retainTimer?.cancel();
     super.dispose();
-  }
-
-  /// Promedio RGB simple de las paradas del gradiente (para decidir el fg).
-  static Color _avgColor(List<Color> colors) {
-    if (colors.isEmpty) return CceColors.warm;
-    if (colors.length == 1) return colors.first;
-    var r = 0.0, g = 0.0, b = 0.0;
-    for (final c in colors) {
-      r += (c.r * 255.0);
-      g += (c.g * 255.0);
-      b += (c.b * 255.0);
-    }
-    final n = colors.length;
-    return Color.fromARGB(
-        255, (r / n).round(), (g / n).round(), (b / n).round());
   }
 
   void _onSliderChanged(double v) {
@@ -142,30 +134,15 @@ class _RoomCardState extends State<RoomCard> {
   @override
   Widget build(BuildContext context) {
     final showSlider = !widget.compact && widget.brightness != null;
-    final height = widget.compact ? 76.0 : (showSlider ? 104.0 : 76.0);
+    const height = kHeight;
 
-    // Colores de las luces ON (una parada por luz con color); 0/1 ⇒ tint
-    // dominante o ámbar. Ya NO se pintan como fill: sólo derivan el ACENTO
-    // (glow + anillo + ícono + dot) cuando hay alguna encendida.
-    final colors = widget.tintColors.isNotEmpty
-        ? widget.tintColors
-        : [widget.tint ?? CceColors.warm];
-
-    // Acento de la card encendida = color real de las luces NORMALIZADO (clamp
-    // de sat/luz en HSL, conservando hue). Es la chispa permitida: tiñe el ícono
-    // y el switch que prende — nunca la superficie ni la tipografía.
-    final Color accent = CceTint.normalize(_avgColor(colors));
-
-    // ÍCONO GRANDE EXTRUIDO (sin círculo): SIEMPRE sobre la goma oscura neoBase,
-    // así que usa el par FIJO de CceEmboss (calibrado para oscuro, misma fuente
-    // de verdad que el IconTheme global). En ON el glyph se tiñe del `accent`
-    // (chispa de color); en OFF cae a neoTextSub (la almohada apagada "duerme",
-    // reservando el blanco/acento para el estado activo).
-    const double iconSize = 32;
+    // El ACENTO de la card es el del sistema, no el color real de las luces
+    // (ver doc de clase). Encendida se ilumina el ícono; apagada, el ícono
+    // duerme en texto terciario.
+    const Color accent = CceColors.accent;
+    const double iconSize = 28;
     final Color glyphColor =
-        widget.anyOn ? accent : CceColors.neoTextSub;
-    final Color embHi = CceEmboss.highlight.color;
-    final Color embSh = CceEmboss.shadow.color;
+        widget.anyOn ? accent : CceColors.textTertiary;
 
     // Subtítulo de estado (pedido del dueño v1.62): SIN "Encendido/Apagado"
     // (ni "Sin luces") — los dots solos comunican el estado. Con EXACTAMENTE
@@ -182,17 +159,10 @@ class _RoomCardState extends State<RoomCard> {
                 ? 'Puerta abierta'
                 : (widget.motion ? 'Movimiento detectado' : 'Luz encendida'))
             : '');
-    // El texto de acción única lleva el MISMO acento que su dot (naranja
-    // contact / azul motion / amarillo amberHi): es la misma "chispa" puntual
-    // permitida por el manual neumórfico — la superficie y el título no se
-    // tiñen. El subtitleOverride ("Toda la casa") y el string vacío quedan
-    // en textSecondary.
-    final Color subtitleColor =
-        (widget.subtitleOverride == null && activeDots == 1)
-            ? (widget.contactOpen
-                ? CceColors.contact
-                : (widget.motion ? CceColors.motion : CceColors.amberHi))
-            : CceColors.textSecondary;
+    // El subtítulo NO se tiñe: el dot que lo precede ya lleva el color del
+    // estado. Pintar los dos del mismo color era decir dos veces lo mismo y
+    // sumaba una fuente de color más a la lista.
+    const Color subtitleColor = CceColors.textSecondary;
 
     final headerRow = Row(
       children: [
@@ -202,19 +172,19 @@ class _RoomCardState extends State<RoomCard> {
         // de 32 se pinta dentro de esa caja; Clip.none del EmbossedGlyph permite
         // que el relieve sobresalga sin recortarse.
         SizedBox(
-          width: 44,
-          height: 44,
+          width: 40,
+          height: 40,
           child: Center(
             child: EmbossedGlyph(
               size: iconSize,
               color: glyphColor,
-              highlight: embHi,
-              shadow: embSh,
+              highlight: glyphColor,
+              shadow: glyphColor,
               child: widget.iconBuilder?.call(glyphColor) ?? widget.icon!,
             ),
           ),
         ),
-        const SizedBox(width: 14),
+        SizedBox(width: CceSpace.md),
         // Nombre + subtítulo de estado (dos líneas).
         Expanded(
           child: Column(
@@ -225,18 +195,9 @@ class _RoomCardState extends State<RoomCard> {
                 widget.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                // Nombre con relieve neumórfico (como el título de la card JBL),
-                // IGUAL apagada o encendida: tinta titleInk + CceText.embossShadows.
-                // El texto NUNCA se tiñe — la superficie es siempre la misma goma.
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                  color: CceText.titleInk,
-                  shadows: CceText.embossShadows,
-                ),
+                style: CceText.headline,
               ),
-              const SizedBox(height: 2),
+              SizedBox(height: CceSpace.xs),
               Row(
                 children: [
                   if (widget.contactOpen) ...[
@@ -245,7 +206,7 @@ class _RoomCardState extends State<RoomCard> {
                       pulse: true,
                       semanticLabel: 'Puerta abierta',
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: CceSpace.sm),
                   ],
                   if (widget.motion) ...[
                     const StatusDot(
@@ -253,7 +214,7 @@ class _RoomCardState extends State<RoomCard> {
                       pulse: true,
                       semanticLabel: 'Movimiento',
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: CceSpace.sm),
                   ],
                   // Punto AMARILLO fijo "luz encendida" (amberHi): siempre que
                   // anyOn, SIN cantidad y SIN pulso; convive con los dots de
@@ -264,7 +225,7 @@ class _RoomCardState extends State<RoomCard> {
                       CceColors.amberHi,
                       semanticLabel: 'Luz encendida',
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: CceSpace.sm),
                   ],
                   Flexible(
                     child: Text(
@@ -281,7 +242,7 @@ class _RoomCardState extends State<RoomCard> {
             ],
           ),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: CceSpace.md),
         // Switch unificado (CceSwitch): tamaño natural del JBL, sin FittedBox.
         // El título Expanded cede ancho; entra al final del Row sin desbordar.
         CceSwitch(
@@ -295,41 +256,36 @@ class _RoomCardState extends State<RoomCard> {
     );
 
     final card = CceCard(
-      // SIEMPRE la almohada raised de neoBase (raisedDecoration: gradiente sutil
-      // + cardFloat + bevel), apagada O encendida: misma goma continua. El ON no
-      // cambia la superficie — sólo el glow/anillo/ícono/dot de acento (fuera de
-      // CceCard). En legacy (neo:false) se conserva el render plano histórico.
       neo: widget.neo,
-      color: widget.neo
-          ? CceColors.neoBase
-          : (widget.selected ? CceColors.surfaceHigh : CceColors.cardOff),
-      radius: CceRadii.hueCard,
-      padding: EdgeInsets.fromLTRB(16, showSlider ? 10 : 8, 14, 8),
+      color: widget.selected ? CceColors.surfaceHigh : CceColors.surface,
+      radius: CceRadii.card,
+      // Padding SIMÉTRICO. El 16/14 anterior desalineaba el switch respecto
+      // del ícono por 2px — invisible de a uno, evidente en una lista larga.
+      padding: EdgeInsets.symmetric(
+        horizontal: CceSpace.lg,
+        vertical: CceSpace.md,
+      ),
       onTap: () {
         HapticFeedback.selectionClick();
         widget.onTap();
       },
       child: showSlider
           ? Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Expanded(child: headerRow),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: CceBrightnessSlider(
-                    height: 24,
-                    thin: true,
-                    showPercent: false,
-                    value: (_dragValue ?? widget.brightness!)
-                        .clamp(0.0, 1.0)
-                        .toDouble(),
-                    // Riel hundido en la goma (canal oscuro) + relleno con el
-                    // ACENTO real de la sala (coherente con glyph/dot), en vez
-                    // de blanco sobre un track derivado del viejo fill pastel.
-                    activeColor: accent,
-                    thinTrackColor: CceColors.neoDark,
-                    onChanged: _onSliderChanged,
-                    onChangeEnd: _onSliderEnd,
-                  ),
+                CceBrightnessSlider(
+                  height: 20,
+                  thin: true,
+                  showPercent: false,
+                  value: (_dragValue ?? widget.brightness!)
+                      .clamp(0.0, 1.0)
+                      .toDouble(),
+                  activeColor: accent,
+                  // El riel vacío es un hueco en la superficie.
+                  thinTrackColor: CceColors.surfaceSunken,
+                  onChanged: _onSliderChanged,
+                  onChangeEnd: _onSliderEnd,
                 ),
               ],
             )
@@ -341,30 +297,23 @@ class _RoomCardState extends State<RoomCard> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // SIN glow de acento: el relieve lo da CceCard (raisedDecoration) y
-          // el estado ON lo marca el SWITCH (que prende del color del ícono) +
-          // el ícono tinteado. No se derrama luz fuera de la card.
           card,
-          // Borde superpuesto. PRIORIDAD:
-          //  1) selección (tablet) → hairline blanco 0.80, width 1.4 (gana).
-          //  2) encendido sin selección → ANILLO de acento sutil 0.22, width 1.2:
-          //     el "rim" de color que insinúa el estado sin rellenar nada.
-          //  3) resto → transparente.
+          // Hairline de la card. Siempre presente: es lo que da estructura sin
+          // sombras. Se refuerza sólo cuando la card está seleccionada
+          // (sidebar tablet); el estado encendido ya lo dicen ícono, dot y
+          // switch, y un anillo más sería decir lo mismo por cuarta vez.
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOutCubic,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(CceRadii.hueCard),
-                  // Sin anillo de "encendido": el estado ON lo marca el switch
-                  // (que prende) + el ícono tinteado. Sólo la selección (tablet)
-                  // dibuja un hairline blanco.
+                  borderRadius: BorderRadius.circular(CceRadii.card),
                   border: Border.all(
                     color: widget.selected
-                        ? Colors.white.withValues(alpha: 0.80)
-                        : Colors.transparent,
-                    width: 1.4,
+                        ? CceColors.accent
+                        : CceColors.stroke,
+                    width: widget.selected ? 1.5 : 1,
                   ),
                 ),
               ),

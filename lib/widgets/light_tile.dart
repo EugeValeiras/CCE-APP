@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/device.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
@@ -10,7 +11,6 @@ import '../theme/components/light_card.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
 import '../views/light_color_screen.dart';
-import 'pulse_on_update.dart';
 
 /// Tile de luz estilo Hue (los gestos viven acá; el render es [LightCard]).
 /// - Tap (sobre la card): abre la pantalla de color/temperatura.
@@ -29,7 +29,12 @@ class LightTile extends StatefulWidget {
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
+    this.automations,
   });
+
+  /// Opcional: si se provee, el tile indica cuántas automatizaciones activas
+  /// gobiernan esta luz. Sin él, el tile se comporta igual que antes.
+  final AutomationsService? automations;
 
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
@@ -246,11 +251,14 @@ class _LightTileState extends State<LightTile> {
       stateLabel = 'Apagada';
     }
 
-    return PulseOnUpdate(
-      triggerAt: d.lastEventAt,
-      color: on ? color : CceColors.info,
-      borderRadius: CceRadii.hueCard,
-      child: GestureDetector(
+    // SIN PulseOnUpdate.
+    //
+    // El pulso existe para avisar que llegó un evento que NO se ve — el caso
+    // de un sensor, donde nada cambia en pantalla. Una luz es lo contrario:
+    // su cambio de estado ES visible, y LightCard ya lo anima. Encimarle un
+    // halo de 900 ms hacía que cada encendido se leyera dos veces, la segunda
+    // tarde y sin corresponder a nada.
+    return GestureDetector(
         // Tap en la card abre la pantalla de color (también offline, como Hue).
         onTap: _openColor,
         onLongPressStart: reachable ? _onLongPressStart : null,
@@ -275,10 +283,11 @@ class _LightTileState extends State<LightTile> {
           stateLabel: stateLabel,
           height: widget.height,
           neo: widget.neo,
+          automationCount:
+              widget.automations?.activeCountForDevice(d) ?? 0,
           // El switch de la franja prende/apaga directo.
           onToggle: reachable ? (_) => _toggle() : null,
         ),
-      ),
     );
   }
 }

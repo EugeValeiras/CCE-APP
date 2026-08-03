@@ -115,7 +115,7 @@ class TemperatureSummaryCard extends StatelessWidget {
                   value: primaryTemp.toStringAsFixed(1),
                   unit: '°C',
                   label: tempLabel,
-                  color: _desaturate(_colorForTemp(primaryTemp)),
+                  color: CceColors.textTertiary,
                   compact: compact,
                   neo: neo,
                 ),
@@ -126,8 +126,8 @@ class TemperatureSummaryCard extends StatelessWidget {
                 height: compact ? 40 : 56,
                 // En neo, línea GRABADA en la goma (neoDark 1px) en vez del
                 // hairline claro; en plano conserva el stroke histórico.
-                color: neo ? CceColors.neoDark : CceColors.stroke,
-                margin: const EdgeInsets.symmetric(horizontal: 16),
+                color: CceColors.strokeSoft,
+                margin: EdgeInsets.symmetric(horizontal: CceSpace.lg),
               ),
             if (primaryHum != null)
               Expanded(
@@ -136,7 +136,7 @@ class TemperatureSummaryCard extends StatelessWidget {
                   value: primaryHum.toStringAsFixed(0),
                   unit: '%',
                   label: 'Humedad',
-                  color: CceColors.info,
+                  color: CceColors.textTertiary,
                   compact: compact,
                   neo: neo,
                 ),
@@ -158,22 +158,10 @@ class TemperatureSummaryCard extends StatelessWidget {
   static double? _tempOf(Device d) =>
       d.isThermostat ? d.state.currentTemp : d.sensor?.temperature;
 
-  /// Desatura el color de la escala térmica (60% de la saturación original).
-  static Color _desaturate(Color c) {
-    final hsv = HSVColor.fromColor(c);
-    return hsv
-        .withSaturation((hsv.saturation * 0.6).clamp(0.0, 1.0).toDouble())
-        .toColor();
-  }
-
-  static Color _colorForTemp(double? t) {
-    if (t == null) return Colors.grey;
-    if (t < 15) return const Color(0xFF42A5F5);
-    if (t < 20) return const Color(0xFF66BB6A);
-    if (t < 25) return const Color(0xFFFFB74D);
-    if (t < 30) return const Color(0xFFFF8A65);
-    return const Color(0xFFE53935);
-  }
+  // RETIRADA la escala térmica de color (azul→verde→ámbar→rojo según la
+  // lectura). Traía cinco colores fuera de la paleta para decir algo que el
+  // número ya dice con más precisión, y hacía que el ícono de temperatura y
+  // el de humedad nunca coincidieran entre sí.
 
   static final Device _dummy = Device(id: '', name: '', type: '', state: DeviceState());
 }
@@ -231,28 +219,25 @@ class _HeroReading extends StatelessWidget {
             ),
           ],
         ),
-        SizedBox(height: compact ? 3 : 6),
+        SizedBox(height: CceSpace.xs),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
+            // Cifras tabulares: al pasar de 23.9 a 24.0 el número no debe
+            // empujar la unidad de lugar.
             Text(
               value,
-              style: CceText.display.copyWith(
+              style: CceText.dataLarge.copyWith(
                 fontSize: compact ? 30 : 38,
-                height: 1.0,
-                letterSpacing: -1.2,
               ),
             ),
-            const SizedBox(width: 4),
-            Text(
-              unit,
-              style: TextStyle(
-                color: color,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            SizedBox(width: CceSpace.xs),
+            // La unidad es texto terciario, no un acento. Antes °C iba en
+            // ámbar y % en celeste: dos colores para decir "esto es la unidad
+            // de la cifra de al lado", que es justamente lo que menos importa
+            // de la card.
+            Text(unit, style: CceText.label.copyWith(color: CceColors.textTertiary)),
           ],
         ),
       ],

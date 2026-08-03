@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/automation.dart';
+import '../models/device.dart';
 import '../models/light_group.dart';
 import '../models/server_config.dart';
 import '../utils/time_format.dart';
@@ -90,6 +91,75 @@ class AutomationsService extends ChangeNotifier {
   bool get canUndoDelete => _deletedSnapshot != null;
 
   DateTime? lastExecuted(String automationId) => _lastExecuted[automationId];
+
+  // ---------------------------------------------------------------------
+  // Relación dispositivo ↔ automatizaciones
+  //
+  // Sin esto no había forma de saber, mirando un dispositivo, si algo lo
+  // estaba manejando: había que abrir la lista general y leer los triggers y
+  // las acciones de cada automatización una por una. Es la pregunta más
+  // frecuente frente a un dispositivo ("¿por qué se prendió solo?", "¿puedo
+  // apagar esto sin romper nada?") y la app no la respondía.
+  // ---------------------------------------------------------------------
+
+  /// Todos los ids con los que una automatización puede referirse a [device]:
+  /// el canónico y los de binding (las automatizaciones viejas guardaron el
+  /// binding —`ewelink_123`— antes de que existieran los ids canónicos, y
+  /// siguen siendo válidas).
+  Set<String> _idsOf(Device device) => {device.id, ...device.bindingIds};
+
+  /// ¿[device] DISPARA esta automatización?
+  bool _isTrigger(Automation a, Set<String> ids) =>
+      a.trigger.sensorTriggers.any((t) => ids.contains(t.sensorId));
+
+  /// ¿[device] es DESTINO de alguna acción de esta automatización?
+  ///
+  /// Una acción casi nunca nombra a la luz directamente: la nombra a través
+  /// del GRUPO al que pertenece (`__group__<id>`). Mirar sólo el id directo
+  /// dejaba el indicador en cero para prácticamente todas las luces, que es
+  /// justo el caso que hay que resolver.
+  ///
+  /// Cubre: id directo, `deviceId` (acciones por capability) y pertenencia a
+  /// un grupo. NO cubre todavía rooms de Hue ni escenas — el modelo local de
+  /// [HueRoom] no expone qué luces contiene, así que no hay forma de saberlo
+  /// sin pedirlo al bridge.
+  bool _isTarget(Automation a, Set<String> ids) {
+    for (final act in a.actions) {
+      if (ids.contains(act.lightId) || ids.contains(act.deviceId)) return true;
+      final gid = act.groupId;
+      if (gid != null) {
+        final group = devices.groups.firstWhereOrNull((g) => g.id == gid);
+        if (group != null && group.lightIds.any(ids.contains)) return true;
+      }
+    }
+    return false;
+  }
+
+  /// Automatizaciones que involucran a [device], ya sea porque lo usan como
+  /// disparador o porque actúan sobre él. Ordenadas por nombre.
+  ///
+  /// Incluye las pausadas: que una automatización esté apagada no significa
+  /// que no exista, y al mirar un dispositivo querés saber que está ahí.
+  List<Automation> forDevice(Device device) {
+    final ids = _idsOf(device);
+    return _automations
+        .where((a) => _isTrigger(a, ids) || _isTarget(a, ids))
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  }
+
+  /// Cuántas automatizaciones ACTIVAS involucran a [device]. Es lo que se
+  /// muestra como indicador en los tiles: una automatización pausada no está
+  /// gobernando nada ahora mismo, así que no debe alarmar al mirar el tile.
+  int activeCountForDevice(Device device) {
+    final ids = _idsOf(device);
+    var n = 0;
+    for (final a in _automations) {
+      if (!a.enabled) continue;
+      if (_isTrigger(a, ids) || _isTarget(a, ids)) n++;
+    }
+    return n;
+  }
 
   @override
   void dispose() {

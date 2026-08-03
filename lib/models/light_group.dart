@@ -31,7 +31,11 @@ class LightGroup {
   });
 
   factory LightGroup.fromJson(Map<String, dynamic> json) {
-    final rawLights = json['lights'];
+    // El backend serializa los miembros en `lightIds`. Antes acá se leía
+    // `lights`, una clave que el payload no trae: TODOS los grupos quedaban
+    // sin miembros del lado de la app. Se acepta `lights` como alias por si
+    // alguna config vieja lo usó.
+    final rawLights = json['lightIds'] ?? json['lights'];
     final lightIds = <String>[];
     if (rawLights is List) {
       for (final l in rawLights) {

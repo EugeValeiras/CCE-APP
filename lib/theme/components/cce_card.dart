@@ -49,12 +49,16 @@ class CceCard extends StatelessWidget {
   }) {
     final br = BorderRadius.circular(radius);
     return BoxDecoration(
+      // Material de la card: superficie con gradiente sutil + sombra de
+      // contacto + hairline. Los tres juntos dan espesor; ninguno solo alcanza.
+      //
+      // El canto de luz superior lo aporta el propio gradiente: Flutter no
+      // admite un Border con lados de distinto color junto a borderRadius, así
+      // que pintar sólo el borde de arriba más claro no es una opción.
       gradient: CceGradients.cardSurface(base),
       borderRadius: br,
-      // Sin borde por default (más neomórfico, como el botón "Aplicaciones"):
-      // el relieve lo da SOLO la sombra neo (convexo), no un contorno.
-      border: bevel ? Border.all(color: CceColors.cardBevel) : null,
-      boxShadow: CceShadows.neo(blur: 14, offset: 5),
+      border: Border.all(color: CceColors.stroke),
+      boxShadow: CceShadows.raised,
     );
   }
 

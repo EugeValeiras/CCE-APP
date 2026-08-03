@@ -64,7 +64,7 @@ class SensorTile extends StatelessWidget {
       alert = motion;
     } else if (s?.temperature != null) {
       stateLabel = '${s!.temperature!.toStringAsFixed(1)}°';
-      color = const Color(0xFFFF8A5C);
+      color = CceColors.contact;
     } else if (s?.humidity != null) {
       stateLabel = '${s!.humidity!.toStringAsFixed(0)}%';
       color = CceColors.info;
@@ -185,7 +185,7 @@ class SensorTile extends StatelessWidget {
                       top: BorderSide(
                         color: neo
                             ? Colors.black.withValues(alpha: 0.16)
-                            : Colors.white.withValues(alpha: 0.07),
+                            : CceColors.strokeSoft,
                       ),
                     ),
                   ),
@@ -201,7 +201,7 @@ class SensorTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: alert ? color : CceColors.textSecondary,
                           ),

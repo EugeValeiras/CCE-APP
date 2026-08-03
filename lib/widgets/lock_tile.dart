@@ -39,7 +39,7 @@ class LockTile extends StatelessWidget {
     final bool locked = device.state.on;
     final String stateLabel = locked ? 'Trabada' : 'Destrabada';
     final Color color =
-        locked ? CceColors.ok : const Color(0xFFFF9F0A); // ámbar destrabada
+        locked ? CceColors.ok : CceColors.contact; // ámbar destrabada
     final bool alert = !locked;
     final String svg = locked ? CceIcons.lockLocked : CceIcons.lockUnlocked;
 
@@ -138,7 +138,7 @@ class LockTile extends StatelessWidget {
                   top: BorderSide(
                     color: neo
                         ? Colors.black.withValues(alpha: 0.16)
-                        : Colors.white.withValues(alpha: 0.07),
+                        : CceColors.strokeSoft,
                   ),
                 ),
               ),
@@ -154,7 +154,7 @@ class LockTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: alert ? color : CceColors.textSecondary,
                       ),

@@ -33,7 +33,7 @@ class VacuumTile extends StatelessWidget {
   final bool neo;
 
   /// Ámbar de pausa (mismo que lock destrabada).
-  static const Color _amber = Color(0xFFFF9F0A);
+  static const Color _amber = CceColors.contact;
 
   /// Color por la actividad detallada del sidecar (la misma que etiqueta
   /// [vacuumStateLabel]); cae al `vacuumState` de Matter sin sesión del
@@ -200,7 +200,7 @@ class VacuumTile extends StatelessWidget {
                   top: BorderSide(
                     color: neo
                         ? Colors.black.withValues(alpha: 0.16)
-                        : Colors.white.withValues(alpha: 0.07),
+                        : CceColors.strokeSoft,
                   ),
                 ),
               ),
@@ -217,7 +217,7 @@ class VacuumTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: (alert || active)
                             ? color

@@ -64,14 +64,14 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
         final accent = !online
             ? CceColors.textTertiary
             : (on
-                ? (neo ? CceColors.jblOrange : CceColors.warm)
+                ? CceColors.accent
                 : CceColors.textSecondary);
         final sub = !online
             ? 'Fuera de línea'
             : (on ? 'Encendido · volumen ${jbl.volume}' : 'En espera');
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
         final dotColor =
-            !online ? CceColors.textTertiary : (on ? CceColors.jblOrange : CceColors.textTertiary);
+            !online ? CceColors.textTertiary : (on ? CceColors.accent : CceColors.textTertiary);
         final card = CceCard(
           onTap: () {
             HapticFeedback.selectionClick();
@@ -110,12 +110,14 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                     // espera-offline (neo); accent histórico en plano.
                     color: neo
                         ? (online && on
-                            ? CceColors.jblOrange
-                            : CceColors.neoTextSub)
+                            ? CceColors.accent
+                            : CceColors.textTertiary)
                         : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
-                    child: const CceIcon(CceIcons.jbl, size: 32),
+                    // Ícono del sistema en vez del logotipo de JBL (ver la
+                    // nota equivalente en TvHomeCard).
+                    child: const CceIcon(CceIcons.speaker, size: 30),
                   ),
                 ),
               ),
@@ -178,7 +180,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
               else if (online)
                 CceSwitch(
                   value: on,
-                  accent: CceColors.jblOrange,
+                  accent: CceColors.accent,
                   onChanged: (_) => jbl.togglePower(),
                 )
               else

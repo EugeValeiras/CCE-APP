@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device.dart';
 import '../models/floor_plan.dart';
 import '../models/room_ref.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
@@ -44,7 +45,11 @@ class RoomDetailScreen extends StatefulWidget {
     this.room,
     this.tv,
     this.jbl,
+    this.automations,
   });
+
+  /// Opcional: alimenta el indicador de automatizaciones de los tiles.
+  final AutomationsService? automations;
 
   @override
   State<RoomDetailScreen> createState() => _RoomDetailScreenState();
@@ -156,7 +161,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               leading: const Icon(Icons.swap_vert, color: CceColors.textPrimary),
               title: const Text('Reordenar secciones',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Cambiá el orden de Escenas, Luces y Devices',
+              subtitle: const Text('Cambiá el orden de Escenas, Luces y Dispositivos',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -188,7 +193,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   String _sectionLabel(String key) => switch (key) {
         'scenes' => 'Escenas',
         'lights' => 'Luces',
-        _ => 'Devices',
+        _ => 'Dispositivos',
       };
 
   IconData _sectionIcon(String key) => switch (key) {
@@ -380,7 +385,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         setState(() => _lightOrder = List.of(lo));
                         _saveItemOrder('light', lo);
                       }),
-                      section('Devices', so, (oldI, newI) {
+                      section('Dispositivos', so, (oldI, newI) {
                         setSheet(() {
                           if (newI > oldI) newI -= 1;
                           so.insert(newI, so.removeAt(oldI));
@@ -402,7 +407,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: service,
+      // También escucha a las automatizaciones: sin esto, el indicador de los
+      // tiles se quedaría con el conteo del momento en que se abrió la
+      // pantalla — pausar una automatización desde otro lado no lo movería.
+      animation: widget.automations == null
+          ? service
+          : Listenable.merge([service, widget.automations!]),
       builder: (context, _) {
         final devices =
             widget.deviceIds.map(service.byId).whereType<Device>().toList();
@@ -588,7 +598,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                                 device: d,
                                 service: service,
                                 size: TileSize.medium,
-                                neo: true);
+                                neo: true,
+                                automations: widget.automations);
                           },
                         ),
                         childCount: lights.length + (hasHueRoom ? 1 : 0),
@@ -605,7 +616,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   const SliverPadding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
-                      child: SectionHeader(title: 'Devices'),
+                      child: SectionHeader(title: 'Dispositivos'),
                     ),
                   ),
                   SliverPadding(
@@ -687,9 +698,9 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         };
 
         return Scaffold(
-          backgroundColor: CceColors.neoBase,
+          backgroundColor: CceColors.bg,
           appBar: AppBar(
-            backgroundColor: CceColors.neoBase,
+            backgroundColor: CceColors.bg,
             // Sin flecha de atrás: se vuelve con el swipe nativo de iOS.
             automaticallyImplyLeading: false,
             titleSpacing: 16,

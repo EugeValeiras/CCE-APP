@@ -847,6 +847,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               room: room,
               tv: widget.tv,
               jbl: widget.jbl,
+              automations: _automations,
             ),
           ));
         },

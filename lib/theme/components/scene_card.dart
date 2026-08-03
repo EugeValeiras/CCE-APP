@@ -33,8 +33,12 @@ class SceneCard extends StatelessWidget {
   /// OPT-IN: relieve neumórfico (default false ⇒ render idéntico al actual).
   final bool neo;
 
-  static const double _height = 132;
-  static const double _circle = 60;
+  // El círculo baja de 60 a 52 y la card de 132 a 118: entre dos escenas de la
+  // misma habitación el swatch suele ser casi idéntico (todas cálidas), así
+  // que lo que de verdad las distingue es el NOMBRE. Se le da el espacio al
+  // que informa.
+  static const double _height = 118;
+  static const double _circle = 52;
 
   /// Ajusta la luminosidad HSL de [c] en [delta] (conserva hue/saturación).
   static Color _shiftL(Color c, double delta) {
@@ -122,9 +126,8 @@ class SceneCard extends StatelessWidget {
               neo ? CceColors.neoBase : CceColors.cardOffHigh),
           borderRadius: borderRadius,
           border: active
-              ? Border.all(
-                  color: Colors.white.withValues(alpha: 0.85), width: 1.4)
-              : Border.all(color: CceColors.cardBevel),
+              ? Border.all(color: CceColors.accent, width: 1.5)
+              : Border.all(color: CceColors.stroke),
           boxShadow: neo ? CceShadows.cardFloat() : null,
         ),
         child: Material(
@@ -136,22 +139,18 @@ class SceneCard extends StatelessWidget {
               children: [
                 Positioned.fill(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 14, 8, 10),
+                    padding: EdgeInsets.all(CceSpace.md),
                     child: Column(
                       children: [
                         _buildCircle(),
-                        const SizedBox(height: 8),
+                        SizedBox(height: CceSpace.sm),
                         Expanded(
                           child: Text(
                             name,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.1,
-                              height: 1.15,
+                            style: CceText.label.copyWith(
                               color: CceColors.textPrimary,
                             ),
                           ),
@@ -169,16 +168,9 @@ class SceneCard extends StatelessWidget {
                       color: Color(0x52000000),
                     ),
                   ),
-                if (active && !busy)
-                  const Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Icon(
-                      Icons.check_circle,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                  ),
+              // El hairline de acento ya dice que la escena está activa: el
+              // check flotante que había acá era el mismo dato dos veces, y
+              // encima tapaba el swatch.
               ],
             ),
           ),
