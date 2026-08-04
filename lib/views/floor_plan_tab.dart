@@ -14,6 +14,7 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
+import '../theme/components/cce_neo_button.dart';
 import '../theme/components/cce_segmented.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
@@ -42,16 +43,21 @@ class _VacuumStatus {
   const _VacuumStatus({this.planId, required this.label, this.battery});
 }
 
+/// Diámetro base de los dots de devices sobre el plano (= el "medium" del
+/// TileSize global que los gobernaba antes). El tamaño efectivo es esto por
+/// el markerScale del plano — un atributo DEL PLANO, compartido con el
+/// dashboard, no una preferencia local del tablet.
+const double kFloorPlanBaseDotSize = 56;
+
 /// Canvas del plano de la casa, embebible en el panel derecho de la tab Casa.
 /// Si [planId] != null fuerza ese plano y oculta el selector (modo "Plano"
 /// de una habitacion); con [planId] == null resuelve el default:
-/// seleccion local → [UiSettingsService.lastPlanId] persistido → el plano
-/// con mas dispositivos posicionados → el primero. Nunca mas "Outside".
+/// [UiSettingsService.lastPlanId] persistido → el plano con mas dispositivos
+/// posicionados → el primero. Nunca mas "Outside".
 class FloorPlanPanel extends StatefulWidget {
   final DevicesService service;
   final UiSettingsService ui;
   final String? planId;
-  final double dotSize;
   final bool showPlanChips;
 
   /// Opt-in neumórfico (solo el TABLET lo activa). Default `false` deja el
@@ -79,7 +85,6 @@ class FloorPlanPanel extends StatefulWidget {
     required this.service,
     required this.ui,
     this.planId,
-    this.dotSize = 56,
     this.showPlanChips = true,
     this.neo = false,
     this.tv,
@@ -94,28 +99,19 @@ class FloorPlanPanel extends StatefulWidget {
 }
 
 class _FloorPlanPanelState extends State<FloorPlanPanel> {
-  String? _selectedPlanId;
-
+  /// [FloorPlansData.visiblePlan] con [UiSettingsService.lastPlanId] como
+  /// candidato: la MISMA resolución que usa [PlanMarkerScaleButtons] en la
+  /// toolbar. Sin estado local: si el panel y la toolbar resolvieran
+  /// distinto, los botones ajustarían un plano que no se ve.
   String _activePlanId(FloorPlansData fp) {
     bool exists(String? id) => id != null && fp.plans.any((p) => p.id == id);
     if (exists(widget.planId)) return widget.planId!;
-    if (exists(_selectedPlanId)) return _selectedPlanId!;
-    if (exists(widget.ui.lastPlanId)) return widget.ui.lastPlanId!;
-    // Default: el plano con más dispositivos posicionados.
-    FloorPlan? best;
-    var bestCount = -1;
-    for (final p in fp.plans) {
-      final count = fp.positions[p.id]?.length ?? 0;
-      if (count > bestCount) {
-        best = p;
-        bestCount = count;
-      }
-    }
-    return (best ?? fp.plans.first).id;
+    return fp.visiblePlan(widget.ui.lastPlanId)!.id;
   }
 
   void _selectPlan(String id) {
-    setState(() => _selectedPlanId = id);
+    // lastPlanId notifica y el AnimatedBuilder (que ya escucha widget.ui)
+    // re-renderiza: la selección responde igual que con estado local.
     widget.ui.lastPlanId = id;
   }
 
@@ -285,6 +281,9 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
         );
         final positions =
             fp.positions[plan.id] ?? const <String, LightPosition>{};
+        // Tamaño por plano: acá ya se conoce `plan`, así que el diámetro se
+        // resuelve acá y _PlanCanvas/_DeviceDot/_DeviceMarker no cambian.
+        final dotSize = kFloorPlanBaseDotSize * (plan.markerScale ?? 1.0);
         // Posición única (por plano) de los dispositivos dedicados.
         final tvPos = fp.tvPositions[plan.id];
         final jblPos = fp.jblPositions[plan.id];
@@ -323,7 +322,7 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                       plan: plan,
                       positions: positions,
                       service: widget.service,
-                      dotSize: widget.dotSize,
+                      dotSize: dotSize,
                       neo: widget.neo,
                       // En el tablet (neo) el tap abre el control en vez de toggle.
                       openOnTap: widget.neo,
@@ -359,6 +358,78 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Botones –/+ del tamaño de los markers del plano VISIBLE. Van en la toolbar
+/// de las vistas tablet, donde antes estaba el ciclo global de TileSize (que
+/// ahora gobierna solo las grillas de cards): en modo Plano el control de
+/// tamaño ajusta ESTE plano, lo persiste en el backend y lo comparte con el
+/// dashboard. Paso 0.2 y clamp 0.4–3.0, el mismo esquema del dashboard.
+class PlanMarkerScaleButtons extends StatelessWidget {
+  const PlanMarkerScaleButtons({
+    super.key,
+    required this.service,
+    required this.ui,
+    this.planId,
+    this.neo = false,
+  });
+
+  final DevicesService service;
+  final UiSettingsService ui;
+
+  /// Plano forzado (el modo Plano de una habitación); null = el visible en
+  /// "Toda la casa", resuelto igual que en [FloorPlanPanel].
+  final String? planId;
+  final bool neo;
+
+  static const double _step = 0.2;
+  static const double _min = 0.4;
+  static const double _max = 3.0;
+
+  void _bump(FloorPlan plan, int dir) {
+    final current = plan.markerScale ?? 1.0;
+    // Snap a décimas: acumular ±0.2 en double junta ruido binario
+    // (0.6000…01) que desalinearía el clamp y los pasos del dashboard.
+    final next = (((current + dir * _step) * 10).roundToDouble() / 10)
+        .clamp(_min, _max);
+    service.setPlanMarkerScale(plan.id, next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fp = service.floorPlans;
+    if (fp == null) return const SizedBox.shrink();
+    final plan = planId != null
+        ? fp.plans.where((p) => p.id == planId).firstOrNull
+        : fp.visiblePlan(ui.lastPlanId);
+    if (plan == null) return const SizedBox.shrink();
+
+    final scale = plan.markerScale ?? 1.0;
+    final canShrink = scale > _min;
+    final canGrow = scale < _max;
+
+    Widget button(IconData icon, String tooltip, VoidCallback? onPressed) {
+      if (neo) {
+        return CceNeoIconButton(
+            icon: icon, tooltip: tooltip, onPressed: onPressed);
+      }
+      return Tooltip(
+        message: tooltip,
+        child: IconButton(icon: Icon(icon), onPressed: onPressed),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button(Icons.remove, 'Markers más chicos',
+            canShrink ? () => _bump(plan, -1) : null),
+        const SizedBox(width: 8),
+        button(Icons.add, 'Markers más grandes',
+            canGrow ? () => _bump(plan, 1) : null),
+      ],
     );
   }
 }

@@ -50,6 +50,12 @@ class DevicesService extends ChangeNotifier {
   StreamSubscription? _deviceSub;
   StreamSubscription? _connSub;
   StreamSubscription? _armedSub;
+  StreamSubscription? _liveSub;
+
+  /// Último PUT propio de markerScale: suprime el eco de `config:changed`
+  /// (mismo patrón que AutomationsService) para que la recarga no pise un
+  /// estado optimista más nuevo durante una ráfaga de taps en –/+.
+  DateTime? _lastMarkerScalePutAt;
   bool _wasConnected = false;
   bool _alarmArmed = false;
 
@@ -72,6 +78,66 @@ class DevicesService extends ChangeNotifier {
         notifyListeners();
       }
     });
+    // Los planos cambian desde el dashboard (markerScale, íconos, planos
+    // nuevos) y hasta acá solo se recargaban con un refresh completo (pull o
+    // reconexión). Recarga QUIRÚRGICA: solo la sección floorPlans, sin
+    // re-pedir devices ni config.
+    _liveSub = _socket.onLiveEvent.listen(_onLiveEvent);
+  }
+
+  void _onLiveEvent(LiveEvent ev) {
+    if (ev.eventName != 'config:changed') return;
+    final section = ev.payload['section'];
+    // 'all' = PUT /config completo (restore/backup): también trae planos.
+    if (section != 'floorPlans' && section != 'all') return;
+    // Eco propio: nuestro PUT de markerScale ya se aplicó optimista; la
+    // recarga solo serviría para pisar taps más nuevos con estado viejo.
+    final lastPut = _lastMarkerScalePutAt;
+    if (lastPut != null &&
+        DateTime.now().difference(lastPut) <
+            const Duration(milliseconds: 1500)) {
+      return;
+    }
+    _reloadFloorPlans();
+  }
+
+  Future<void> _reloadFloorPlans() async {
+    try {
+      _floorPlans = await _api.getFloorPlans();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('reloadFloorPlans error (mantiene lo local): $e');
+    }
+  }
+
+  /// Cambia el tamaño de los markers de UN plano (atributo del plano,
+  /// compartido con el dashboard). Optimista: aplica local YA para que el
+  /// círculo responda al toque y persiste por el endpoint item-level; si el
+  /// PUT falla se resincroniza con la verdad del backend.
+  Future<void> setPlanMarkerScale(String planId, double markerScale) async {
+    final fp = _floorPlans;
+    if (fp == null) return;
+    _floorPlans = FloorPlansData(
+      plans: [
+        for (final p in fp.plans)
+          p.id == planId ? p.withMarkerScale(markerScale) : p,
+      ],
+      activePlanId: fp.activePlanId,
+      positions: fp.positions,
+      jblPositions: fp.jblPositions,
+      tvPositions: fp.tvPositions,
+    );
+    notifyListeners();
+    _lastMarkerScalePutAt = DateTime.now();
+    try {
+      await _api.setFloorPlanMarkerScale(planId, markerScale);
+    } catch (e) {
+      debugPrint('setPlanMarkerScale error (resincroniza): $e');
+      // El PUT no llegó: el optimismo quedó mintiendo. La supresión de eco no
+      // aplica (no hay eco de un PUT fallido) — recarga directa.
+      _lastMarkerScalePutAt = null;
+      await _reloadFloorPlans();
+    }
   }
 
   /// True si la alarma está armada (seed en [refresh] + push por WebSocket).
@@ -1167,6 +1233,7 @@ class DevicesService extends ChangeNotifier {
     _deviceSub?.cancel();
     _connSub?.cancel();
     _armedSub?.cancel();
+    _liveSub?.cancel();
     super.dispose();
   }
 }

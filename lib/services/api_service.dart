@@ -236,6 +236,26 @@ class ApiService {
     }
   }
 
+  /// Escribe el tamaño de los markers de UN plano por el endpoint item-level:
+  /// el PUT masivo de floor-plans reemplaza el array entero (SVGs incluidos)
+  /// y para cambiar un número es pesado y riesgoso.
+  Future<void> setFloorPlanMarkerScale(String planId, double markerScale) async {
+    final resp = await http
+        .put(
+          Uri.parse('${config.baseUrl}/config/floor-plans/'
+              '${Uri.encodeComponent(planId)}/marker-scale'),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'markerScale': markerScale}),
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200 && resp.statusCode != 201) {
+      throw Exception('Error ${resp.statusCode}');
+    }
+  }
+
   Future<FloorPlansData> getFloorPlans() async {
     final resp = await http
         .get(

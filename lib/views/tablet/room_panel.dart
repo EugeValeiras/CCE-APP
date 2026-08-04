@@ -173,19 +173,23 @@ class RoomPanel extends StatelessWidget {
                       child: Text(stats.anyOn ? 'Apagar todo' : 'Encender'),
                     ),
                   const SizedBox(width: 8),
-                  if (neo) ...[
+                  // En modo Plano el control de tamaño ajusta los markers de
+                  // ESTE plano (markerScale por plano, compartido con el
+                  // dashboard); el ciclo de TileSize queda para las cards.
+                  if (mode == RoomPanelMode.plan)
+                    PlanMarkerScaleButtons(
+                      service: service,
+                      ui: ui,
+                      planId: room.planId,
+                      neo: neo,
+                    )
+                  else if (neo)
                     CceNeoIconButton(
                       icon: _sizeIcon(tileSize),
                       tooltip: 'Tamaño: ${tileSize.label}',
                       onPressed: onCycleTileSize,
-                    ),
-                    const SizedBox(width: 8),
-                    CceNeoIconButton(
-                      icon: Icons.refresh,
-                      tooltip: 'Actualizar',
-                      onPressed: onRefresh,
-                    ),
-                  ] else ...[
+                    )
+                  else
                     Tooltip(
                       message: 'Tamaño: ${tileSize.label}',
                       child: IconButton(
@@ -193,11 +197,18 @@ class RoomPanel extends StatelessWidget {
                         onPressed: onCycleTileSize,
                       ),
                     ),
+                  if (neo) ...[
+                    const SizedBox(width: 8),
+                    CceNeoIconButton(
+                      icon: Icons.refresh,
+                      tooltip: 'Actualizar',
+                      onPressed: onRefresh,
+                    ),
+                  ] else
                     IconButton(
                       icon: const Icon(Icons.refresh),
                       onPressed: onRefresh,
                     ),
-                  ],
                 ],
               ),
             ),
@@ -221,7 +232,6 @@ class RoomPanel extends StatelessWidget {
                       ui: ui,
                       planId: room.planId,
                       showPlanChips: false,
-                      dotSize: tileSize.floorPlanDotSize,
                       neo: neo,
                       tv: tv,
                       jbl: jbl,

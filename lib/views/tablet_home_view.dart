@@ -434,11 +434,21 @@ class _CasaSplitState extends State<_CasaSplit> {
                 ),
               ),
               const SizedBox(width: 12),
-              CceNeoIconButton(
-                icon: _sizeIcon(tileSize),
-                tooltip: 'Tamaño: ${tileSize.label}',
-                onPressed: widget.ui.cycle,
-              ),
+              // En modo Plano el control de tamaño es el del PLANO visible
+              // (markerScale por plano, compartido con el dashboard); el
+              // ciclo global de TileSize queda gobernando solo las cards.
+              if (mode == RoomPanelMode.plan)
+                PlanMarkerScaleButtons(
+                  service: widget.devices,
+                  ui: widget.ui,
+                  neo: true,
+                )
+              else
+                CceNeoIconButton(
+                  icon: _sizeIcon(tileSize),
+                  tooltip: 'Tamaño: ${tileSize.label}',
+                  onPressed: widget.ui.cycle,
+                ),
               const SizedBox(width: 8),
               CceNeoIconButton(
                 icon: Icons.refresh,
@@ -459,7 +469,6 @@ class _CasaSplitState extends State<_CasaSplit> {
                 ? FloorPlanPanel(
                     service: widget.devices,
                     ui: widget.ui,
-                    dotSize: tileSize.floorPlanDotSize,
                     neo: true,
                     // Markers de TV / JBL en el plano (item 4): el color sigue
                     // el status (online/power) vía AnimatedBuilder sobre los
