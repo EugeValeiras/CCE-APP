@@ -366,7 +366,8 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
 /// de las vistas tablet, donde antes estaba el ciclo global de TileSize (que
 /// ahora gobierna solo las grillas de cards): en modo Plano el control de
 /// tamaño ajusta ESTE plano, lo persiste en el backend y lo comparte con el
-/// dashboard. Paso 0.2 y clamp 0.4–3.0, el mismo esquema del dashboard.
+/// dashboard. Clamp 0.1–3.0 con paso 0.2 que baja a 0.1 por debajo de 0.6,
+/// el mismo esquema del dashboard.
 class PlanMarkerScaleButtons extends StatelessWidget {
   const PlanMarkerScaleButtons({
     super.key,
@@ -384,15 +385,17 @@ class PlanMarkerScaleButtons extends StatelessWidget {
   final String? planId;
   final bool neo;
 
-  static const double _step = 0.2;
-  static const double _min = 0.4;
+  static const double _min = 0.1;
   static const double _max = 3.0;
 
   void _bump(FloorPlan plan, int dir) {
     final current = plan.markerScale ?? 1.0;
-    // Snap a décimas: acumular ±0.2 en double junta ruido binario
+    // Por debajo de 0.6 el paso baja a 0.1: con paso fijo de 0.2 el salto
+    // entre "chico" y "mínimo" era demasiado brusco para afinar.
+    final step = (dir > 0 ? current < 0.6 : current <= 0.6) ? 0.1 : 0.2;
+    // Snap a décimas: acumular pasos en double junta ruido binario
     // (0.6000…01) que desalinearía el clamp y los pasos del dashboard.
-    final next = (((current + dir * _step) * 10).roundToDouble() / 10)
+    final next = (((current + dir * step) * 10).roundToDouble() / 10)
         .clamp(_min, _max);
     service.setPlanMarkerScale(plan.id, next);
   }
