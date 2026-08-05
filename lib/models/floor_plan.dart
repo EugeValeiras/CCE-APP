@@ -22,6 +22,11 @@ class FloorPlan {
   /// a mano no comparten sistema de coordenadas y quedan en null.
   final VacuumAnchor? vacuumAnchor;
 
+  /// Factor de tamaño de los markers de devices sobre ESTE plano (rango
+  /// 0.4–3.0). Atributo del plano, persistido en el backend y compartido con
+  /// el dashboard; null = plano sin ajuste, los clientes asumen 1.0.
+  final double? markerScale;
+
   FloorPlan(
       {required this.id,
       required this.name,
@@ -29,9 +34,13 @@ class FloorPlan {
       this.hueRoomId,
       this.icon,
       this.vacuumRoom,
-      this.vacuumAnchor});
+      this.vacuumAnchor,
+      this.markerScale});
 
   factory FloorPlan.fromJson(Map<String, dynamic> json) {
+    // Defensivo como VacuumAnchor: un markerScale no numérico o no finito es
+    // un valor roto, no un ajuste — se descarta y el plano queda en 1.0.
+    final rawScale = json['markerScale'];
     return FloorPlan(
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
@@ -40,8 +49,24 @@ class FloorPlan {
       icon: json['icon'] as String?,
       vacuumRoom: VacuumRoomLink.fromJson(json['vacuumRoom']),
       vacuumAnchor: VacuumAnchor.fromJson(json['vacuumAnchor']),
+      markerScale: (rawScale is num && rawScale.toDouble().isFinite)
+          ? rawScale.toDouble()
+          : null,
     );
   }
+
+  /// Copia con otro markerScale — el update optimista de los botones –/+
+  /// reemplaza el plano dentro de [FloorPlansData] sin esperar al backend.
+  FloorPlan withMarkerScale(double scale) => FloorPlan(
+        id: id,
+        name: name,
+        svg: svg,
+        hueRoomId: hueRoomId,
+        icon: icon,
+        vacuumRoom: vacuumRoom,
+        vacuumAnchor: vacuumAnchor,
+        markerScale: scale,
+      );
 }
 
 /// Ancla del mapa del robot al plano: convierte un píxel ABSOLUTO del lienzo
@@ -181,4 +206,27 @@ class FloorPlansData {
     this.jblPositions = const {},
     this.tvPositions = const {},
   });
+
+  /// Plano a mostrar cuando ninguna vista lo fuerza: [candidateId] (la
+  /// elección persistida del usuario) si todavía existe; si no, el plano con
+  /// más dispositivos posicionados → el primero. La comparten FloorPlanPanel
+  /// y la toolbar que opera sobre "el plano visible" (botones de tamaño de
+  /// markers): ambos TIENEN que resolver el mismo plano o los botones
+  /// ajustarían uno que no se ve.
+  FloorPlan? visiblePlan(String? candidateId) {
+    if (plans.isEmpty) return null;
+    for (final p in plans) {
+      if (p.id == candidateId) return p;
+    }
+    FloorPlan? best;
+    var bestCount = -1;
+    for (final p in plans) {
+      final count = positions[p.id]?.length ?? 0;
+      if (count > bestCount) {
+        best = p;
+        bestCount = count;
+      }
+    }
+    return best ?? plans.first;
+  }
 }

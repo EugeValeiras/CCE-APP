@@ -64,13 +64,9 @@ extension TileSizeX on TileSize {
     }
   }
 
-  double get floorPlanDotSize {
-    switch (this) {
-      case TileSize.small: return 44;
-      case TileSize.medium: return 56;
-      case TileSize.large: return 68;
-    }
-  }
+  // El diámetro de los dots del plano YA NO sale de acá: es un atributo del
+  // plano (markerScale, backend) — ver kFloorPlanBaseDotSize en
+  // floor_plan_tab.dart. TileSize gobierna solo las grillas de cards.
 
   String get label {
     switch (this) {
