@@ -10,11 +10,12 @@ import '../services/telephony_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
-import '../theme/components/cce_neo_press.dart';
 import '../utils/dial_number.dart';
 import 'telephony/audio_notice.dart';
 import 'telephony/call_history_screen.dart';
 import 'telephony/contacts_sheet.dart';
+import 'telephony/dial_actions.dart';
+import 'telephony/dial_display.dart';
 import 'telephony/dial_pad.dart';
 
 /// Pantalla del teléfono 4G (HAT SIM7600G-H).
@@ -629,13 +630,20 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     return Padding(
       padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.md, CceSpace.lg, 0),
       child: SizedBox(
-        height: 56,
+        height: 60,
         child: Row(
           children: [
             // Contrapeso del botón de pegar, para que el número quede centrado.
             const SizedBox(width: 44),
             Expanded(
-              child: live ? _toneDisplay() : _numberField(enabled: enabled),
+              child: live
+                  ? _toneDisplay()
+                  : DialNumberField(
+                      controller: _number,
+                      focusNode: _numberFocus,
+                      enabled: enabled,
+                      onChanged: (_) => setState(() {}),
+                    ),
             ),
             SizedBox(
               width: 44,
@@ -649,40 +657,6 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
                     ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  /// Campo EDITABLE: se escribe con el dial pad, pero también se puede tocar
-  /// para corregir a mano o pegar con el menú del sistema. Lo que entre por
-  /// cualquiera de esas vías pasa por [sanitizeDialInput]: un número copiado de
-  /// otra app viene con espacios, guiones y paréntesis que el módem no disca.
-  Widget _numberField({required bool enabled}) {
-    final empty = _number.text.isEmpty;
-    return TextField(
-      controller: _number,
-      focusNode: _numberFocus,
-      enabled: enabled,
-      textAlign: TextAlign.center,
-      keyboardType: TextInputType.phone,
-      cursorColor: CceColors.accent,
-      inputFormatters: const [_DialInputFormatter()],
-      onChanged: (_) => setState(() {}),
-      style: TextStyle(
-        fontSize: empty ? 20 : 30,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 1.0,
-        color: CceColors.textPrimary,
-      ),
-      decoration: const InputDecoration(
-        border: InputBorder.none,
-        isDense: true,
-        hintText: 'Número',
-        hintStyle: TextStyle(
-          fontSize: 20,
-          fontWeight: FontWeight.w400,
-          color: CceColors.textMuted,
         ),
       ),
     );
@@ -720,60 +694,45 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     required bool ringingIn,
     required bool live,
   }) {
-    final children = <Widget>[];
+    final Widget row;
 
     if (ringingIn) {
-      children.addAll([
-        _bigButton(
-          icon: CceIcons.phone,
-          rotate: true,
-          color: CceColors.danger,
-          label: 'Rechazar',
-          onPressed: t.busy ? null : _hangup,
-        ),
-        const SizedBox(width: 40),
-        _bigButton(
-          icon: CceIcons.phone,
-          color: CceColors.ok,
-          label: 'Atender',
-          onPressed: t.busy ? null : _answer,
-        ),
-      ]);
+      row = Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          PhoneRoundButton(
+            icon: CceIcons.phone,
+            rotate: true,
+            color: CceColors.danger,
+            label: 'Rechazar',
+            onPressed: t.busy ? null : _hangup,
+          ),
+          const SizedBox(width: 40),
+          PhoneRoundButton(
+            icon: CceIcons.phone,
+            color: CceColors.ok,
+            label: 'Atender',
+            onPressed: t.busy ? null : _answer,
+          ),
+        ],
+      );
     } else if (live) {
-      children.add(
-        _bigButton(
-          icon: CceIcons.phone,
-          rotate: true,
-          color: CceColors.danger,
-          label: 'Colgar',
-          onPressed: t.busy ? null : _hangup,
-        ),
+      row = PhoneRoundButton(
+        icon: CceIcons.phone,
+        rotate: true,
+        color: CceColors.danger,
+        label: 'Colgar',
+        onPressed: t.busy ? null : _hangup,
       );
     } else {
-      final canDial = isDialable(_number.text) && !t.busy;
-      children.addAll([
-        _sideButton(
-          child: const CceIcon(CceIcons.users, size: 22),
-          tooltip: 'Contactos',
-          onPressed: _openContacts,
-        ),
-        const SizedBox(width: 28),
-        _bigButton(
-          icon: CceIcons.phone,
-          color: CceColors.ok,
-          label: 'Llamar',
-          onPressed: canDial ? () => _call(number: _number.text) : null,
-        ),
-        const SizedBox(width: 28),
-        _sideButton(
-          child: const Icon(Icons.backspace_outlined, size: 22),
-          tooltip: 'Borrar',
-          onPressed: _number.text.isEmpty ? null : _backspace,
-          // Mantener apretado borra todo: escribir 12 dígitos y tener que
-          // borrarlos de a uno es la parte molesta de cualquier dial pad.
-          onLongPress: _clearNumber,
-        ),
-      ]);
+      row = DialActions(
+        hasNumber: _number.text.isNotEmpty,
+        canDial: isDialable(_number.text) && !t.busy,
+        onContacts: _openContacts,
+        onCall: () => _call(number: _number.text),
+        onBackspace: _backspace,
+        onClear: _clearNumber,
+      );
     }
 
     return Padding(
@@ -783,99 +742,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         CceSpace.lg,
         CceSpace.md,
       ),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: children),
-    );
-  }
-
-  /// El botón que cuesta plata (o que la corta): grande, aislado del teclado y
-  /// deshabilitado sin un número discable, para que no se dispare de un roce.
-  Widget _bigButton({
-    required String icon,
-    required Color color,
-    required String label,
-    required VoidCallback? onPressed,
-    bool rotate = false,
-  }) {
-    final enabled = onPressed != null;
-    final fill = enabled ? color : CceColors.surfaceHigh;
-    final glyph = CceIcon(
-      icon,
-      size: 28,
-      color: enabled ? CceColors.inkOnAmber : CceColors.textMuted,
-    );
-
-    return Semantics(
-      button: true,
-      label: label,
-      enabled: enabled,
-      child: Tooltip(
-        message: label,
-        child: CceNeoPress(
-          onTap: onPressed,
-          child: Container(
-            width: 68,
-            height: 68,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: fill,
-              shape: BoxShape.circle,
-              boxShadow: enabled ? CceShadows.raised : null,
-            ),
-            // Colgar es el mismo tubo, dado vuelta: es el gesto que todo el
-            // mundo reconoce sin leer la etiqueta.
-            child: rotate
-                ? Transform.rotate(angle: 2.356, child: glyph)
-                : glyph,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _sideButton({
-    required Widget child,
-    required String tooltip,
-    required VoidCallback? onPressed,
-    VoidCallback? onLongPress,
-  }) {
-    final enabled = onPressed != null;
-    return Tooltip(
-      message: tooltip,
-      child: CceNeoPress(
-        onTap: onPressed,
-        onLongPress: enabled ? onLongPress : null,
-        child: SizedBox(
-          width: 52,
-          height: 52,
-          child: IconTheme(
-            data: IconThemeData(
-              color: enabled ? CceColors.textSecondary : CceColors.textMuted,
-            ),
-            child: Center(child: child),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Todo lo que entra al campo pasa por [sanitizeDialInput], venga del dial pad,
-/// del teclado del sistema o de un pegado. El cursor se lleva al final sólo
-/// cuando el texto CAMBIÓ al limpiarlo: si no, se respeta la selección del
-/// usuario para que pueda editar en el medio.
-class _DialInputFormatter extends TextInputFormatter {
-  const _DialInputFormatter();
-
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final clean = sanitizeDialInput(newValue.text);
-    if (clean == newValue.text) return newValue;
-    return TextEditingValue(
-      text: clean,
-      selection: TextSelection.collapsed(offset: clean.length),
+      child: Center(child: row),
     );
   }
 }
