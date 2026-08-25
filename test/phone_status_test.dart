@@ -55,8 +55,10 @@ void main() {
       expect(st.audioNotice, contains('no vas a escuchar ni hablar'));
     });
 
-    test('cada ruteo dice dónde suena, y ninguno dice que suena en el celular',
+    test('cada ruteo dice dónde suena, mientras el audio no esté en esta app',
         () {
+      // El aviso vale mientras el audio NO lo tenga esta app (CCE#12): cuando
+      // lo tiene, la pantalla muestra lo contrario y este texto no se usa.
       for (final raw in ['headset', 'speaker', 'web', null, 'marciano']) {
         final st = PhoneStatus.fromJson({'audioRoute': raw});
         expect(st.audioRouteLabel, isNotEmpty);
@@ -72,10 +74,43 @@ void main() {
         PhoneStatus.fromJson({'audioRoute': 'speaker'}).audioRouteLabel,
         contains('en la casa'),
       );
-      expect(
-        PhoneStatus.fromJson({'audioRoute': 'web'}).audioRouteLabel,
-        contains('dashboard'),
-      );
+    });
+
+    test('con audioRoute=web dice QUIÉN tiene el audio, no "el dashboard"', () {
+      // Hasta CCE#12 'web' significaba el navegador y punto. Ahora significa
+      // "PCM sobre USB" y del otro lado puede haber un dashboard, un celular o
+      // nadie: decir siempre "dashboard" mandaría al usuario a buscar el audio
+      // donde no está.
+      PhoneStatus withClient(String? client, {bool active = true}) =>
+          PhoneStatus.fromJson({
+            'audioRoute': 'web',
+            'webAudio': {'client': client, 'sessionActive': active},
+          });
+
+      expect(withClient('dashboard').audioClient, AudioClient.dashboard);
+      expect(withClient('dashboard').audioRouteLabel, contains('dashboard'));
+
+      expect(withClient('app').audioClient, AudioClient.app);
+      expect(withClient('app').audioRouteLabel, contains('app'));
+      expect(withClient('app').audioNotice, contains('otro dispositivo'));
+
+      expect(withClient('desconocido').audioClient, AudioClient.other);
+      expect(withClient('desconocido').audioRouteLabel, contains('otro'));
+
+      // Ruteo en 'web' pero sin nadie conectado: la voz sale igual por el jack.
+      final nobody = withClient(null, active: false);
+      expect(nobody.audioClient, isNull);
+      expect(nobody.audioSessionActive, isFalse);
+      expect(nobody.audioRouteLabel, contains('Nadie tomó el audio'));
+      expect(nobody.audioNotice, contains('no vas a escuchar ni hablar'));
+
+      // Y el aviso sigue estando en todos los casos.
+      for (final client in ['dashboard', 'app', 'desconocido', null]) {
+        expect(
+          withClient(client).audioNotice,
+          contains('no vas a escuchar ni hablar'),
+        );
+      }
     });
 
     test('el saldo llega del operador, no de un schema nuestro', () {

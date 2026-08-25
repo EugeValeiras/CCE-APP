@@ -108,12 +108,16 @@ class PhoneCall {
   }
 }
 
-/// Por dónde sale la voz de una llamada. **La app NO lleva audio**: el módem
-/// rutea la voz al jack del HAT (en la casa) o al navegador del dashboard por
-/// USB. El celular nunca participa, disque quien disque.
+/// Por dónde sale la voz de una llamada.
 ///
-/// Es la limitación central de la pantalla del teléfono: si no se dice, un
-/// usuario que disca y no escucha nada asume que la app está rota.
+/// Hasta el issue #10 la respuesta era siempre "en la casa". Desde el #12 el
+/// celular también puede llevarla: `web` dejó de significar "el navegador" y
+/// pasa a significar **PCM sobre USB**, con el cliente que lo tomó del otro
+/// lado — el dashboard o la app. Quién lo tiene lo dice [PhoneStatus.audioClient].
+///
+/// Sigue siendo la aclaración central de la pantalla del teléfono: mientras el
+/// audio NO esté en este celular, hay que decirlo, o el usuario que disca y no
+/// escucha nada asume que la app está rota.
 enum AudioRoute {
   /// Jack del HAT: se escucha por el parlante/auricular enchufado en la casa.
   headset,
@@ -121,11 +125,36 @@ enum AudioRoute {
   /// Parlante del HAT (manos libres), también en la casa.
   speaker,
 
-  /// Lo tomó una pestaña del dashboard: la voz va y viene por el navegador.
+  /// PCM sobre USB: se lo lleva quien haya tomado la sesión de audio.
   web,
 
   /// El backend no lo informó.
   unknown,
+}
+
+/// Quién tiene tomado el audio remoto (`webAudio.client` de `/phone/status`).
+enum AudioClient {
+  /// Una pestaña del dashboard.
+  dashboard,
+
+  /// La app de un celular. Puede ser ESTE o puede ser otro.
+  app,
+
+  /// Alguien que no se identificó en el handshake del WebSocket.
+  other,
+}
+
+AudioClient? _parseAudioClient(dynamic raw) {
+  switch (raw) {
+    case 'dashboard':
+      return AudioClient.dashboard;
+    case 'app':
+      return AudioClient.app;
+    case 'desconocido':
+      return AudioClient.other;
+    default:
+      return null;
+  }
 }
 
 AudioRoute _parseAudioRoute(String? raw) {
@@ -212,8 +241,19 @@ class PhoneStatus {
   /// estado normal al abrir la app, porque consultarlo es tráfico de red.
   final String? balance;
 
-  /// Por dónde sale la voz. Ver [AudioRoute]: nunca es el celular.
+  /// Por dónde sale la voz. Ver [AudioRoute].
   final AudioRoute audioRoute;
+
+  /// Quién tiene tomado el audio remoto, o `null` si no lo tiene nadie.
+  ///
+  /// Con `audioRoute == web` y esto en `null`, el ruteo es una PREFERENCIA sin
+  /// nadie del otro lado: la voz sale igual por el jack de la casa. Es la
+  /// diferencia entre "el audio está en el dashboard" y "el audio no está en
+  /// ningún lado", que desde afuera se veían iguales.
+  final AudioClient? audioClient;
+
+  /// ¿Hay una sesión de audio remoto tomada ahora mismo?
+  final bool audioSessionActive;
 
   /// Estado de la llamada en curso según `/status` ('idle' | 'dialing' |
   /// 'ringing' | 'active' | 'ended'). El estado EN VIVO llega por
@@ -237,6 +277,8 @@ class PhoneStatus {
     this.ownNumber,
     this.balance,
     this.audioRoute = AudioRoute.unknown,
+    this.audioClient,
+    this.audioSessionActive = false,
     this.callState = 'idle',
     this.callsLastHour = 0,
     this.maxCallsPerHour = 0,
@@ -245,6 +287,7 @@ class PhoneStatus {
   factory PhoneStatus.fromJson(Map<String, dynamic> json) {
     final signal = json['signal'];
     final call = json['call'];
+    final webAudio = json['webAudio'];
     return PhoneStatus(
       enabled: json['enabled'] == true,
       online: json['online'] == true,
@@ -256,6 +299,10 @@ class PhoneStatus {
       ownNumber: json['ownNumber'] as String?,
       balance: _balanceText(json['balance']),
       audioRoute: _parseAudioRoute(json['audioRoute'] as String?),
+      audioClient:
+          webAudio is Map ? _parseAudioClient(webAudio['client']) : null,
+      audioSessionActive:
+          webAudio is Map && webAudio['sessionActive'] == true,
       callState: call is Map ? (call['state'] ?? 'idle').toString() : 'idle',
       callsLastHour: (json['callsLastHour'] as num?)?.toInt() ?? 0,
       maxCallsPerHour: (json['maxCallsPerHour'] as num?)?.toInt() ?? 0,
@@ -294,8 +341,8 @@ class PhoneStatus {
   }
 
   /// Dónde suena la voz, en una línea. Va SIEMPRE acompañado de
-  /// [audioNotice]: sin la aclaración de que el celular no lleva audio, decir
-  /// "parlante" invita a pensar que es el del celular.
+  /// [audioNotice] mientras el audio no esté en este celular: sin la
+  /// aclaración, decir "parlante" invita a pensar que es el del celular.
   String get audioRouteLabel {
     switch (audioRoute) {
       case AudioRoute.headset:
@@ -303,7 +350,19 @@ class PhoneStatus {
       case AudioRoute.speaker:
         return 'Parlante del teléfono, en la casa';
       case AudioRoute.web:
-        return 'Navegador: lo tomó el dashboard';
+        switch (audioClient) {
+          case AudioClient.app:
+            return 'Lo tomó la app de un celular';
+          case AudioClient.dashboard:
+            return 'Navegador: lo tomó el dashboard';
+          case AudioClient.other:
+            return 'Lo tomó otro dispositivo';
+          case null:
+            // El ruteo 'web' es una preferencia: sin nadie conectado la voz
+            // sale igual por el jack. Decir "lo tomó el dashboard" acá sería
+            // mandar al usuario a buscar un audio que no está en ningún lado.
+            return 'Nadie tomó el audio: suena en el teléfono de la casa';
+        }
       case AudioRoute.unknown:
         return 'Ruteo de audio sin determinar';
     }
@@ -311,8 +370,9 @@ class PhoneStatus {
 
   /// El aviso, sin letra chica: por este celular no se escucha ni se habla.
   ///
-  /// Es criterio de aceptación del issue, no un detalle de diseño: la app
-  /// disca de verdad y el destino suena, pero el audio se queda en la casa.
+  /// Vale mientras el audio **no** esté tomado por esta app. Cuando sí lo está,
+  /// la pantalla muestra lo contrario (ver `AudioRouteNotice.onThisPhone`): el
+  /// aviso dejaría de ser cierto y sería el peor de los mensajes posibles.
   String get audioNotice {
     switch (audioRoute) {
       case AudioRoute.headset:
@@ -320,8 +380,20 @@ class PhoneStatus {
         return 'Por el celular no vas a escuchar ni hablar: el audio sale por '
             'el teléfono de la casa.';
       case AudioRoute.web:
-        return 'Por el celular no vas a escuchar ni hablar: el audio lo tiene '
-            'el dashboard en el navegador.';
+        switch (audioClient) {
+          case AudioClient.app:
+            return 'Por el celular no vas a escuchar ni hablar: el audio lo '
+                'tiene la app en otro dispositivo.';
+          case AudioClient.dashboard:
+            return 'Por el celular no vas a escuchar ni hablar: el audio lo '
+                'tiene el dashboard en el navegador.';
+          case AudioClient.other:
+            return 'Por el celular no vas a escuchar ni hablar: el audio lo '
+                'tomó otro dispositivo.';
+          case null:
+            return 'Por el celular no vas a escuchar ni hablar: el audio se '
+                'queda en la casa.';
+        }
       case AudioRoute.unknown:
         return 'Por el celular no vas a escuchar ni hablar: el audio se queda '
             'en la casa.';
