@@ -19,8 +19,9 @@ import '../views/telephony_screen.dart';
 ///  - Sin llamada: el estado de la LÍNEA, que no es lo mismo que el registro de
 ///    red — una línea sin habilitar se registra igual y reporta todo en verde.
 ///
-/// La app NO disca (decisión de producto: el dial pad vive sólo en el
-/// dashboard), así que la card no tiene acción rápida de llamar.
+/// La card no disca: abre [TelephonyScreen], que es donde está el teclado. Un
+/// atajo para llamar en la pantalla de inicio sería lo más fácil de apretar sin
+/// querer, y con la línea activa eso cuesta plata.
 class PhoneHomeCard extends StatelessWidget {
   final DevicesService service;
   final TelephonyService telephony;

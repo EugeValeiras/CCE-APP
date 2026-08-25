@@ -125,8 +125,8 @@ class DeviceState {
   final VacuumPosition? vacuumPosition;
 
   // ── Bloque PHONE (telefonía 4G, device `dev_phone`) ──
-  // El HAT SIM7600G-H con su propia línea. La app NO disca: muestra el estado
-  // y el historial (el dial pad vive sólo en el dashboard).
+  // El HAT SIM7600G-H con su propia línea. La app disca desde su propio dial
+  // pad (issue #10); lo que no lleva es el AUDIO, que se queda en la casa.
   /// 'idle' | 'dialing' | 'ringing' | 'active' | 'ended'.
   final String? callState;
   /// 'in' = entrante, 'out' = saliente. Ausente sin llamada.
