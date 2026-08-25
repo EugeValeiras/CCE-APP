@@ -5,6 +5,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
+import '../utils/room_temperature.dart';
 
 /// Card "clima": temperatura + humedad actuales. Si [room] != null toma solo
 /// los sensores de esa habitación; si es null, toda la casa. Se auto-oculta
@@ -45,41 +46,39 @@ class TemperatureSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Sensores en el alcance: los de la room (por deviceIds) o toda la casa.
+    // Pool de temperatura del alcance (termómetros + termostatos, en ese
+    // orden): lo resuelve RoomTemperature, la MISMA función que alimenta el
+    // badge del RoomCard en la home y el picker — dos implementaciones de
+    // "qué temperatura es esta" terminaban mostrando números distintos para
+    // la misma habitación. OJO: cuando el elegido ES un termostato,
+    // RoomTemperatureHeader renderiza el control con +/− y esta card ni se
+    // construye.
+    final tempSensors = RoomTemperature.pool(service, room);
+    // La HUMEDAD sigue siendo asunto de esta card (el badge no la muestra):
+    // solo termómetros de la room, sin termostatos.
     final scoped = room == null
         ? service.sensors
         : service.sensors
             .where((s) => room!.deviceIds.contains(s.id))
             .toList();
-    final tempSensors =
-        scoped.where((s) => s.sensor?.temperature != null).toList();
-    // Los termostatos entran al pool SIEMPRE (antes: solo si había
-    // termómetros, para no duplicar con ThermostatHeaderCard — ya no existe
-    // esa card aparte). Se agregan AL FINAL para no mover el fallback
-    // "primero" ni la persistencia histórica del hero. El picker espeja este
-    // pool. OJO: cuando el elegido ES un termostato, RoomTemperatureHeader
-    // renderiza el control con +/− y esta card ni se construye.
-    tempSensors.addAll(service.thermostats
-        .where((d) => room == null || room!.deviceIds.contains(d.id))
-        .where((d) => d.state.currentTemp != null));
     final humSensors =
         scoped.where((s) => s.sensor?.humidity != null).toList();
     if (tempSensors.isEmpty && humSensors.isEmpty) return const SizedBox.shrink();
 
     // Hero = el sensor elegido por el usuario (selectedSensorId) si sigue
     // disponible; si no, el primero (fallback histórico).
-    final primary = tempSensors.isEmpty
-        ? null
-        : tempSensors.firstWhere(
-            (s) => s.id == selectedSensorId,
-            orElse: () => tempSensors.first,
-          );
+    final primary = RoomTemperature.primary(
+      service,
+      room,
+      selectedSensorId: selectedSensorId,
+    );
     final primaryHumDevice = humSensors.firstWhere(
       (s) => s.id == primary?.id,
       orElse: () => humSensors.isNotEmpty ? humSensors.first : _dummy,
     );
     final primaryHum = primaryHumDevice.sensor?.humidity;
-    final primaryTemp = primary == null ? null : _tempOf(primary);
+    final primaryTemp =
+        primary == null ? null : RoomTemperature.reading(primary);
 
     // Card seleccionable: hay handler de tap Y más de un termómetro entre los
     // que elegir. Con un solo sensor el tap no aportaría nada → la card queda
@@ -151,12 +150,6 @@ class TemperatureSummaryCard extends StatelessWidget {
   // puede tocar cce_icons.dart; el resto de glyphs salen de CceIcons).
   static const String _dropletSvg =
       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5S5 13 5 15a7 7 0 0 0 7 7"/></svg>';
-
-  /// Lectura unificada de temperatura: termómetro (sensor.temperature) o
-  /// termostato (state.currentTemp — en los termostatos `sensor` suele ser
-  /// null, la lectura ambiente vive en el estado del equipo).
-  static double? _tempOf(Device d) =>
-      d.isThermostat ? d.state.currentTemp : d.sensor?.temperature;
 
   // RETIRADA la escala térmica de color (azul→verde→ámbar→rojo según la
   // lectura). Traía cinco colores fuera de la paleta para decir algo que el

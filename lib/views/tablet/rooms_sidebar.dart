@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../models/room_ref.dart';
 import '../../services/devices_service.dart';
+import '../../services/temp_sensor_prefs.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_logo.dart';
 import '../../theme/components/room_card.dart';
 import '../../utils/room_icon.dart';
+import '../../utils/room_temperature.dart';
 import '../../widgets/pulse_on_update.dart';
 
 /// Sidebar de habitaciones estilo Hue (tablet): entrada fija "Toda la casa"
@@ -43,6 +45,14 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
   // Toggle de "Toda la casa" deshabilitado durante la ráfaga (máx 1.5 s).
   bool _allHouseBusy = false;
   Timer? _allHouseTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Termómetro elegido por habitación: alimenta el badge de cada RoomCard.
+    // Se carga una vez y queda cacheado (el build lo necesita síncrono).
+    TempSensorPrefs.instance.ensureLoaded();
+  }
 
   @override
   void dispose() {
@@ -125,6 +135,15 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
         selected: widget.selectedRoomId == room.id,
         motion: stats.anyMotion,
         contactOpen: stats.anyContactOpen,
+        // Badge de temperatura: MISMO helper y MISMA elección de termómetro
+        // que el header del detalle de la habitación. null (sin sensor) ⇒ la
+        // card se ve igual que antes. OJO: la fila "Toda la casa" de abajo NO
+        // es una habitación y por eso no pasa este parámetro.
+        temperature: RoomTemperature.forRoom(
+          service,
+          room,
+          selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
+        ),
         neo: widget.neo,
         onTap: () => widget.onSelect(room.id),
         onToggle: (v) => _toggleRoom(room, v),
@@ -136,7 +155,10 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.service,
+      // merge: además de los eventos de sensor (service), el badge de
+      // temperatura depende del termómetro elegido para cada room — elegirlo
+      // en el detalle debe reflejarse en el sidebar sin recargar nada.
+      animation: Listenable.merge([widget.service, TempSensorPrefs.instance]),
       builder: (context, _) {
         final service = widget.service;
         final rooms = service.rooms;

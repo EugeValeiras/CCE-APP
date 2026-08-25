@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device.dart';
 import '../models/room_ref.dart';
 import '../services/devices_service.dart';
+import '../services/temp_sensor_prefs.dart';
+import '../utils/room_temperature.dart';
 import 'thermostat_header_card.dart';
 import 'temperature_sensor_picker_sheet.dart';
 import 'temperature_summary_card.dart';
@@ -22,6 +23,10 @@ import 'temperature_summary_card.dart';
 ///
 /// Antes la room mostraba DOS cards (lectura + termostato) con la misma
 /// temperatura duplicada; ahora es una sola y la elige el usuario.
+///
+/// La elección vive en [TempSensorPrefs] (cache compartido) y la resolución en
+/// [RoomTemperature]: el badge de la home entra por las mismas dos puertas, así
+/// que muestra el mismo número que este header.
 class RoomTemperatureHeader extends StatefulWidget {
   final DevicesService service;
   final RoomRef? room;
@@ -41,61 +46,25 @@ class RoomTemperatureHeader extends StatefulWidget {
 }
 
 class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
-  /// Id del termómetro elegido para ESTA room (null ⇒ primero). La card cae
-  /// al primero si el id guardado ya no existe (mismo fallback que la home).
-  String? _tempSensorId;
+  TempSensorPrefs get _prefs => TempSensorPrefs.instance;
 
-  // room == null ⇒ comparte 'home.tempSensorId' con el hero del phone
-  // (rooms_list_screen): un solo termómetro de la casa para ambos heros.
-  String get _prefKey {
-    final r = widget.room;
-    return r == null ? 'home.tempSensorId' : 'home.tempSensorId.${r.id}';
-  }
+  /// Id del termómetro elegido para ESTA room (null ⇒ primero). Se lee del
+  /// cache compartido en cada build, así que el RoomPanel del tablet puede
+  /// reconstruirse con OTRA room en la misma posición del árbol sin arrastrar
+  /// la selección de la anterior (antes hacía falta un didUpdateWidget).
+  String? get _tempSensorId => _prefs.idFor(widget.room?.id);
 
   @override
   void initState() {
     super.initState();
-    _load();
-  }
-
-  @override
-  void didUpdateWidget(RoomTemperatureHeader oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // El RoomPanel del tablet se reconstruye con OTRA room en la misma
-    // posición del árbol al cambiar la selección: reseteamos y recargamos
-    // para no mostrar la selección de la room anterior.
-    if (oldWidget.room?.id != widget.room?.id) {
-      setState(() => _tempSensorId = null);
-      _load();
-    }
-  }
-
-  Future<void> _load() async {
-    // Captura la key ANTES del await: si la room cambia mientras carga, el
-    // resultado viejo se descarta (guarda de carrera).
-    final key = _prefKey;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final saved = prefs.getString(key);
-      if (saved != null && mounted && key == _prefKey) {
-        setState(() => _tempSensorId = saved);
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _save(String id) async {
-    if (mounted) setState(() => _tempSensorId = id);
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_prefKey, id);
-    } catch (_) {}
+    _prefs.ensureLoaded();
   }
 
   Future<void> _openPicker() async {
     // Captura la room ANTES del await: en tablet el RoomPanel puede
     // reconstruirse con OTRA room mientras el sheet está abierto; si eso
     // pasa, el resultado se descarta para no contaminar la key de la room
-    // nueva con un sensor ajeno (misma guarda que _load).
+    // nueva con un sensor ajeno.
     final room = widget.room;
     final picked = await TemperatureSensorPickerSheet.show(
       context,
@@ -104,42 +73,23 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
       room: room,
     );
     if (picked == null || !mounted || widget.room?.id != room?.id) return;
-    _save(picked);
-  }
-
-  /// Termostatos en el alcance (room o casa).
-  List<Device> get _thermostats {
-    final r = widget.room;
-    return widget.service.thermostats
-        .where((d) => r == null || r.deviceIds.contains(d.id))
-        .toList();
-  }
-
-  /// El termostato a mostrar como control, o null si corresponde la lectura.
-  ///
-  /// - Elegido explícitamente ⇒ ese.
-  /// - Sin elección previa y hay termostato en la room ⇒ el termostato (así la
-  ///   room sigue mostrando el control con +/− como antes, ahora como header
-  ///   ÚNICO en vez de duplicar la temperatura).
-  Device? get _selectedThermostat {
-    final list = _thermostats;
-    if (list.isEmpty) return null;
-    final id = _tempSensorId;
-    if (id != null) {
-      for (final d in list) {
-        if (d.id == id) return d;
-      }
-      return null; // eligió un termómetro
-    }
-    return widget.room == null ? null : list.first;
+    _prefs.select(room?.id, picked);
   }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: widget.service,
+      // merge: además de los eventos de sensor (service), el header se
+      // reconstruye cuando cambia el termómetro elegido — la elección ya no es
+      // estado local, la comparte con el badge de la home.
+      animation: Listenable.merge([widget.service, _prefs]),
       builder: (context, _) {
-        final thermostat = _selectedThermostat;
+        final selectedId = _tempSensorId;
+        final Device? thermostat = RoomTemperature.thermostat(
+          widget.service,
+          widget.room,
+          selectedSensorId: selectedId,
+        );
         if (thermostat != null) {
           // Control con +/− accionable. Long-press abre el selector.
           return ThermostatHeaderCard(
@@ -154,7 +104,7 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
           room: widget.room,
           compact: widget.compact,
           neo: widget.neo,
-          selectedSensorId: _tempSensorId,
+          selectedSensorId: selectedId,
           onLongPress: _openPicker,
         );
       },

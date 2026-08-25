@@ -18,6 +18,8 @@ import 'status_dot.dart';
 /// hacía que la lista "saltara" al recorrerla. Reservar siempre la misma altura
 /// cuesta un poco de densidad y compra ritmo vertical, que a la larga es lo que
 /// hace que una lista se lea como un sistema y no como una pila de cosas.
+/// Todo lo que se agregue a la card (el badge de [temperature], por ejemplo)
+/// se acomoda DENTRO de esa caja; nada la estira.
 ///
 /// El estado ENCENDIDO se comunica con el ácento del sistema (ícono + switch +
 /// dot), NO con el color real de las luces: en una lista lo que importa es
@@ -41,6 +43,7 @@ class RoomCard extends StatefulWidget {
     this.motion = false,
     this.contactOpen = false,
     this.subtitleOverride,
+    this.temperature,
     this.toggleEnabled = true,
     required this.onTap,
     required this.onToggle,
@@ -81,6 +84,13 @@ class RoomCard extends StatefulWidget {
 
   /// "Toda la casa": "12/31 · 2 con movimiento".
   final String? subtitleOverride;
+
+  /// Temperatura actual de la habitación en °C, ya resuelta por
+  /// `RoomTemperature.forRoom` (la card no sabe de sensores). null ⇒ NO se
+  /// renderiza nada: una habitación sin termómetro se ve exactamente igual que
+  /// antes de que existiera el badge. La fila "Toda la casa" del sidebar no es
+  /// una habitación real y por eso tampoco lo pasa.
+  final double? temperature;
 
   /// false ⇒ Switch deshabilitado (onChanged: null); onTap sigue vivo.
   final bool toggleEnabled;
@@ -242,6 +252,16 @@ class _RoomCardState extends State<RoomCard> {
             ],
           ),
         ),
+        // Badge de temperatura, entre el bloque de título y el switch. Va
+        // FUERA del Expanded: con un nombre de habitación largo el que se
+        // trunca es el título, nunca el badge. Su alto (una línea de 15px) es
+        // menor que el del bloque título/subtítulo, así que NO estira la fila
+        // y [kHeight] se mantiene igual con y sin badge — que es justamente la
+        // decisión de diseño que documenta el header de este archivo.
+        if (widget.temperature != null) ...[
+          SizedBox(width: CceSpace.sm),
+          _TemperatureBadge(widget.temperature!),
+        ],
         SizedBox(width: CceSpace.md),
         // Switch unificado (CceSwitch): tamaño natural del JBL, sin FittedBox.
         // El título Expanded cede ancho; entra al final del Row sin desbordar.
@@ -320,6 +340,36 @@ class _RoomCardState extends State<RoomCard> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Lectura de temperatura de la habitación dentro de la [RoomCard].
+///
+/// Texto pelado, sin píldora ni color propio: la card ya comunica el estado
+/// con el acento (ícono + dot + switch) y meterle una caja más sería sumar
+/// ruido para decir un número. Cifras TABULARES ([CceText.data]) para que
+/// pasar de 23.9 a 24.0 no mueva el layout, y un ancho mínimo que alinea las
+/// lecturas normales en columna a lo largo de la lista sin recortar las largas
+/// ("-10.5°" se expande en vez de truncarse).
+class _TemperatureBadge extends StatelessWidget {
+  const _TemperatureBadge(this.value);
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = '${value.toStringAsFixed(1)}°';
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 46),
+      child: Text(
+        text,
+        maxLines: 1,
+        softWrap: false,
+        textAlign: TextAlign.right,
+        semanticsLabel: 'Temperatura ${value.toStringAsFixed(1)} grados',
+        style: CceText.data.copyWith(color: CceColors.textSecondary),
       ),
     );
   }

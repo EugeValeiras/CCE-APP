@@ -8,6 +8,7 @@ import '../models/room_ref.dart';
 import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
+import '../services/temp_sensor_prefs.dart';
 import '../services/tv_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
@@ -15,6 +16,7 @@ import '../theme/components/cce_card.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
 import '../utils/room_icon.dart';
+import '../utils/room_temperature.dart';
 import '../widgets/pulse_on_update.dart';
 import '../widgets/room_temperature_header.dart';
 import '../widgets/featured_home_cards.dart';
@@ -83,6 +85,9 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         AutomationsService(config: widget.service.config, devices: widget.service);
     _loadOrder();
     _loadFeatured();
+    // Termómetro elegido por habitación: alimenta el badge de cada RoomCard.
+    // Se carga una vez y queda cacheado (el build lo necesita síncrono).
+    TempSensorPrefs.instance.ensureLoaded();
   }
 
   @override
@@ -620,8 +625,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     return AnimatedBuilder(
       // merge: las cards/editor de Destacados también dependen de
       // AutomationsService (sin esto, una automatización destacada no aparece
-      // hasta que un evento ajeno de DevicesService fuerce rebuild).
-      animation: Listenable.merge([service, _automations]),
+      // hasta que un evento ajeno de DevicesService fuerce rebuild), y el badge
+      // de temperatura de TempSensorPrefs (elegir otro termómetro en el detalle
+      // de una habitación debe reflejarse en su botón al volver).
+      animation:
+          Listenable.merge([service, _automations, TempSensorPrefs.instance]),
       builder: (context, _) {
         if (service.loading && service.all.isEmpty) {
           // Mientras no haya datos seguimos mostrando "Preparando tu hogar"
@@ -837,6 +845,16 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         compact: false,
         motion: stats.anyMotion,
         contactOpen: stats.anyContactOpen,
+        // Badge de temperatura: MISMO helper y MISMA elección de termómetro
+        // que el header del detalle, para que la home y la habitación no
+        // muestren números distintos. null (sin sensor) ⇒ la card se ve igual
+        // que antes. Se refresca solo: el valor sale de service.sensors, que
+        // los eventos WS ya actualizan.
+        temperature: RoomTemperature.forRoom(
+          service,
+          room,
+          selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
+        ),
         onTap: () {
           HapticFeedback.selectionClick();
           Navigator.of(context).push(MaterialPageRoute(
