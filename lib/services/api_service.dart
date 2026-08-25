@@ -69,6 +69,94 @@ class ApiService {
         .toList();
   }
 
+  /// Libreta del backend (GET /phone/contacts). El ABM es del dashboard: la
+  /// app sólo lee para discar desde acá.
+  Future<List<PhoneContact>> getPhoneContacts() async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/phone/contacts'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    final items = data is Map ? (data['contacts'] as List? ?? []) : <dynamic>[];
+    return items
+        .whereType<Map>()
+        .map((e) => PhoneContact.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// POST a un comando de `/phone/*`.
+  ///
+  /// El backend contesta **201 aunque el comando se haya rechazado**: el
+  /// veredicto está en el body (`{ success, reason }`), no en el status. Mirar
+  /// sólo el código HTTP daría por buena una llamada que nunca salió, así que
+  /// acá se parsea el body y el `reason` sube tal cual en
+  /// [PhoneCommandException] — el usuario necesita leer "hay una llamada en
+  /// curso" o "rate limit alcanzado", no "Error 201".
+  ///
+  /// El timeout es largo a propósito: el `ATD` del módem puede tardar varios
+  /// segundos en volver, y cortar antes dejaría a la app diciendo que falló una
+  /// llamada que en realidad está saliendo.
+  Future<void> _phoneCommand(String path, [Map<String, dynamic>? body]) async {
+    final resp = await http
+        .post(
+          Uri.parse('${config.baseUrl}/phone/$path'),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode(body ?? const <String, dynamic>{}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    Map<String, dynamic>? data;
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map) data = Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      // Body no-JSON (un 502 del proxy, por ejemplo): cae al chequeo de status.
+    }
+
+    final reason = (data?['reason'] ?? '').toString().trim();
+    if (data?['success'] == false) {
+      throw PhoneCommandException(
+        reason.isEmpty ? 'El teléfono rechazó el comando.' : reason,
+      );
+    }
+    if (resp.statusCode >= 300) {
+      throw PhoneCommandException(
+        reason.isEmpty ? 'Error ${resp.statusCode}' : reason,
+      );
+    }
+  }
+
+  /// Disca (POST /phone/call). Con [contactId] el backend resuelve el número de
+  /// la libreta; con [number] disca lo que se le pasa.
+  ///
+  /// OJO: esto CUESTA PLATA y la llamada sale del módem de la casa, no del
+  /// celular.
+  Future<void> phoneCall({String? number, String? contactId}) {
+    final body = contactId != null
+        ? <String, dynamic>{'contactId': contactId}
+        : <String, dynamic>{'number': number ?? ''};
+    return _phoneCommand('call', body);
+  }
+
+  /// Corta la llamada en curso (POST /phone/hangup). También es el "rechazar"
+  /// de una entrante: el backend no tiene un endpoint aparte.
+  Future<void> phoneHangup() => _phoneCommand('hangup');
+
+  /// Atiende la entrante que está sonando (POST /phone/answer). El audio sigue
+  /// yendo al HAT o al navegador: atender desde la app no lo trae al celular.
+  Future<void> phoneAnswer() => _phoneCommand('answer');
+
+  /// Manda tonos DTMF a la llamada en curso (POST /phone/dtmf). Es lo que
+  /// permite navegar un menú de voz desde el celular aunque no se escuche el
+  /// menú.
+  Future<void> phoneDtmf(String digits) => _phoneCommand('dtmf', {'digits': digits});
+
   /// Catálogo de capabilities (GET /capabilities): mapa capability→{stateFields,
   /// actions con min/max/policy} + enums. Data pura, sin secretos. Se carga una
   /// vez; convierte a la app en intérprete del schema para la vista unificada.

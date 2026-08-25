@@ -108,8 +108,81 @@ class PhoneCall {
   }
 }
 
+/// Por dónde sale la voz de una llamada. **La app NO lleva audio**: el módem
+/// rutea la voz al jack del HAT (en la casa) o al navegador del dashboard por
+/// USB. El celular nunca participa, disque quien disque.
+///
+/// Es la limitación central de la pantalla del teléfono: si no se dice, un
+/// usuario que disca y no escucha nada asume que la app está rota.
+enum AudioRoute {
+  /// Jack del HAT: se escucha por el parlante/auricular enchufado en la casa.
+  headset,
+
+  /// Parlante del HAT (manos libres), también en la casa.
+  speaker,
+
+  /// Lo tomó una pestaña del dashboard: la voz va y viene por el navegador.
+  web,
+
+  /// El backend no lo informó.
+  unknown,
+}
+
+AudioRoute _parseAudioRoute(String? raw) {
+  switch (raw) {
+    case 'headset':
+      return AudioRoute.headset;
+    case 'speaker':
+      return AudioRoute.speaker;
+    case 'web':
+      return AudioRoute.web;
+    default:
+      return AudioRoute.unknown;
+  }
+}
+
+/// Un contacto de la libreta del backend (`GET /api/phone/contacts`). El ABM es
+/// del dashboard: acá sólo se disca desde la libreta.
+class PhoneContact {
+  final String id;
+  final String name;
+  final String number;
+
+  const PhoneContact({
+    required this.id,
+    required this.name,
+    required this.number,
+  });
+
+  /// Qué mostrar cuando el contacto vino sin nombre (no debería, pero el
+  /// backend no lo garantiza): antes el número que una fila en blanco.
+  String get displayName => name.trim().isEmpty ? number : name;
+
+  factory PhoneContact.fromJson(Map<String, dynamic> json) => PhoneContact(
+        id: (json['id'] ?? '').toString(),
+        name: (json['name'] ?? '').toString(),
+        number: (json['number'] ?? '').toString(),
+      );
+}
+
+/// Rechazo del backend a un comando de telefonía.
+///
+/// Los POST de `/phone/*` contestan **201 con `{ success: false, reason }`**:
+/// el código HTTP no alcanza para saber si salió. El `reason` viene redactado
+/// para leerse tal cual ("hay una llamada en curso", "rate limit de llamadas
+/// por hora alcanzado") y la app lo muestra sin reemplazarlo por un genérico:
+/// es la diferencia entre "no funciona" y "no podés llamar hasta dentro de un
+/// rato".
+class PhoneCommandException implements Exception {
+  final String reason;
+  const PhoneCommandException(this.reason);
+
+  @override
+  String toString() => reason;
+}
+
 /// Estado de la línea (`GET /api/phone/status`), recortado a lo que muestra la
-/// app: sin dial pad, no necesita volumen ni ruteo de audio.
+/// app.
 class PhoneStatus {
   final bool enabled;
 
@@ -134,6 +207,25 @@ class PhoneStatus {
   /// cuando la casa te llama.
   final String? ownNumber;
 
+  /// Saldo de la línea, ya formateado por el backend a partir de la respuesta
+  /// USSD del operador. `null` mientras no se haya consultado — que es el
+  /// estado normal al abrir la app, porque consultarlo es tráfico de red.
+  final String? balance;
+
+  /// Por dónde sale la voz. Ver [AudioRoute]: nunca es el celular.
+  final AudioRoute audioRoute;
+
+  /// Estado de la llamada en curso según `/status` ('idle' | 'dialing' |
+  /// 'ringing' | 'active' | 'ended'). El estado EN VIVO llega por
+  /// `device:state-changed`; esto es sólo el seed.
+  final String callState;
+
+  /// Llamadas cursadas en la última hora y tope del backend. Discar cuesta
+  /// plata: cuando el margen se achica la pantalla lo dice ANTES de que el
+  /// rate limit corte.
+  final int callsLastHour;
+  final int maxCallsPerHour;
+
   const PhoneStatus({
     this.enabled = false,
     this.online = false,
@@ -143,10 +235,16 @@ class PhoneStatus {
     this.signalBars = 0,
     this.lineActive = 'unknown',
     this.ownNumber,
+    this.balance,
+    this.audioRoute = AudioRoute.unknown,
+    this.callState = 'idle',
+    this.callsLastHour = 0,
+    this.maxCallsPerHour = 0,
   });
 
   factory PhoneStatus.fromJson(Map<String, dynamic> json) {
     final signal = json['signal'];
+    final call = json['call'];
     return PhoneStatus(
       enabled: json['enabled'] == true,
       online: json['online'] == true,
@@ -156,7 +254,26 @@ class PhoneStatus {
       signalBars: signal is Map ? ((signal['bars'] as num?)?.toInt() ?? 0) : 0,
       lineActive: (json['lineActive'] ?? 'unknown').toString(),
       ownNumber: json['ownNumber'] as String?,
+      balance: _balanceText(json['balance']),
+      audioRoute: _parseAudioRoute(json['audioRoute'] as String?),
+      callState: call is Map ? (call['state'] ?? 'idle').toString() : 'idle',
+      callsLastHour: (json['callsLastHour'] as num?)?.toInt() ?? 0,
+      maxCallsPerHour: (json['maxCallsPerHour'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  /// El saldo llega del operador, no de un schema nuestro: puede venir como
+  /// texto ya armado, como número, o como objeto con el texto adentro. Se
+  /// normaliza a String y se descarta lo vacío, que es lo mismo que no tenerlo.
+  static String? _balanceText(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is String) return raw.trim().isEmpty ? null : raw.trim();
+    if (raw is num) return raw.toString();
+    if (raw is Map) {
+      final text = raw['text'] ?? raw['formatted'] ?? raw['amount'];
+      return text == null ? null : _balanceText(text.toString());
+    }
+    return null;
   }
 
   /// Texto corto del estado de la línea para la card y el header.
@@ -175,4 +292,47 @@ class PhoneStatus {
         return operator ?? 'Registrado';
     }
   }
+
+  /// Dónde suena la voz, en una línea. Va SIEMPRE acompañado de
+  /// [audioNotice]: sin la aclaración de que el celular no lleva audio, decir
+  /// "parlante" invita a pensar que es el del celular.
+  String get audioRouteLabel {
+    switch (audioRoute) {
+      case AudioRoute.headset:
+        return 'Auricular del teléfono, en la casa';
+      case AudioRoute.speaker:
+        return 'Parlante del teléfono, en la casa';
+      case AudioRoute.web:
+        return 'Navegador: lo tomó el dashboard';
+      case AudioRoute.unknown:
+        return 'Ruteo de audio sin determinar';
+    }
+  }
+
+  /// El aviso, sin letra chica: por este celular no se escucha ni se habla.
+  ///
+  /// Es criterio de aceptación del issue, no un detalle de diseño: la app
+  /// disca de verdad y el destino suena, pero el audio se queda en la casa.
+  String get audioNotice {
+    switch (audioRoute) {
+      case AudioRoute.headset:
+      case AudioRoute.speaker:
+        return 'Por el celular no vas a escuchar ni hablar: el audio sale por '
+            'el teléfono de la casa.';
+      case AudioRoute.web:
+        return 'Por el celular no vas a escuchar ni hablar: el audio lo tiene '
+            'el dashboard en el navegador.';
+      case AudioRoute.unknown:
+        return 'Por el celular no vas a escuchar ni hablar: el audio se queda '
+            'en la casa.';
+    }
+  }
+
+  /// ¿Conviene avisar del rate limit? Recién cuando queda poco margen: un
+  /// contador permanente es ruido, y uno que aparece a los 80 es un aviso.
+  bool get rateLimitNear =>
+      maxCallsPerHour > 0 && callsLastHour >= (maxCallsPerHour * 0.8).floor();
+
+  String get rateLimitLabel =>
+      '$callsLastHour de $maxCallsPerHour llamadas en la última hora';
 }
