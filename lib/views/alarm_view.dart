@@ -215,6 +215,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     } else if (title.contains('DESACTIVADA')) {
       icon = Icons.shield_outlined;
       color = Colors.green;
+    } else if (title.contains('Llamada')) {
+      // Telefonía 4G: la push de llamada entrante llega mientras el teléfono
+      // TODAVÍA suena, así que el aviso in-app tiene que decir de un vistazo
+      // que es una llamada y no una alarma.
+      icon = Icons.phone_callback;
+      color = Colors.green;
     } else if (data['soundType'] == 'alarm') {
       icon = Icons.warning_amber_rounded;
       color = Colors.red;

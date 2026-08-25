@@ -154,10 +154,14 @@ class DevicesService extends ChangeNotifier {
   List<Device> get lights =>
       all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat && !d.isMediaDevice).toList();
   List<Device> get sensors =>
-      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice && !d.isVacuum).toList();
+      all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice && !d.isVacuum && !d.isPhone).toList();
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();
   List<Device> get locks => all.where((d) => d.isLock).toList();
   List<Device> get vacuums => all.where((d) => d.isVacuum).toList();
+  /// Teléfonos 4G (hoy uno: dev_phone). Categoría propia por la misma razón que
+  /// vacuums: lights/sensors lo excluyen, así que TIENE que existir la lista
+  /// que lo muestra — ninguna categoría puede esconder un device.
+  List<Device> get phones => all.where((d) => d.isPhone).toList();
   // Contrapartida del !isMediaDevice de arriba: si lights/sensors los
   // excluyen, TIENE que existir el getter que los liste — ninguna categoría
   // puede esconder un device por su tipo ("todos son dispositivos"). El

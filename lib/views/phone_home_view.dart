@@ -3,6 +3,7 @@ import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
+import '../services/telephony_service.dart';
 import '../services/socket_service.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
@@ -35,6 +36,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
   late DevicesService _devices;
   late final JblService _jbl;
   late final TvService _tv;
+  late final TelephonyService _telephony;
 
   @override
   void initState() {
@@ -48,14 +50,20 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     // El home muestra las cards del soundbar y el TV y está siempre vivo →
     // seed + suscripción al socket una sola vez (F13: sin timer; dev_jbl/dev_tv
     // empujan device:state-changed) para que las cards se mantengan frescas.
+    _telephony = TelephonyService(config: widget.config, socket: _socket);
     _jbl.startPolling();
     _tv.startPolling();
+    // El teléfono arranca con el shell y NO con su pantalla: el contador de
+    // perdidas de la card tiene que estar bien aunque nunca se entre, y una
+    // llamada entrante mientras mirás las luces igual tiene que llegar.
+    _telephony.start();
   }
 
   @override
   void dispose() {
     _jbl.dispose();
     _tv.dispose();
+    _telephony.dispose();
     _devices.dispose();
     _socket.dispose();
     super.dispose();
@@ -67,6 +75,7 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
       service: _devices,
       jbl: _jbl,
       tv: _tv,
+      telephony: _telephony,
       onOpenHistory: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
         builder: (_) => HistoryScreen(
           config: widget.config,

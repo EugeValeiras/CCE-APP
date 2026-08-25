@@ -10,6 +10,7 @@ import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/temp_sensor_prefs.dart';
 import '../services/tv_service.dart';
+import '../services/telephony_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
@@ -22,6 +23,7 @@ import '../widgets/room_temperature_header.dart';
 import '../widgets/featured_home_cards.dart';
 import '../widgets/thermostat_home_card.dart';
 import '../widgets/vacuum_home_card.dart';
+import '../widgets/phone_home_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
 import 'splash_view.dart';
@@ -41,6 +43,8 @@ class RoomsListScreen extends StatefulWidget {
   final DevicesService service;
   final JblService? jbl;
   final TvService? tv;
+  /// Telefonía 4G. Opcional: el HAT es un periférico que puede no estar.
+  final TelephonyService? telephony;
   final void Function(BuildContext)? onOpenHistory;
   final void Function(BuildContext)? onOpenAgent;
   final void Function(BuildContext)? onOpenAlarm;
@@ -50,6 +54,7 @@ class RoomsListScreen extends StatefulWidget {
     required this.service,
     this.jbl,
     this.tv,
+    this.telephony,
     this.onOpenHistory,
     this.onOpenAgent,
     this.onOpenAlarm,
@@ -266,6 +271,17 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
             ? null
             : VacuumHomeCard(
                 service: service, device: d, neo: true, trailing: trailing);
+      case FeaturedKind.phone:
+        final tel = widget.telephony;
+        final d = item.id != null ? service.byId(item.id!) : null;
+        return (d == null || !d.isPhone || tel == null)
+            ? null
+            : PhoneHomeCard(
+                service: service,
+                telephony: tel,
+                device: d,
+                neo: true,
+                trailing: trailing);
       case FeaturedKind.light:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden)
@@ -319,6 +335,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         return 'JBL Soundbar';
       case FeaturedKind.thermostat:
       case FeaturedKind.vacuum:
+      case FeaturedKind.phone:
       case FeaturedKind.light:
       case FeaturedKind.button:
       case FeaturedKind.lock:
@@ -349,6 +366,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         FeaturedKind.jbl => 'JBL',
         FeaturedKind.thermostat => 'Termostato',
         FeaturedKind.vacuum => 'Robot',
+        FeaturedKind.phone => 'Teléfono',
         FeaturedKind.light => 'Luz',
         FeaturedKind.button => 'Botón',
         FeaturedKind.lock => 'Cerradura',
@@ -419,6 +437,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
               FeaturedItem(FeaturedKind.thermostat, d.id),
             for (final d in service.vacuums)
               FeaturedItem(FeaturedKind.vacuum, d.id),
+            for (final d in service.phones) FeaturedItem(FeaturedKind.phone, d.id),
             for (final d in service.locks) FeaturedItem(FeaturedKind.lock, d.id),
             for (final d in service.lights)
               FeaturedItem(FeaturedKind.light, d.id),

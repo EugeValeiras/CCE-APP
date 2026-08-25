@@ -13,6 +13,7 @@ import '../models/hue_room.dart';
 import '../models/light_group.dart';
 import '../models/capability.dart';
 import '../models/vacuum_map.dart';
+import '../models/phone_call.dart';
 
 class ApiService {
   final ServerConfig config;
@@ -32,6 +33,39 @@ class ApiService {
     final list = data is List ? data : (data['devices'] as List? ?? []);
     return list
         .map((e) => Device.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  /// Estado de la telefonía 4G (GET /phone/status). NO fuerza el chequeo USSD
+  /// de la línea: eso es tráfico de red y lo decide el dashboard.
+  Future<PhoneStatus> getPhoneStatus() async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/phone/status'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return const PhoneStatus();
+    return PhoneStatus.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  /// Historial de llamadas (GET /phone/calls). Lista vacía si el módulo no
+  /// está o el events-store está apagado: el teléfono es opcional.
+  Future<List<PhoneCall>> getPhoneCalls({int limit = 50}) async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/phone/calls?limit=$limit'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    final items = data is Map ? (data['items'] as List? ?? []) : <dynamic>[];
+    return items
+        .whereType<Map>()
+        .map((e) => PhoneCall.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 

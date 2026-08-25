@@ -10,6 +10,22 @@ class DeviceStateEvent {
   DeviceStateEvent({required this.deviceId, this.state, this.sensor});
 }
 
+/// Evento del canal `phone:call-state` (telefonía 4G). Dos formas:
+///  - `event: 'incoming'` — suena una entrante, con el primer RING y ANTES de
+///    que se atienda.
+///  - `event: 'ended'` — la llamada terminó, con su veredicto.
+///
+/// El estado EN VIVO de la llamada NO viaja por acá: viaja por
+/// `device:state-changed` sobre `dev_phone`, como cualquier device.
+class PhoneCallStateEvent {
+  /// 'incoming' | 'ended'.
+  final String event;
+  final Map<String, dynamic> payload;
+  PhoneCallStateEvent({required this.event, required this.payload});
+
+  bool get isIncoming => event == 'incoming';
+}
+
 class LiveEvent {
   final String eventName;
   final Map<String, dynamic> payload;
@@ -24,6 +40,8 @@ class SocketService {
   StreamController<bool> _connectionController = StreamController<bool>.broadcast();
   StreamController<DeviceStateEvent> _deviceController = StreamController<DeviceStateEvent>.broadcast();
   StreamController<LiveEvent> _liveController = StreamController<LiveEvent>.broadcast();
+  StreamController<PhoneCallStateEvent> _callController =
+      StreamController<PhoneCallStateEvent>.broadcast();
   bool _isConnected = false;
 
   Stream<AlarmEvent> get onAlarm => _alarmController.stream;
@@ -31,6 +49,8 @@ class SocketService {
   Stream<bool> get onConnectionChanged => _connectionController.stream;
   Stream<DeviceStateEvent> get onDeviceChanged => _deviceController.stream;
   Stream<LiveEvent> get onLiveEvent => _liveController.stream;
+  /// Telefonía 4G: entrante sonando y llamada terminada.
+  Stream<PhoneCallStateEvent> get onCallState => _callController.stream;
   bool get isConnected => _isConnected;
 
   void _emitLive(String name, dynamic data) {
@@ -59,6 +79,9 @@ class SocketService {
     }
     if (_liveController.isClosed) {
       _liveController = StreamController<LiveEvent>.broadcast();
+    }
+    if (_callController.isClosed) {
+      _callController = StreamController<PhoneCallStateEvent>.broadcast();
     }
 
     final options = io.OptionBuilder()
@@ -124,6 +147,16 @@ class SocketService {
 
     _socket!.on('device:state-changed', (d) => handleDeviceEvent('device:state-changed', d));
     _socket!.on('light:changed', (d) => handleDeviceEvent('light:changed', d));
+    _socket!.on('phone:call-state', (data) {
+      _emitLive('phone:call-state', data);
+      if (_callController.isClosed) return;
+      if (data is! Map) return;
+      final m = Map<String, dynamic>.from(data);
+      _callController.add(
+        PhoneCallStateEvent(event: (m['event'] ?? '').toString(), payload: m),
+      );
+    });
+
     _socket!.on('automation:executed', (d) => _emitLive('automation:executed', d));
     _socket!.on('config:changed', (d) => _emitLive('config:changed', d));
 
@@ -144,5 +177,6 @@ class SocketService {
     _connectionController.close();
     _deviceController.close();
     _liveController.close();
+    _callController.close();
   }
 }

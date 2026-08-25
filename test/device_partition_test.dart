@@ -38,6 +38,7 @@ void main() {
       for (final d in s.thermostats) d.id,
       for (final d in s.locks) d.id,
       for (final d in s.vacuums) d.id,
+      for (final d in s.phones) d.id,
       for (final d in s.media) d.id,
     };
     for (final d in s.all) {
@@ -46,6 +47,46 @@ void main() {
               '${d.id} (type=${d.type}, caps=${d.capabilities}) no aparece en '
               'NINGÚN getter — device escondido por su tipo');
     }
+  });
+
+  test('el teléfono 4G tiene lista propia y NO cae en luces ni sensores', () {
+    // dev_phone no tiene sensor ni es un switch: sin `isPhone` caería en la
+    // heurística de `isLight` y aparecería como una luz fantasma que se puede
+    // "prender". El fixture dorado puede no traerlo todavía (el HAT es
+    // opcional), así que se siembra explícitamente.
+    final s = DevicesService(config: ServerConfig(), socket: SocketService());
+    s.debugSeedDevices([
+      ...entries.map(Device.fromJson),
+      Device.fromJson({
+        'id': 'dev_phone',
+        'name': 'Teléfono',
+        'type': 'phone',
+        'capabilities': ['phone'],
+        'state': {
+          'on': false,
+          'bri': 0,
+          'reachable': true,
+          'callState': 'idle',
+          'lineActive': 'unknown',
+          'signalBars': 4,
+          'networkTech': 'WCDMA',
+          'networkOperator': 'AR PERSONAL Personal',
+        },
+      }),
+    ]);
+
+    final phone = s.byId('dev_phone');
+    expect(phone, isNotNull);
+    expect(phone!.isPhone, isTrue);
+    expect(phone.isLight, isFalse, reason: 'sería una luz fantasma');
+    expect(s.phones.map((d) => d.id), contains('dev_phone'));
+    expect(s.lights.any((d) => d.isPhone), isFalse);
+    expect(s.sensors.any((d) => d.isPhone), isFalse);
+    // El estado del teléfono sobrevive al parseo.
+    expect(phone.state.networkOperator, 'AR PERSONAL Personal');
+    expect(phone.state.signalBars, 4);
+    expect(phone.state.lineActive, 'unknown');
+    expect(phone.phoneInCall, isFalse);
   });
 
   test('media es la contrapartida del filtro manual: dev_tv/dev_jbl viven ahí',
