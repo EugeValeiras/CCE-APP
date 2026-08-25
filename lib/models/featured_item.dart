@@ -10,6 +10,8 @@ enum FeaturedKind {
   jbl,
   thermostat,
   vacuum,
+  /// Teléfono 4G (dev_phone). Como el robot, es un [Device] con card propia.
+  phone,
   light,
   button,
   lock,

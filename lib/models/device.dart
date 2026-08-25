@@ -124,6 +124,32 @@ class DeviceState {
   /// con `floorPlans[].vacuumAnchor`.
   final VacuumPosition? vacuumPosition;
 
+  // ── Bloque PHONE (telefonía 4G, device `dev_phone`) ──
+  // El HAT SIM7600G-H con su propia línea. La app NO disca: muestra el estado
+  // y el historial (el dial pad vive sólo en el dashboard).
+  /// 'idle' | 'dialing' | 'ringing' | 'active' | 'ended'.
+  final String? callState;
+  /// 'in' = entrante, 'out' = saliente. Ausente sin llamada.
+  final String? callDirection;
+  /// Número del otro extremo.
+  final String? peerNumber;
+  /// Nombre del contacto, si el número está en la libreta del backend.
+  final String? peerName;
+  /// Epoch ms del inicio de la llamada en curso.
+  final int? callStartedAt;
+  /// ¿La línea CURSA tráfico? 'active' | 'inactive' | 'unknown'.
+  ///
+  /// NO se deriva del registro de red: una línea sin habilitar reporta
+  /// operador y señal impecables y no cursa nada. Sale de una consulta USSD
+  /// del backend y vale 'unknown' hasta que se haga.
+  final String? lineActive;
+  /// Señal 0-5 barras.
+  final int? signalBars;
+  /// Tecnología en uso ('WCDMA', 'LTE', …).
+  final String? networkTech;
+  /// Operador registrado.
+  final String? networkOperator;
+
   DeviceState({
     this.on = false,
     this.bri = 0,
@@ -159,6 +185,15 @@ class DeviceState {
     this.consumables,
     this.cleanSummary,
     this.vacuumPosition,
+    this.callState,
+    this.callDirection,
+    this.peerNumber,
+    this.peerName,
+    this.callStartedAt,
+    this.lineActive,
+    this.signalBars,
+    this.networkTech,
+    this.networkOperator,
   });
 
   factory DeviceState.fromJson(Map<String, dynamic> json) {
@@ -222,6 +257,15 @@ class DeviceState {
       fanSpeeds: (json['fanSpeeds'] is List)
           ? (json['fanSpeeds'] as List).map((m) => m.toString()).toList()
           : null,
+      callState: json['callState'] as String?,
+      callDirection: json['callDirection'] as String?,
+      peerNumber: json['peerNumber'] as String?,
+      peerName: json['peerName'] as String?,
+      callStartedAt: (json['callStartedAt'] as num?)?.toInt(),
+      lineActive: json['lineActive'] as String?,
+      signalBars: (json['signalBars'] as num?)?.toInt(),
+      networkTech: json['networkTech'] as String?,
+      networkOperator: json['networkOperator'] as String?,
     );
   }
 
@@ -264,6 +308,15 @@ class DeviceState {
     Map<String, int>? consumables,
     Map<String, num>? cleanSummary,
     VacuumPosition? vacuumPosition,
+    String? callState,
+    String? callDirection,
+    String? peerNumber,
+    String? peerName,
+    int? callStartedAt,
+    String? lineActive,
+    int? signalBars,
+    String? networkTech,
+    String? networkOperator,
   }) {
     return DeviceState(
       on: on ?? this.on,
@@ -300,6 +353,15 @@ class DeviceState {
       consumables: consumables ?? this.consumables,
       cleanSummary: cleanSummary ?? this.cleanSummary,
       vacuumPosition: vacuumPosition ?? this.vacuumPosition,
+      callState: callState ?? this.callState,
+      callDirection: callDirection ?? this.callDirection,
+      peerNumber: peerNumber ?? this.peerNumber,
+      peerName: peerName ?? this.peerName,
+      callStartedAt: callStartedAt ?? this.callStartedAt,
+      lineActive: lineActive ?? this.lineActive,
+      signalBars: signalBars ?? this.signalBars,
+      networkTech: networkTech ?? this.networkTech,
+      networkOperator: networkOperator ?? this.networkOperator,
     );
   }
 }
@@ -448,9 +510,19 @@ class Device {
   /// y pantalla dedicados; se excluye de luces/sensores como los media devices.
   bool get isVacuum => capabilities.contains('vacuum');
 
+  /// Teléfono 4G (`dev_phone`, HAT SIM7600G-H): capability 'phone'. Tiene card
+  /// y pantalla dedicadas; se excluye de luces/sensores como el robot — sin
+  /// esto caería en `isLight` (no tiene sensor ni es switch) y aparecería como
+  /// una luz fantasma que se puede "prender".
+  bool get isPhone => capabilities.contains('phone');
+
+  /// Hay una llamada viva (marcando, sonando o en curso).
+  bool get phoneInCall =>
+      state.callState != null && state.callState != 'idle' && state.callState != 'ended';
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
-    if (isThermostat || isLock || isMediaDevice || isVacuum) return false;
+    if (isThermostat || isLock || isMediaDevice || isVacuum || isPhone) return false;
     final t = type.toLowerCase();
     return t.contains('light') ||
         t.contains('bulb') ||
