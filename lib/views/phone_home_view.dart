@@ -50,7 +50,13 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     // El home muestra las cards del soundbar y el TV y está siempre vivo →
     // seed + suscripción al socket una sola vez (F13: sin timer; dev_jbl/dev_tv
     // empujan device:state-changed) para que las cards se mantengan frescas.
-    _telephony = TelephonyService(config: widget.config, socket: _socket);
+    _telephony = TelephonyService(
+      config: widget.config,
+      socket: _socket,
+      // Si el placeholder de "marcando" expira sin estado, se re-lee dev_phone
+      // donde la pantalla lo mira: DevicesService, no el seed del teléfono.
+      reloadPhoneDevice: () => _devices.refreshDevice(kPhoneDeviceId),
+    );
     _jbl.startPolling();
     _tv.startPolling();
     // El teléfono arranca con el shell y NO con su pantalla: el contador de

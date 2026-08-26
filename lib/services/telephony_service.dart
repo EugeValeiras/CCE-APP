@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import '../models/device.dart';
 import '../models/phone_call.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
@@ -32,10 +33,19 @@ class TelephonyService extends ChangeNotifier {
   final ApiService _api;
   final SocketService _socket;
 
-  TelephonyService({required ServerConfig config, required SocketService socket})
-      : _api = ApiService(config),
+  TelephonyService({
+    required ServerConfig config,
+    required SocketService socket,
+    this.reloadPhoneDevice,
+  })  : _api = ApiService(config),
         _socket = socket,
         audio = PhoneAudioService(config: config);
+
+  /// Re-lee `dev_phone` del backend y lo pisa donde la pantalla lo lee
+  /// (DevicesService). Lo pone el shell; acá no se conoce ese servicio. Se usa
+  /// una sola vez: cuando el placeholder de "marcando" expira sin que haya
+  /// llegado el estado (CCE#19) — ver [_onDialingExpired].
+  final Future<Device?> Function()? reloadPhoneDevice;
 
   /// El audio de la llamada en ESTE celular (CCE#12). Ver [PhoneAudioService].
   final PhoneAudioService audio;
@@ -62,7 +72,8 @@ class TelephonyService extends ChangeNotifier {
   /// Motivo del último comando rechazado, tal como lo redactó el backend
   /// ("hay una llamada en curso", "rate limit de llamadas por hora alcanzado").
   /// La pantalla lo muestra sin reemplazarlo: un genérico haría que el usuario
-  /// reintente contra un límite que no va a ceder.
+  /// reintente contra un límite que no va a ceder. También lleva el aviso de
+  /// que una llamada no se pudo confirmar ([_onDialingExpired]).
   String? _actionError;
 
   /// Número que se acaba de discar, mientras el módem todavía no movió el
@@ -316,11 +327,37 @@ class TelephonyService extends ChangeNotifier {
     // Red de seguridad: si el `device:state-changed` no llega (socket caído,
     // evento perdido), el placeholder no puede quedarse para siempre diciendo
     // "marcando". A los 30 s se retira y se re-lee el estado real.
-    _dialingTimer = Timer(const Duration(seconds: 30), () {
-      _clearDialing();
-      refresh();
-    });
+    _dialingTimer = Timer(const Duration(seconds: 30), _onDialingExpired);
   }
+
+  /// Pasaron 30 s desde el "Llamar" sin que llegara el estado del device. Hay
+  /// dos formas de que pase: el evento se perdió (socket caído) y la llamada
+  /// está viva, o la llamada no existe. Se retira el placeholder y se re-lee
+  /// la verdad en sus DOS fuentes —el device que pinta la pantalla y el seed
+  /// propio— para quedar en un estado honesto: la card si está viva, y si no,
+  /// reposo CON el aviso de que no se confirmó. Volver a reposo en silencio
+  /// era lo que hacía que CCE#19 pareciera intermitente.
+  Future<void> _onDialingExpired() async {
+    _clearDialing();
+    final deviceRead = reloadPhoneDevice?.call();
+    final statusRead = refresh();
+    final device = await deviceRead;
+    await statusRead;
+    if (_disposed) return;
+    final live = device != null
+        ? device.phoneInCall
+        : (status.callState != 'idle' && status.callState != 'ended');
+    if (live) return;
+    _actionError = device == null && _error != null
+        ? 'No se pudo confirmar el estado de la llamada.'
+        : 'La llamada no se pudo confirmar: el teléfono de la casa figura libre.';
+    _safeNotify();
+  }
+
+  /// SÓLO TESTS: arma el placeholder de "marcando" sin mandar el POST, para
+  /// poder probar qué pasa cuando expira.
+  @visibleForTesting
+  void debugStartDialing(String number) => _startDialing(number);
 
   void _clearDialing({bool notify = true}) {
     _dialingTimer?.cancel();

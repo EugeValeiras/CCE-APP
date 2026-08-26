@@ -36,6 +36,23 @@ class ApiService {
         .toList();
   }
 
+  /// Un device canónico suelto (GET /devices/:id), con el mismo JSON que
+  /// /devices/merged. Para re-sincronizar UNO sin recargar el inventario.
+  Future<Device> getDevice(String id) async {
+    final response = await http
+        .get(
+          Uri.parse('${config.baseUrl}/devices/${Uri.encodeComponent(id)}'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      throw Exception('Error ${response.statusCode}');
+    }
+    final data = jsonDecode(response.body);
+    if (data is! Map) throw Exception('Respuesta inesperada de /devices/$id');
+    return Device.fromJson(Map<String, dynamic>.from(data));
+  }
+
   /// Estado de la telefonía 4G (GET /phone/status). NO fuerza el chequeo USSD
   /// de la línea: eso es tráfico de red y lo decide el dashboard.
   Future<PhoneStatus> getPhoneStatus() async {
