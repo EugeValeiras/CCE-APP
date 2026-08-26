@@ -47,7 +47,8 @@ import 'telephony/phone_surface.dart';
 ///       panel del audio SÓLO cuando el audio ya está acá, se está tomando, o
 ///       falló. Con el audio en la casa no hay ningún aviso al discar: se da
 ///       al tocar Llamar, en el sheet (CCE#16);
-///     - con una entrante sonando, la card de la entrante;
+///     - con una entrante sonando, la card de la entrante — que anuncia que
+///       atender trae el audio al celular (CCE#20);
 ///     - con una llamada viva, la card de la llamada — con el ruteo real de la
 ///       voz en sus dos direcciones y los controles del audio adentro.
 ///  4. El teclado, con el aire que liberan los bloques que ya no están.
@@ -82,6 +83,13 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
   /// Tonos mandados en la llamada en curso. Sin esto el teclado DTMF no da
   /// ningún acuse: el menú de voz que responde está sonando en la casa.
   String _dtmfSent = '';
+
+  /// Atendiendo: el audio se está tomando y el `answer` todavía no salió
+  /// (CCE#20). Bloquea la botonera en esa ventana —que con el permiso del
+  /// micrófono pendiente dura lo que tarde el usuario en contestarle a iOS—
+  /// para que dos toques no manden dos `answer`: `TelephonyService.busy`
+  /// recién se prende con el comando.
+  bool _answering = false;
 
   /// Sólo mueve el cronómetro de la llamada. NO es polling: no toca la red.
   Timer? _tick;
@@ -325,10 +333,34 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     await widget.telephony.hangup();
   }
 
+  /// Atiende trayendo el audio al celular DENTRO del gesto (CCE#20): es lo
+  /// que hace el dashboard (`answer()` → `claimWebAudio()`) y lo que hace
+  /// [_call] con `takeAudioAndCall`. Tocar "Atender" ES el gesto de usuario
+  /// que `AVAudioSession` necesita para activar la sesión; fuera de él iOS
+  /// puede negarla, y por eso esto NO se resuelve después con un listener del
+  /// estado de la llamada.
+  ///
+  /// Si tomar el audio falla, se atiende IGUAL: nunca se pierde una llamada
+  /// por un problema de audio, y el panel de la card dice qué pasó y ofrece
+  /// reintentar. Con el audio ya tomado (`taken`: incluye el motor parado del
+  /// #18) no se vuelve a pedir ni se corta nada — eso lo resuelve Reintentar,
+  /// no Atender.
   Future<void> _answer() async {
-    HapticFeedback.mediumImpact();
-    setState(() => _dtmfSent = '');
-    await widget.telephony.answer();
+    if (_answering) return;
+    final t = widget.telephony;
+    setState(() => _answering = true);
+    try {
+      if (!t.audio.taken) {
+        await t.audio.take();
+        if (!mounted) return;
+      }
+      HapticFeedback.mediumImpact();
+      setState(() => _dtmfSent = '');
+      await t.answer();
+    } finally {
+      _answering = false;
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _openHistory() async {
@@ -447,6 +479,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     required Widget routeLine,
     required TelephonyService t,
     String tones = '',
+    bool offerTake = true,
   }) {
     return PhoneSurface(
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
@@ -487,6 +520,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             audio: t.audio,
             embedded: true,
             headline: routeLine,
+            offerTake: offerTake,
           ),
         ],
       ),
@@ -574,15 +608,20 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         ),
         child: const Text('Ocultar'),
       ),
-      // Atender desde la app no trae el audio al celular por sí solo: hay que
-      // decirlo ANTES de atender, y ofrecer traerlo ahí mismo.
+      // Atender TRAE el audio al celular (CCE#20, dentro del gesto, en
+      // [_answer]): en el caso normal la card lo anuncia y no ofrece nada más.
+      // El botón de traerlo vuelve sólo cuando traerlo FALLÓ (micrófono
+      // negado, red, desalojo): ahí sí hay algo que hacer antes de atender, y
+      // el panel de abajo dice el motivo.
       // `taken` y no `isOn`: con el motor parado el audio SIGUE ruteado acá
       // (no suena en la casa), y el panel de abajo es el que dice que ahora
       // mismo no suena y ofrece reintentar.
       routeLine: AudioRouteLine.forIncoming(
         onThisPhone: t.audio.taken,
         stalled: t.audio.stalled,
+        failed: !t.audio.taken && t.audio.error != null,
       ),
+      offerTake: t.audio.error != null,
     );
   }
 
@@ -691,6 +730,10 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     final Widget row;
 
     if (ringingIn) {
+      // Mientras se atiende (el audio tomándose, CCE#20) ninguno de los dos:
+      // un segundo Atender mandaría otro `answer`, y un Rechazar dejaría al
+      // `answer` que sigue sin entrante que atender.
+      final locked = t.busy || _answering;
       row = Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -699,14 +742,14 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             rotate: true,
             color: CceColors.danger,
             label: 'Rechazar',
-            onPressed: t.busy ? null : _hangup,
+            onPressed: locked ? null : _hangup,
           ),
           const SizedBox(width: CceSpace.xxxl),
           PhoneRoundButton(
             icon: CceIcons.phone,
             color: CceColors.ok,
             label: 'Atender',
-            onPressed: t.busy ? null : _answer,
+            onPressed: locked ? null : _answer,
           ),
         ],
       );

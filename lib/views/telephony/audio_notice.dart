@@ -140,22 +140,31 @@ class AudioRouteLine extends StatelessWidget {
                     'devolverlo al teléfono de la casa.'
                 : '${status.audioNotice} ${status.audioRouteLabel}.';
 
-  /// Versión de la ENTRANTE: atender desde la app no trae el audio al celular
-  /// por sí solo — hay que tomarlo, antes o después de atender. Y si ya está
-  /// tomado, hay que decir eso: con el audio acá, "hablás por el teléfono de
-  /// la casa" sería mentira.
+  /// Versión de la ENTRANTE. Desde CCE#20 atender TRAE el audio al celular
+  /// (se toma dentro del gesto, antes del `answer`, como en el dashboard), así
+  /// que en el caso normal no hay nada que ofrecer: se dice que vas a hablar
+  /// por acá. Las otras tres verdades siguen haciendo falta: ya tomado
+  /// ([onThisPhone]), tomado pero mudo ([stalled], CCE#18) y traerlo FALLÓ
+  /// ([failed]: micrófono negado, red, desalojo) — la única en la que vuelve a
+  /// tener sentido el botón de traerlo, y la card lo muestra sólo ahí.
   const AudioRouteLine.forIncoming({
     super.key,
     this.onThisPhone = false,
     this.stalled = false,
+    bool failed = false,
   }) : text = stalled
             ? 'El audio está en este celular, pero ahora no suena. Si atendés, '
                 'reintentá o soltalo para que suene en el teléfono de la casa.'
             : onThisPhone
                 ? 'Si atendés, hablás y escuchás por el celular. Soltá el audio '
                     'para que la llamada suene en el teléfono de la casa.'
-                : 'Si atendés, hablás por el teléfono de la casa: para escuchar '
-                    'por el celular hay que traer el audio acá.';
+                : failed
+                    ? 'El audio no está en este celular. Al atender se intenta '
+                        'traerlo; si no se puede, hablás por el teléfono de la '
+                        'casa.'
+                    : 'Al atender, el audio viene a este celular: hablás y '
+                        'escuchás por acá. Después podés soltarlo para que '
+                        'suene en el teléfono de la casa.';
 
   final String text;
 
