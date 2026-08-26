@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../models/event_record.dart';
+import '../../models/phone_call.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
+import '../telephony/call_history_screen.dart' show formatCallDuration;
 import 'event_grouping.dart';
+import 'phone_events.dart';
 
 /// Presentación humanizada de un evento o grupo: ícono (sin color propio,
 /// lo tiñe la fila vía IconTheme), color de acento, título y subtítulo.
@@ -95,6 +98,8 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       title: 'Configuración actualizada',
     );
   }
+
+  if (e.eventName.startsWith('phone:')) return _presentPhone(e);
 
   // device:state-changed / light:changed
   final name = _deviceName(e, devices);
@@ -257,6 +262,96 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     title: 'Evento de $name',
     subtitle: e.eventName,
   );
+}
+
+/// Teléfono (CCE#24). Un `switch` por canal: hoy sólo `phone:call-state`;
+/// cuando entren los SMS (#23) van como otro `case` acá, con el mismo ícono
+/// de base y la misma forma de nombrar al otro lado ([_callPeer]).
+EventPresentation _presentPhone(EventRecord e) {
+  switch (e.eventName) {
+    case kCallStateEvent:
+      final call = callFromEvent(e);
+      if (call != null) return _presentCall(call);
+      // `incoming` (o una forma nueva del canal): [isCallLogNoise] lo saca
+      // antes de llegar acá, pero si llega igual no se muestra crudo.
+      return EventPresentation(
+        icon: const CceIcon(CceIcons.phoneIncoming, size: 20),
+        color: CceColors.textTertiary,
+        title: 'Está sonando el teléfono',
+        subtitle: _callPeerFromPayload(e.payload),
+      );
+    default:
+      // Canal `phone:*` sin presentación propia todavía: con el ícono del
+      // teléfono y el nombre del canal como pista, nunca el ⓘ genérico.
+      return EventPresentation(
+        icon: const CceIcon(CceIcons.phone, size: 20),
+        color: CceColors.textTertiary,
+        title: 'Teléfono',
+        subtitle: e.eventName,
+      );
+  }
+}
+
+/// Una llamada terminada, en una línea: quién, qué pasó y cuánto duró.
+///
+/// La PERDIDA es la información más útil de toda la lista: va con su propio
+/// verbo en el título ("Perdida de …"), el ícono de perdida y el rojo de
+/// [CceColors.danger], que la fila usa para teñir el ícono. El resto se lee
+/// por dirección ("Llamada de …" / "Llamaste a …") y el subtítulo lleva el
+/// veredicto con las mismas palabras que el historial dedicado
+/// ([PhoneCall.resultLabel]) más la duración cuando la hubo.
+EventPresentation _presentCall(PhoneCall c) {
+  final who = _callPeer(c);
+  if (c.isMissed) {
+    return EventPresentation(
+      icon: const CceIcon(CceIcons.phoneMissed, size: 20),
+      color: CceColors.danger,
+      title: 'Perdida de $who',
+      subtitle: 'Nadie atendió',
+    );
+  }
+  final answered = c.result == CallResult.answered;
+  final Color color;
+  if (answered) {
+    color = CceColors.ok;
+  } else if (c.result == CallResult.failed) {
+    // Falló la línea, no la persona: se marca como algo a mirar.
+    color = CceColors.warm;
+  } else {
+    // Rechazada / no contestaron / sonó y se cortó: sin drama.
+    color = CceColors.textTertiary;
+  }
+  final duration = c.duration.inSeconds > 0
+      ? ' · ${formatCallDuration(c.duration)}'
+      : '';
+  return EventPresentation(
+    icon: CceIcon(
+      c.incoming ? CceIcons.phoneIncoming : CceIcons.phoneOutgoing,
+      size: 20,
+    ),
+    color: color,
+    title: c.incoming ? 'Llamada de $who' : 'Llamaste a $who',
+    subtitle: '${c.resultLabel}$duration',
+  );
+}
+
+/// El otro lado de la llamada: el nombre del contacto si el número está en
+/// la libreta (el backend lo resuelve contra `config.telephony.contacts` y lo
+/// manda como `contactName`), si no el número, y si tampoco vino número (una
+/// entrante sin caller ID) se dice explícitamente.
+String _callPeer(PhoneCall c) {
+  final name = c.contactName?.trim() ?? '';
+  if (name.isNotEmpty) return name;
+  final number = c.number.trim();
+  return number.isEmpty ? 'número desconocido' : number;
+}
+
+String? _callPeerFromPayload(Map<String, dynamic>? p) {
+  if (p == null) return null;
+  final name = (p['contactName'] ?? '').toString().trim();
+  if (name.isNotEmpty) return name;
+  final number = (p['number'] ?? '').toString().trim();
+  return number.isEmpty ? null : number;
 }
 
 /// Humaniza un grupo: usa el evento más reciente como base y agrega
