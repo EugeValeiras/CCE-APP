@@ -260,6 +260,15 @@ class PhoneStatus {
   /// `device:state-changed`; esto es sólo el seed.
   final String callState;
 
+  /// De la misma llamada: 'in' | 'out', el número del otro extremo y el
+  /// contacto si el backend lo resolvió. Es lo que permite re-derivar la
+  /// entrante al re-sincronizar tras una reconexión (CCE#21): si `/status`
+  /// dice que suena una entrante, hay card; si no, no la hay.
+  final String? callDirection;
+  final String? callNumber;
+  final String? callContactId;
+  final String? callContactName;
+
   /// Llamadas cursadas en la última hora y tope del backend. Discar cuesta
   /// plata: cuando el margen se achica la pantalla lo dice ANTES de que el
   /// rate limit corte.
@@ -280,6 +289,10 @@ class PhoneStatus {
     this.audioClient,
     this.audioSessionActive = false,
     this.callState = 'idle',
+    this.callDirection,
+    this.callNumber,
+    this.callContactId,
+    this.callContactName,
     this.callsLastHour = 0,
     this.maxCallsPerHour = 0,
   });
@@ -304,9 +317,24 @@ class PhoneStatus {
       audioSessionActive:
           webAudio is Map && webAudio['sessionActive'] == true,
       callState: call is Map ? (call['state'] ?? 'idle').toString() : 'idle',
+      callDirection: call is Map ? call['direction'] as String? : null,
+      callNumber: call is Map ? _nonBlank(call['peerNumber']) : null,
+      callContactId: call is Map ? _nonBlank(call['contactId']) : null,
+      callContactName: call is Map ? _nonBlank(call['contactName']) : null,
       callsLastHour: (json['callsLastHour'] as num?)?.toInt() ?? 0,
       maxCallsPerHour: (json['maxCallsPerHour'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  /// ¿Está sonando una entrante según este snapshot?
+  bool get ringingIn => callState == 'ringing' && callDirection == 'in';
+
+  /// Un texto vacío no es un dato: el número de una entrante puede venir como
+  /// '' hasta que la red manda el caller ID.
+  static String? _nonBlank(dynamic raw) {
+    if (raw == null) return null;
+    final text = raw.toString().trim();
+    return text.isEmpty ? null : text;
   }
 
   /// El saldo llega del operador, no de un schema nuestro: puede venir como
