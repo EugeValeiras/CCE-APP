@@ -104,6 +104,61 @@ void main() {
       expect(digit.color, CceColors.textPrimary);
       expect(legend.color, CceColors.textTertiary);
     });
+
+    testWidgets('el * y el # son teclas de función: más grandes, y solos',
+        (t) async {
+      await t.pumpWidget(_host(DialPad(onKey: (_) {})));
+
+      final digit = t.widget<Text>(find.text('2')).style!.fontSize!;
+      for (final d in ['*', '#']) {
+        expect(t.widget<Text>(find.text(d)).style!.fontSize,
+            greaterThan(digit * 1.3),
+            reason: 'el $d tiene que leerse como tecla de función, no dígito');
+        // Van centrados en su círculo, no alineados con el hueco de una
+        // leyenda que no tienen: nada de columna dígito + leyenda.
+        expect(find.descendant(of: _key(d), matching: find.byType(Column)),
+            findsNothing,
+            reason: 'el $d no reserva lugar para una leyenda');
+        // Y el glifo se centra en el círculo, no en la mitad de arriba.
+        final circle = t.getRect(_key(d));
+        final glyph = t.getRect(find.text(d));
+        expect(glyph.center.dx, moreOrLessEquals(circle.center.dx, epsilon: 0.5));
+        expect(glyph.center.dy, greaterThan(circle.center.dy),
+            reason: 'la línea base del $d queda por debajo del centro: '
+                'es lo que baja el glifo hasta el medio');
+      }
+    });
+
+    testWidgets('el 1 sigue a la altura del 2 y el 3 (no es tecla de función)',
+        (t) async {
+      await t.pumpWidget(_host(DialPad(onKey: (_) {})));
+      final one = t.getRect(find.text('1'));
+      for (final d in ['2', '3']) {
+        expect(t.getRect(find.text(d)).top, moreOrLessEquals(one.top, epsilon: 0.5),
+            reason: 'el 1 no tiene letras pero es un dígito: comparte fila');
+      }
+    });
+
+    testWidgets('con poco alto, la tecla mínima no desborda ningún glifo',
+        (t) async {
+      // 120 de alto: las teclas caen al diámetro piso y el teclado entero se
+      // achica para entrar. Ni así un glifo puede salirse de su círculo.
+      await t.pumpWidget(_host(DialPad(onKey: (_) {}), height: 120));
+      expect(t.takeException(), isNull, reason: 'sin franjas de overflow');
+
+      final side = t.getRect(_key('5')).width;
+      expect(side, lessThan(40), reason: 'si no topó el piso, no prueba nada');
+      for (final d in ['1', '2', '0', '*', '#']) {
+        final circle = t.getRect(_key(d));
+        final glyph = t.getRect(find.text(d));
+        expect(glyph.left, greaterThanOrEqualTo(circle.left),
+            reason: 'el $d se sale del círculo por la izquierda');
+        expect(glyph.right, lessThanOrEqualTo(circle.right),
+            reason: 'el $d se sale del círculo por la derecha');
+        expect(glyph.width, lessThan(circle.width * 0.8),
+            reason: 'el $d no puede ocupar todo el ancho de su tecla');
+      }
+    });
   });
 
   group('feedback al tocar', () {
