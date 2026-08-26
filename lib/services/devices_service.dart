@@ -182,6 +182,27 @@ class DevicesService extends ChangeNotifier {
   String? get error => _error;
   Device? byId(String id) => _byId[id];
 
+  /// Re-lee UN device del backend (GET /devices/:id) y pisa su estado en
+  /// memoria. Es la re-sincronización chica: cuando hay motivos para creer
+  /// que se perdió un evento de ESE device —el placeholder de "marcando" del
+  /// teléfono expiró sin que llegara el estado (CCE#19)— no hace falta
+  /// recargar la casa entera. Devuelve el device fresco, o null si no está en
+  /// el inventario o no se pudo leer: el que llama decide qué decir.
+  Future<Device?> refreshDevice(String id) async {
+    final d = _byId[id];
+    if (d == null) return null;
+    try {
+      final fresh = await _api.getDevice(id);
+      d.state = fresh.state;
+      d.sensor = fresh.sensor ?? d.sensor;
+      notifyListeners();
+      return d;
+    } catch (e) {
+      debugPrint('[DevicesService] refreshDevice($id) error: $e');
+      return null;
+    }
+  }
+
   String? iconFor(String deviceId) => _lightIcons[deviceId];
 
   /// User-configured display name if set, otherwise the manufacturer model name.
@@ -1130,6 +1151,23 @@ class DevicesService extends ChangeNotifier {
     }
     bool changed = false;
     if (ev.state != null && ev.state!.isNotEmpty) {
+      // Bloque PHONE (CCE#19). El provider del teléfono emite DELTAS —
+      // `{callState: 'active'}` solo, o `{signalBars: 2}` solo— y este
+      // re-armado campo por campo no conocía ninguno de sus campos: cualquier
+      // evento de dev_phone dejaba callState en null y la pantalla volvía a
+      // reposo con la llamada viva. Verificado contra el event store de una
+      // llamada real: dialing (con peer) → active → ended → idle, cada uno con
+      // sólo lo que cambió, y signalBars en el medio.
+      final callState =
+          (ev.state!['callState'] ?? d.state.callState) as String?;
+      // Con la llamada terminada no hay peer. El backend manda el campo que
+      // desaparece como `undefined`, que JSON no serializa: la clave no viene.
+      // Sin esto el "Euge" de la última llamada seguiría pegado al teléfono
+      // colgado, y su `callStartedAt` haría arrancar el cronómetro de la
+      // próxima desde la anterior.
+      final callOver =
+          callState == null || callState == 'idle' || callState == 'ended';
+      final DeviceState? peerKeep = callOver ? null : d.state;
       final partial = DeviceState.fromJson({
         'on': ev.state!['on'] ?? d.state.on,
         'bri': ev.state!['bri'] ?? d.state.bri,
@@ -1167,6 +1205,17 @@ class DevicesService extends ChangeNotifier {
         'rooms': ev.state!['rooms'],
         'roomQueue': ev.state!['roomQueue'],
         'vacuumPosition': ev.state!['vacuumPosition'],
+        'callState': callState,
+        'callDirection': ev.state!['callDirection'] ?? peerKeep?.callDirection,
+        'peerNumber': ev.state!['peerNumber'] ?? peerKeep?.peerNumber,
+        'peerName': ev.state!['peerName'] ?? peerKeep?.peerName,
+        'callStartedAt': ev.state!['callStartedAt'] ?? peerKeep?.callStartedAt,
+        // La línea y la señal sobreviven a un delta de la llamada, y al revés.
+        'lineActive': ev.state!['lineActive'] ?? d.state.lineActive,
+        'signalBars': ev.state!['signalBars'] ?? d.state.signalBars,
+        'networkTech': ev.state!['networkTech'] ?? d.state.networkTech,
+        'networkOperator':
+            ev.state!['networkOperator'] ?? d.state.networkOperator,
       });
       var next = partial;
       if (partial.rooms == null && d.state.rooms != null) {

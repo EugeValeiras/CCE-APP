@@ -38,8 +38,9 @@ import 'telephony/phone_surface.dart';
 /// El #14 reordenó la pantalla alrededor del número discado. La mitad de
 /// arriba se lee así, de arriba hacia abajo:
 ///
-///  1. Header: nombre, número propio, historial (con las perdidas sin ver) y
-///     refresh.
+///  1. Header: volver, nombre, número propio e historial (con las perdidas sin
+///     ver). Sin botón de refresh (CCE#19): el estado llega solo por el socket
+///     y un botón para pedirlo a mano no servía y rompía con la interfaz.
 ///  2. Un chip fino con el estado de la línea ([LineStatusChip]).
 ///  3. UN bloque de estado, según el momento:
 ///     - en reposo, el número que se está discando ([DialDisplay]), y debajo el
@@ -342,11 +343,11 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
   Future<void> _openContacts() async {
     final pick = await showContactsSheet(context, widget.telephony);
     if (pick == null || !mounted) return;
-    if (pick.callNow) {
-      await _call(contact: pick.contact);
-    } else {
-      _setNumber(pick.contact.number);
-    }
+    // El visor muestra a quién se llama venga de donde venga el número: la
+    // fila lo cargaba y el botón de llamar no, y la llamada entera transcurría
+    // con el visor vacío (CCE#19).
+    _setNumber(pick.contact.number);
+    if (pick.callNow) await _call(contact: pick.contact);
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
@@ -379,12 +380,6 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             ),
           ),
           _historyButton(t.unseenMissed),
-          IconButton(
-            onPressed: () => t.refresh(),
-            icon: const Icon(Icons.refresh, size: 20),
-            color: CceColors.textSecondary,
-            tooltip: 'Actualizar',
-          ),
         ],
       ),
     );
@@ -594,7 +589,14 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
   Widget _activeCall(Device d, TelephonyService t) {
     final s = d.state;
     final pending = t.dialingNumber;
-    final who = s.peerName ?? s.peerNumber ?? pending ?? 'Sin identificar';
+    // Con quién: el nombre si el backend lo resolvió, si no el número — el que
+    // dice el device, o mientras no lo diga, el que se discó (placeholder o
+    // visor). "Sin identificar" es el último recurso, no el primero.
+    final name = s.peerName;
+    final number = s.peerNumber ??
+        pending ??
+        (_number.text.isEmpty ? null : _number.text);
+    final who = name ?? number ?? 'Sin identificar';
     final label = switch (s.callState) {
       'dialing' => 'Marcando…',
       'ringing' => s.callDirection == 'in' ? 'Llamada entrante' : 'Llamando…',
@@ -619,7 +621,13 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         CceColors.accent,
       ),
       who: who,
-      subtitle: Text(label, style: CceText.caption),
+      // Con nombre arriba, el número va abajo: se ve con quién Y a qué número.
+      subtitle: Text(
+        name != null && number != null ? '$label · $number' : label,
+        style: CceText.caption,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: elapsed != null && elapsed.inSeconds >= 0
           ? Padding(
               padding: const EdgeInsets.only(right: 4),
