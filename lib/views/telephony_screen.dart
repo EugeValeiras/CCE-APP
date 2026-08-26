@@ -43,9 +43,9 @@ import 'telephony/phone_surface.dart';
 ///  2. Un chip fino con el estado de la línea ([LineStatusChip]).
 ///  3. UN bloque de estado, según el momento:
 ///     - en reposo, el número que se está discando ([DialDisplay]), y debajo el
-///       aviso del audio SÓLO cuando importa: al empezar a discar (con el botón
-///       para traer el audio al lado), o cuando el audio ya está acá, se está
-///       tomando, o falló;
+///       panel del audio SÓLO cuando el audio ya está acá, se está tomando, o
+///       falló. Con el audio en la casa no hay ningún aviso al discar: se da
+///       al tocar Llamar, en el sheet (CCE#16);
 ///     - con una entrante sonando, la card de la entrante;
 ///     - con una llamada viva, la card de la llamada — con el ruteo real de la
 ///       voz en sus dos direcciones y los controles del audio adentro.
@@ -207,25 +207,18 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         child: child,
       );
 
-  /// El bloque de audio en REPOSO, sólo cuando importa (CCE#14):
+  /// El bloque de audio en REPOSO, sólo cuando importa (CCE#14, CCE#16):
   ///
   ///  - con el audio tomado, tomándose o fallado, el panel: un micrófono
   ///    abierto no se esconde, y un error hay que poder leerlo y cerrarlo;
-  ///  - con algo escrito y el audio en la casa, el aviso del #10/#12 con el
-  ///    botón para traer el audio al lado — es el momento en que la pregunta
-  ///    "¿por dónde voy a escuchar?" existe, y tomar el audio antes de discar
-  ///    es el flujo natural;
-  ///  - con el teclado vacío, nada: la pantalla es teclado.
+  ///  - con el audio en la casa, nada, haya número escrito o no: la pantalla
+  ///    es teclado. El aviso del #10/#12 vive en el sheet al tocar Llamar
+  ///    ([showCallConfirmSheet]), que es el momento en que la pregunta "¿por
+  ///    dónde voy a escuchar?" existe y se contesta con las dos salidas.
   Widget? _idleAudioBlock(TelephonyService t) {
     final audio = t.audio;
     if (audio.isOn || audio.busy || audio.error != null) {
       return CallAudioPanel(audio: audio);
-    }
-    if (_number.text.isNotEmpty) {
-      return AudioRouteNotice(
-        status: t.status,
-        action: AudioTakeButton(audio: audio),
-      );
     }
     return null;
   }

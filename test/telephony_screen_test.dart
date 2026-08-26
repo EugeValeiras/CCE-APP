@@ -4,8 +4,9 @@
 // lo que el rediseño cambió:
 //
 //  1. En reposo la pantalla es teclado: ni el aviso ni el panel de audio.
-//  2. Al tocar el primer dígito aparece el aviso con el botón para traer el
-//     audio; con el audio tomado aparece el panel, haya número o no.
+//  2. Con número escrito sigue siendo teclado: el aviso del audio vive SÓLO en
+//     el sheet al tocar Llamar (CCE#16); con el audio tomado aparece el panel,
+//     haya número o no.
 //  3. En llamada la card dice por dónde sale la voz, el número discado no se
 //     muestra, y el 0 es 0.
 //  4. Una entrante no se cuelga: se atiende o se rechaza, y el teclado no
@@ -179,25 +180,24 @@ void main() {
       await _teardown(t);
     });
 
-    testWidgets('al tocar el primer dígito aparece el aviso, con el botón',
+    testWidgets('con número escrito sigue siendo teclado: sin aviso ni panel',
         (t) async {
+      // CCE#16: el aviso del #10/#12 se da al tocar Llamar, en el sheet. Con
+      // el audio en la casa, entre el chip de línea y el teclado no hay nada
+      // más que el número, haya un dígito o diez.
       final rig = _Rig();
       await t.pumpWidget(rig.screen);
 
-      await t.tap(find.text('5'));
+      for (final k in ['2', '6', '1', '4', '5', '5', '6', '6', '7', '7']) {
+        await t.tap(find.text(k));
+      }
       await _settle(t);
 
-      // El aviso del #10/#12, sin suavizar, con la acción al lado.
-      expect(find.text('El audio se queda en la casa'), findsOneWidget);
-      expect(find.textContaining('no vas a escuchar ni hablar'), findsOneWidget);
-      expect(find.text('Escuchar acá'), findsOneWidget);
-      // Y NO el panel: dos carteles para lo mismo era el problema.
-      expect(find.byType(CallAudioPanel), findsNothing);
-
-      // Al borrar el último dígito, vuelve a ser teclado.
-      await t.tap(find.byIcon(Icons.backspace_outlined));
-      await _settle(t);
       expect(find.byType(AudioRouteNotice), findsNothing);
+      expect(find.text('El audio se queda en la casa'), findsNothing);
+      expect(find.textContaining('no vas a escuchar ni hablar'), findsNothing);
+      expect(find.text('Escuchar acá'), findsNothing);
+      expect(find.byType(CallAudioPanel), findsNothing);
 
       await _teardown(t);
     });
@@ -238,6 +238,16 @@ void main() {
       await t.pumpAndSettle();
     }
 
+    /// En la ventana de los tests (800×600) el sheet no entra entero y
+    /// "Cancelar" queda abajo del borde: hay que traerlo a la vista, o el tap
+    /// cae en el vacío y el sheet sigue abierto sin que nadie se entere.
+    Future<void> cancel(WidgetTester t) async {
+      await t.ensureVisible(find.text('Cancelar'));
+      await t.pumpAndSettle();
+      await t.tap(find.text('Cancelar'));
+      await t.pumpAndSettle();
+    }
+
     testWidgets('con el audio en la casa avisa ANTES y no disca hasta elegir',
         (t) async {
       // Espejo de CCE#15: la llamada saldría, el destino sonaría, y el
@@ -246,7 +256,8 @@ void main() {
       await t.pumpWidget(rig.screen);
       await typeAndCall(t);
 
-      expect(find.text('El audio se queda en la casa'), findsWidgets);
+      // Uno solo: el del sheet. En reposo ya no hay otro (CCE#16).
+      expect(find.text('El audio se queda en la casa'), findsOneWidget);
       expect(find.text('Escuchar acá y llamar'), findsOneWidget);
       expect(find.text('Llamar igual'), findsOneWidget);
       expect(rig.telephony.dialed, isEmpty,
@@ -280,10 +291,36 @@ void main() {
       await t.pumpWidget(rig.screen);
       await typeAndCall(t);
 
-      await t.tap(find.text('Cancelar'));
-      await t.pumpAndSettle();
+      await cancel(t);
+      expect(find.text('Llamar igual'), findsNothing,
+          reason: 'el sheet tiene que haberse cerrado');
       expect(rig.telephony.dialed, isEmpty);
       expect(rig.telephony.audio.takes, 0);
+
+      await _teardown(t);
+    });
+
+    testWidgets('el aviso del audio vive sólo en el sheet', (t) async {
+      // CCE#16: con el número escrito no hay AudioRouteNotice en reposo; al
+      // tocar Llamar el sheet monta uno, y al cerrarlo no queda ninguno.
+      final rig = _Rig();
+      await t.pumpWidget(rig.screen);
+
+      for (final k in ['9', '1', '1']) {
+        await t.tap(find.text(k));
+      }
+      await _settle(t);
+      expect(find.byType(AudioRouteNotice), findsNothing);
+
+      await t.tap(find.byTooltip('Llamar'));
+      await t.pumpAndSettle();
+      expect(find.byType(AudioRouteNotice), findsOneWidget);
+      expect(find.text('Escuchar acá y llamar'), findsOneWidget);
+      expect(find.text('Llamar igual'), findsOneWidget);
+
+      await cancel(t);
+      expect(find.byType(AudioRouteNotice), findsNothing);
+      expect(rig.telephony.dialed, isEmpty);
 
       await _teardown(t);
     });
