@@ -3,10 +3,82 @@ import 'package:flutter/services.dart';
 
 import '../../theme/cce_tokens.dart';
 import '../../utils/dial_number.dart';
+import 'phone_surface.dart';
 
-/// El visor del número que se está discando: grande, centrado y sin
-/// placeholder — el teclado que tiene debajo ya dice qué hacer, y un "Número"
-/// en gris ocupando el lugar del número es ruido.
+/// El visor de la pantalla: la superficie, el número que se está discando y
+/// el botón de pegar ADENTRO del campo.
+///
+/// Es el protagonista de la mitad de arriba (CCE#14): la única cosa que el
+/// usuario mira mientras toca el teclado, y antes era la franja más chica y
+/// apagada de la pantalla, con el botón de pegar flotando afuera. Ahora es una
+/// [PhoneSurface] al escalón de los inputs ([CceColors.surfaceHigh]), con el
+/// número como el texto más grande de la pantalla.
+///
+/// Sólo existe en reposo: durante la llamada el acuse de los tonos DTMF va
+/// dentro de la card de la llamada, y el lugar del visor se lo lleva el
+/// teclado.
+class DialDisplay extends StatelessWidget {
+  const DialDisplay({
+    super.key,
+    required this.controller,
+    required this.focusNode,
+    required this.enabled,
+    this.onChanged,
+    this.onPaste,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool enabled;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback? onPaste;
+
+  /// Alto fijo: el número no lo cambia (se achica él), así que el teclado no
+  /// se mueve mientras se disca.
+  static const double height = 68;
+
+  /// Ancho del botón de pegar y de su contrapeso del otro lado: es lo que deja
+  /// el número CENTRADO en la superficie aunque el botón esté sólo a la
+  /// derecha.
+  static const double _sideWidth = 48;
+
+  @override
+  Widget build(BuildContext context) {
+    return PhoneSurface(
+      color: CceColors.surfaceHigh,
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        height: height,
+        child: Row(
+          children: [
+            const SizedBox(width: _sideWidth),
+            Expanded(
+              child: DialNumberField(
+                controller: controller,
+                focusNode: focusNode,
+                enabled: enabled,
+                onChanged: onChanged,
+              ),
+            ),
+            SizedBox(
+              width: _sideWidth,
+              child: IconButton(
+                onPressed: enabled ? onPaste : null,
+                icon: const Icon(Icons.content_paste_rounded, size: 20),
+                color: CceColors.textTertiary,
+                tooltip: 'Pegar un número',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El campo del número: grande, centrado y sin placeholder — el teclado que
+/// tiene debajo ya dice qué hacer, y un "Número" en gris ocupando el lugar del
+/// número es ruido.
 ///
 /// Es EDITABLE: se escribe con el dial pad, pero también se puede tocar para
 /// corregir a mano o pegar con el menú del sistema. Lo que entre por cualquiera
@@ -16,6 +88,10 @@ import '../../utils/dial_number.dart';
 /// entra a 34px en un teléfono angosto: antes que cortarlo con puntos
 /// suspensivos — un número a medias es inservible — baja la tipografía hasta
 /// que entra entero.
+///
+/// No pinta superficie propia: la pinta [DialDisplay]. Por eso el `filled` del
+/// tema de inputs se apaga acá — era lo que dejaba el rectángulo gris sin radio
+/// del #14.
 class DialNumberField extends StatelessWidget {
   const DialNumberField({
     super.key,
@@ -67,20 +143,23 @@ class DialNumberField extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = fontSizeFor(controller.text, constraints.maxWidth);
-        return TextField(
-          controller: controller,
-          focusNode: focusNode,
-          enabled: enabled,
-          textAlign: TextAlign.center,
-          keyboardType: TextInputType.phone,
-          cursorColor: CceColors.accent,
-          inputFormatters: const [DialInputFormatter()],
-          onChanged: onChanged,
-          style: styleAt(size),
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: EdgeInsets.zero,
+        return Center(
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            enabled: enabled,
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.phone,
+            cursorColor: CceColors.accent,
+            inputFormatters: const [DialInputFormatter()],
+            onChanged: onChanged,
+            style: styleAt(size),
+            decoration: const InputDecoration(
+              filled: false,
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
           ),
         );
       },

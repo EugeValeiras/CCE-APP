@@ -8,6 +8,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/status_dot.dart';
+import '../views/telephony/line_status_chip.dart';
 import '../views/telephony_screen.dart';
 
 /// Card del teléfono 4G para "Destacados". Espeja [VacuumHomeCard]: glyph
@@ -18,6 +19,9 @@ import '../views/telephony_screen.dart';
 ///  - Con llamada viva: quién y en qué estado está (es lo urgente).
 ///  - Sin llamada: el estado de la LÍNEA, que no es lo mismo que el registro de
 ///    red — una línea sin habilitar se registra igual y reporta todo en verde.
+///    Se dice con las mismas palabras, el mismo color y las mismas barritas que
+///    el chip de la pantalla que abre (CCE#14): la card es la puerta, y del otro
+///    lado tiene que estar lo mismo que promete.
 ///
 /// La card no disca: abre [TelephonyScreen], que es donde está el teclado. Un
 /// atajo para llamar en la pantalla de inicio sería lo más fácil de apretar sin
@@ -60,33 +64,50 @@ class PhoneHomeCard extends StatelessWidget {
 
         // Una entrante sonando es lo más urgente que puede mostrar esta card.
         final Color accent;
+        final String sub;
+        // La señal sólo tiene sentido en reposo: con llamada, lo que importa es
+        // quién; sin módem, no hay señal que mostrar.
+        int? bars;
         if (!online) {
           accent = CceColors.textTertiary;
+          sub = 'Módem no disponible';
         } else if (ringing) {
           accent = CceColors.ok;
+          final who = s.peerName ?? s.peerNumber ?? 'Número desconocido';
+          sub = 'Llamada entrante · $who';
         } else if (inCall) {
           accent = CceColors.accent;
-        } else if (s.lineActive == 'inactive') {
-          accent = CceColors.danger;
-        } else {
-          accent = CceColors.textSecondary;
-        }
-
-        final String sub;
-        if (!online) {
-          sub = 'Módem no disponible';
-        } else if (inCall) {
           final who = s.peerName ?? s.peerNumber ?? 'Sin identificar';
           sub = '${_callStateLabel(s.callState)} · $who';
-        } else if (s.lineActive == 'inactive') {
-          sub = 'Línea inactiva';
         } else {
-          // Ni "OK" ni "Todo bien": mientras `lineActive` sea 'unknown' lo único
-          // que sabemos es que está registrado, y eso NO garantiza que curse.
-          final bars = s.signalBars ?? 0;
-          final net = s.networkOperator ?? s.networkTech ?? 'Registrado';
-          sub = '$net · $bars/5';
+          // Las mismas palabras —y las mismas fuentes— que el chip de la
+          // pantalla: el estado en vivo del device manda, y lo que no traiga
+          // se lee del seed de `/phone/status`. Ni "OK" ni "Todo bien":
+          // mientras `lineActive` sea 'unknown' lo único que sabemos es que
+          // está registrado, y eso NO garantiza que curse.
+          final st = telephony.status;
+          final (String lineText, Color lineColor) =
+              switch (s.lineActive ?? st.lineActive) {
+            'active' => ('Línea activa', CceColors.ok),
+            'inactive' => ('Línea inactiva', CceColors.danger),
+            _ => ('Línea sin verificar', CceColors.textTertiary),
+          };
+          accent = lineColor;
+          final net = s.networkOperator ??
+              st.operator ??
+              s.networkTech ??
+              st.tech ??
+              'Registrado';
+          sub = '$lineText · $net';
+          bars = s.signalBars ?? st.signalBars;
         }
+
+        // El glifo va con el color del estado sólo cuando hay algo que atender
+        // (entrante, llamada): un glifo verde permanente en la home sería
+        // decoración.
+        final glyphColor = neo
+            ? (online && (ringing || inCall) ? accent : CceColors.neoTextSub)
+            : (ringing || inCall ? accent : CceColors.textSecondary);
 
         return CceCard(
           onTap: () {
@@ -112,9 +133,7 @@ class PhoneHomeCard extends StatelessWidget {
                 child: Center(
                   child: EmbossedGlyph(
                     size: neo ? 28 : 32,
-                    color: neo
-                        ? (online && inCall ? accent : CceColors.neoTextSub)
-                        : accent,
+                    color: glyphColor,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
                     child: CceIcon(
@@ -145,9 +164,9 @@ class PhoneHomeCard extends StatelessWidget {
                             ),
                     ),
                     SizedBox(height: neo ? 4 : 2),
-                    if (neo)
-                      Row(
-                        children: [
+                    Row(
+                      children: [
+                        if (neo) ...[
                           StatusDot(
                             online ? accent : CceColors.textTertiary,
                             // El pulso es para la entrante: es lo que hay que
@@ -156,23 +175,26 @@ class PhoneHomeCard extends StatelessWidget {
                             semanticLabel: sub,
                           ),
                           const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              sub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: CceText.caption,
-                            ),
-                          ),
                         ],
-                      )
-                    else
-                      Text(
-                        sub,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: CceText.caption.copyWith(color: accent),
-                      ),
+                        Flexible(
+                          child: Text(
+                            sub,
+                            maxLines: 1,
+                            softWrap: false,
+                            // El estado va primero y entra siempre; lo que se
+                            // desvanece si falta lugar es el operador.
+                            overflow: TextOverflow.fade,
+                            style: neo
+                                ? CceText.caption
+                                : CceText.caption.copyWith(color: accent),
+                          ),
+                        ),
+                        if (bars != null) ...[
+                          const SizedBox(width: 8),
+                          SignalBars(bars, height: 10),
+                        ],
+                      ],
+                    ),
                   ],
                 ),
               ),

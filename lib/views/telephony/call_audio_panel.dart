@@ -6,7 +6,7 @@ import 'package:flutter/services.dart';
 import '../../services/phone_audio_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
-import '../../theme/components/cce_card.dart';
+import 'phone_surface.dart';
 
 /// Los controles del audio de la llamada EN ESTE CELULAR (CCE#12).
 ///
@@ -20,107 +20,116 @@ import '../../theme/components/cce_card.dart';
 ///     distingue falta de audio de falta de permiso, de un interlocutor mudo o
 ///     de un micrófono silenciado. Es criterio de aceptación del issue, y es lo
 ///     que hace que este panel sea diagnosticable a un metro de distancia.
+///
+/// Con el #14 el panel dejó de estar SIEMPRE en la mitad de arriba. Suelto
+/// (sin [headline]) aparece en reposo sólo cuando importa: con el audio tomado
+/// —un micrófono abierto no se esconde—, mientras se está tomando, o con un
+/// error que leer. Dentro de la card de la llamada ([embedded]) va con la
+/// [AudioRouteLine] como [headline]: la verdad de por dónde sale la voz y el
+/// botón para cambiarla son UNA fila, no dos carteles que dicen lo mismo.
 class CallAudioPanel extends StatelessWidget {
-  const CallAudioPanel({super.key, required this.audio});
+  const CallAudioPanel({
+    super.key,
+    required this.audio,
+    this.headline,
+    this.embedded = false,
+  });
 
   final PhoneAudioService audio;
+
+  /// Reemplaza al título y subtítulo del panel. Lo usa la card de la llamada
+  /// para poner el aviso de ruteo en su lugar, con el botón de tomar/soltar a
+  /// la derecha; los medidores y los controles siguen debajo.
+  final Widget? headline;
+
+  /// Sin superficie propia: la pinta la card que lo contiene.
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
     final on = audio.isOn;
     final busy = audio.busy;
 
-    return CceCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    if (headline case final head?) {
+      // Dentro de la card de la llamada el titular es el aviso de ruteo, que
+      // es largo: va a todo el ancho, y el botón baja a la fila de controles
+      // (con el audio tomado) o a una fila propia (sin tomar). Apretarlo al
+      // lado del texto dejaba el aviso en cuatro o cinco renglones.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              CceIcon(
-                on ? CceIcons.volume2 : CceIcons.speaker,
-                size: 18,
-                color: on ? CceColors.ok : CceColors.textTertiary,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      on ? 'Hablás por el celular' : 'El audio está en la casa',
-                      style: CceText.label.copyWith(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      on ? _outputLabel(audio.output) : audio.stateLabel,
-                      style: CceText.caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _takeButton(on: on, busy: busy),
-            ],
-          ),
+          head,
           if (on) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             _meters(),
             const SizedBox(height: 10),
-            _controls(),
+            _controls(trailing: AudioTakeButton(audio: audio, height: 40)),
+          ] else ...[
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [AudioTakeButton(audio: audio, on: on, busy: busy)],
+            ),
           ],
           if (audio.error case final message?) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             _errorLine(message),
           ],
         ],
-      ),
-    );
-  }
+      );
+    }
 
-  /// El botón que trae o devuelve el audio.
-  ///
-  /// Tomar el audio **se lo saca a quien lo tenga** (gana el último, CCE#12), y
-  /// el botón lo dice: sin eso, el usuario no entiende por qué al dashboard se
-  /// le cortó la voz.
-  Widget _takeButton({required bool on, required bool busy}) {
-    final label = on ? 'Soltar' : 'Escuchar acá';
-    return Semantics(
-      button: true,
-      label: on
-          ? 'Soltar el audio y devolverlo al teléfono de la casa'
-          : 'Traer el audio de la llamada a este celular',
-      child: Tooltip(
-        message: on
-            ? 'La voz vuelve al teléfono de la casa'
-            : 'Se lo saca a quien lo tenga (dashboard u otro celular)',
-        child: FilledButton(
-          onPressed: busy
-              ? null
-              : () {
-                  HapticFeedback.mediumImpact();
-                  if (on) {
-                    audio.release();
-                  } else {
-                    audio.take();
-                  }
-                },
-          style: FilledButton.styleFrom(
-            backgroundColor: on ? CceColors.surfaceTop : CceColors.accent,
-            foregroundColor: on ? CceColors.textSecondary : CceColors.inkOnAmber,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            minimumSize: const Size(0, 36),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            busy ? '…' : label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            CceIcon(
+              on ? CceIcons.volume2 : CceIcons.speaker,
+              size: 18,
+              color: on ? CceColors.ok : CceColors.textTertiary,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    on ? 'Hablás por el celular' : 'El audio está en la casa',
+                    style: CceText.label.copyWith(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    on ? outputLabel(audio.output) : audio.stateLabel,
+                    style: CceText.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            AudioTakeButton(audio: audio, on: on, busy: busy),
+          ],
         ),
-      ),
+        if (on) ...[
+          const SizedBox(height: 12),
+          _meters(),
+          const SizedBox(height: 10),
+          _controls(),
+        ],
+        if (audio.error case final message?) ...[
+          const SizedBox(height: 10),
+          _errorLine(message),
+        ],
+      ],
+    );
+
+    if (embedded) return body;
+    return PhoneSurface(
+      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+      child: body,
     );
   }
 
@@ -152,7 +161,9 @@ class CallAudioPanel extends StatelessWidget {
     );
   }
 
-  Widget _controls() {
+  /// Altavoz y mudo; con [trailing], además el botón de soltar al final de la
+  /// misma fila — todos los controles del audio en un renglón.
+  Widget _controls({Widget? trailing}) {
     // Con auriculares o manos libres conectados el altavoz no se ofrece: iOS ya
     // está mandando el audio ahí y forzarlo al parlante sería sacárselo de la
     // oreja al usuario sin que lo haya pedido.
@@ -175,7 +186,7 @@ class CallAudioPanel extends StatelessWidget {
         else
           Expanded(
             child: Text(
-              _outputLabel(audio.output),
+              outputLabel(audio.output),
               style: CceText.caption,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -194,6 +205,10 @@ class CallAudioPanel extends StatelessWidget {
             },
           ),
         ),
+        if (trailing != null) ...[
+          const SizedBox(width: 8),
+          trailing,
+        ],
       ],
     );
   }
@@ -240,7 +255,8 @@ class CallAudioPanel extends StatelessWidget {
     );
   }
 
-  static String _outputLabel(PhoneAudioOutput output) {
+  /// Por dónde sale el audio en el celular, en castellano.
+  static String outputLabel(PhoneAudioOutput output) {
     switch (output) {
       case PhoneAudioOutput.receiver:
         return 'Por el auricular del celular';
@@ -253,6 +269,75 @@ class CallAudioPanel extends StatelessWidget {
       case PhoneAudioOutput.other:
         return 'Por la salida del sistema';
     }
+  }
+}
+
+/// El botón que trae o devuelve el audio.
+///
+/// Tomar el audio **se lo saca a quien lo tenga** (gana el último, CCE#12), y
+/// el botón lo dice: sin eso, el usuario no entiende por qué al dashboard se
+/// le cortó la voz.
+///
+/// Es público porque es LA acción del audio y aparece en más de un lugar: en
+/// el panel, y al lado del aviso cuando se empieza a discar. Es siempre el
+/// mismo botón haciendo lo mismo.
+class AudioTakeButton extends StatelessWidget {
+  AudioTakeButton({
+    super.key,
+    required this.audio,
+    bool? on,
+    bool? busy,
+    this.height = 36,
+  })  : on = on ?? audio.isOn,
+        busy = busy ?? audio.busy;
+
+  final PhoneAudioService audio;
+  final bool on;
+  final bool busy;
+
+  /// Alto del botón: 36 suelto, 40 cuando comparte fila con los toggles.
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = on ? 'Soltar' : 'Escuchar acá';
+    return Semantics(
+      button: true,
+      label: on
+          ? 'Soltar el audio y devolverlo al teléfono de la casa'
+          : 'Traer el audio de la llamada a este celular',
+      child: Tooltip(
+        message: on
+            ? 'La voz vuelve al teléfono de la casa'
+            : 'Se lo saca a quien lo tenga (dashboard u otro celular)',
+        child: FilledButton(
+          onPressed: busy
+              ? null
+              : () {
+                  HapticFeedback.mediumImpact();
+                  if (on) {
+                    audio.release();
+                  } else {
+                    audio.take();
+                  }
+                },
+          style: FilledButton.styleFrom(
+            backgroundColor: on ? CceColors.surfaceTop : CceColors.accent,
+            foregroundColor: on ? CceColors.textSecondary : CceColors.inkOnAmber,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            minimumSize: Size(0, height),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(CceRadii.sm),
+            ),
+          ),
+          child: Text(
+            busy ? '…' : label,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
   }
 }
 

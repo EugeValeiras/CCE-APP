@@ -27,8 +27,14 @@ const List<List<_Key>> _rows = [
 /// El AIRE es lo que separa un teléfono de una grilla de botones: las teclas
 /// no se tocan entre sí, y el hueco horizontal es más generoso que el vertical
 /// (una columna de teclas pegadas se lee como una sola pieza vertical).
+///
+/// El hueco vertical es un PISO: cuando la pantalla le da al teclado más alto
+/// del que necesita (en reposo, con los bloques de estado fuera de la mitad de
+/// arriba — CCE#14), las filas se separan hasta [_gapYMaxRatio] en vez de
+/// dejar el teclado apretado en el medio de un hueco muerto.
 const double _gapXRatio = 0.34;
 const double _gapYRatio = 0.20;
+const double _gapYMaxRatio = 0.42;
 
 /// Tope y piso del diámetro. El tope evita platos en tablet — y deja al botón
 /// de llamar (76) como el elemento más grande de la pantalla, que es lo que
@@ -78,7 +84,11 @@ class DialPad extends StatelessWidget {
         final size =
             math.min(math.min(byWidth, byHeight), _maxKey).clamp(_minKey, _maxKey);
         final gapX = size * _gapXRatio;
-        final gapY = size * _gapYRatio;
+        // El alto que sobra se reparte entre las filas, hasta el tope.
+        final gapY = constraints.maxHeight.isFinite
+            ? ((constraints.maxHeight - 4 * size) / 3)
+                .clamp(size * _gapYRatio, size * _gapYMaxRatio)
+            : size * _gapYRatio;
 
         return Center(
           child: FittedBox(

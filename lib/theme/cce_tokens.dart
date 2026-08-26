@@ -258,12 +258,16 @@ abstract final class CceShadows {
   /// Halo de una luz ENCENDIDA. Es el único "glow" que sobrevive porque no es
   /// decoración: una lámpara prendida emite luz, y ese es el estado que la app
   /// existe para comunicar. Muy contenido — insinúa, no ilumina.
-  static List<BoxShadow> glowOn(Color c) => [
+  ///
+  /// [strong] es para la acción principal de una pantalla (el botón de llamar):
+  /// un color semántico desaturado sobre el lienzo negro se lee apagado, y el
+  /// halo es lo que lo prende sin inventar un verde más chillón.
+  static List<BoxShadow> glowOn(Color c, {bool strong = false}) => [
         BoxShadow(
-          color: c.withValues(alpha: 0.16),
-          blurRadius: 20,
+          color: c.withValues(alpha: strong ? 0.34 : 0.16),
+          blurRadius: strong ? 26 : 20,
           offset: const Offset(0, 4),
-          spreadRadius: -6,
+          spreadRadius: strong ? -4 : -6,
         ),
       ];
 
