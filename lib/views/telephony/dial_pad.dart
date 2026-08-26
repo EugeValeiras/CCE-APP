@@ -10,7 +10,15 @@ import '../../theme/components/cce_neo_press.dart';
 class _Key {
   final String digit;
   final String legend;
-  const _Key(this.digit, [this.legend = '']);
+
+  /// `*` y `#`. No son dígitos: van más grandes y centrados en su círculo, en
+  /// vez de compartir la línea base (y el hueco de la leyenda) con los
+  /// dígitos de su fila. El `1` NO es una tecla de función: no tiene letras,
+  /// pero es un dígito y tiene que quedar a la altura del `2` y el `3`.
+  final bool isFunction;
+
+  const _Key(this.digit, [this.legend = '']) : isFunction = false;
+  const _Key.function(this.digit) : legend = '', isFunction = true;
 }
 
 /// La disposición de toda la vida (ITU E.161): el `1` sin letras, el `0` con
@@ -19,7 +27,7 @@ const List<List<_Key>> _rows = [
   [_Key('1'), _Key('2', 'ABC'), _Key('3', 'DEF')],
   [_Key('4', 'GHI'), _Key('5', 'JKL'), _Key('6', 'MNO')],
   [_Key('7', 'PQRS'), _Key('8', 'TUV'), _Key('9', 'WXYZ')],
-  [_Key('*'), _Key('0'), _Key('#')],
+  [_Key.function('*'), _Key('0'), _Key.function('#')],
 ];
 
 /// Proporciones del teclado, en múltiplos del diámetro de una tecla.
@@ -147,8 +155,9 @@ class _DialKey extends StatelessWidget {
     final ink = enabled ? CceColors.textPrimary : CceColors.textMuted;
 
     // La leyenda RESERVA su alto aunque esté vacía: es lo que deja todos los
-    // dígitos a la misma altura dentro de su círculo, incluidos el 1, el * y
-    // el #. Sin eso, la fila de abajo se lee corrida respecto de las otras.
+    // dígitos a la misma altura dentro de su círculo, incluido el 1 (que no
+    // tiene letras). Las teclas de función no pasan por acá: no tienen
+    // leyenda y se centran solas en el círculo ([_functionGlyph]).
     //
     // El `+` del 0 no es una leyenda de letras sino un CARÁCTER que se disca:
     // va más grande, o a tamaño de letras no se ve y nadie descubre el
@@ -183,6 +192,7 @@ class _DialKey extends StatelessWidget {
           CceColors.accentWash.withValues(alpha: 0.10 * press),
           Color.lerp(base, CceColors.surfaceTop, press)!,
         );
+        final glyphInk = Color.lerp(ink, CceColors.accent, press * 0.5)!;
 
         return Container(
           width: size,
@@ -196,64 +206,115 @@ class _DialKey extends StatelessWidget {
             ),
             boxShadow: enabled ? CceShadows.raised : null,
           ),
-          // Red de seguridad: con una tecla en su tamaño mínimo, y según la
-          // métrica de la fuente, dígito + leyenda pueden pasarse del círculo
-          // por uno o dos píxeles. Antes que una franja de overflow, se achica.
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _digit(size: size, ink: Color.lerp(ink, CceColors.accent, press * 0.5)!),
-                SizedBox(
-                  height: legendBox,
-                  child: legend.isEmpty
-                      ? null
-                      : Text(
-                          legend,
-                          style: CceText.section.copyWith(
-                            fontSize: legendSize,
-                            fontWeight: isPlus ? FontWeight.w400 : FontWeight.w600,
-                            letterSpacing: isPlus ? 0 : legendSize * 0.14,
-                            height: isPlus ? 1.0 : 1.35,
-                            color: enabled
-                                ? CceColors.textTertiary
-                                : CceColors.textMuted,
-                          ),
-                        ),
+          child: data.isFunction
+              ? _functionGlyph(size: size, ink: glyphInk)
+              // Red de seguridad: con una tecla en su tamaño mínimo, y según
+              // la métrica de la fuente, dígito + leyenda pueden pasarse del
+              // círculo por uno o dos píxeles. Antes que una franja de
+              // overflow, se achica.
+              : FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _glyph(fontSize: size * _digitScale, ink: glyphInk),
+                      SizedBox(
+                        height: legendBox,
+                        child: legend.isEmpty
+                            ? null
+                            : Text(
+                                legend,
+                                style: CceText.section.copyWith(
+                                  fontSize: legendSize,
+                                  fontWeight: isPlus
+                                      ? FontWeight.w400
+                                      : FontWeight.w600,
+                                  letterSpacing: isPlus ? 0 : legendSize * 0.14,
+                                  height: isPlus ? 1.0 : 1.35,
+                                  color: enabled
+                                      ? CceColors.textTertiary
+                                      : CceColors.textMuted,
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
-            ),
-          ),
         );
       },
     );
   }
 
-  Widget _digit({required double size, required Color ink}) {
-    // El `*` y el `#` van más grandes que un dígito, como en el teclado del
-    // iPhone: a tamaño de dígito el asterisco es una mota y el numeral se lee
-    // como un dígito más; los dos son teclas de función y tienen que verse.
-    final scale = switch (data.digit) {
-      '*' => 0.58,
-      '#' => 0.48,
-      _ => 0.40,
-    };
-    final text = Text(
-      data.digit,
-      style: CceText.display.copyWith(
-        fontSize: size * scale,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0,
-        height: 1.0,
-        color: ink,
+  Widget _glyph({required double fontSize, required Color ink}) => Text(
+    data.digit,
+    style: CceText.display.copyWith(
+      fontSize: fontSize,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+      height: 1.0,
+      color: ink,
+    ),
+  );
+
+  /// El `*` y el `#` van más grandes que un dígito, como en el teclado del
+  /// iPhone: a tamaño de dígito el asterisco es una mota y el numeral se lee
+  /// como un dígito más; los dos son teclas de función y tienen que verse.
+  ///
+  /// Y van CENTRADOS en el círculo, no en la caja de texto: centrar la caja
+  /// deja a los dos flotando arriba, porque la tinta de estos glifos no está
+  /// en el medio de su línea. El centrado sale de la métrica del glifo
+  /// ([_FunctionGlyph]): se ubica la línea base —que Flutter calcula de la
+  /// fuente real— a la distancia del centro que la tinta sube sobre ella.
+  /// Es el único ajuste vertical que tienen: ni hueco de leyenda ni offset.
+  Widget _functionGlyph({required double size, required Color ink}) {
+    final metrics = _FunctionGlyph.of(data.digit);
+    final fontSize = size * metrics.scale;
+    // El área útil no es el diámetro: el [Container] descuenta su borde como
+    // padding. Se centra en lo que la tecla le da, no en el tamaño nominal.
+    return SizedBox.expand(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Baseline(
+          baseline: constraints.maxHeight / 2 + metrics.inkCenter * fontSize,
+          baselineType: TextBaseline.alphabetic,
+          child: Center(
+            heightFactor: 1.0,
+            child: _glyph(fontSize: fontSize, ink: ink),
+          ),
+        ),
       ),
     );
-    // El asterisco se dibuja arriba de la línea base (no baja hasta ella como
-    // un dígito), así que sin bajarlo queda flotando contra el borde de la
-    // tecla en vez de centrado, que es como se ve en un teléfono.
-    return data.digit == '*'
-        ? Transform.translate(offset: Offset(0, size * 0.09), child: text)
-        : text;
   }
+}
+
+/// Tamaño de fuente de un dígito, en múltiplos del diámetro de la tecla.
+const double _digitScale = 0.40;
+
+/// Cómo se dibuja una tecla de función: el tamaño de fuente (en múltiplos del
+/// diámetro) y el tramo que ocupa su tinta sobre la línea base, en ems.
+///
+/// Los tramos son la métrica de los glifos en SF Pro (la fuente del sistema
+/// en iOS), medida sobre el glifo dibujado —rasterizado con un [TextPainter]
+/// y contando las filas con tinta respecto de la línea base—: los dos cuelgan
+/// del tope de las mayúsculas (0.70 em, igual que un dígito), el `#` baja
+/// hasta la línea base como un dígito y el asterisco se queda a mitad de
+/// camino. Por eso el asterisco necesita más tamaño de fuente para verse
+/// igual de grande: su tinta es un tercio de la línea.
+class _FunctionGlyph {
+  final double scale;
+  final double inkTop;
+  final double inkBottom;
+  const _FunctionGlyph({
+    required this.scale,
+    required this.inkTop,
+    required this.inkBottom,
+  });
+
+  static _FunctionGlyph of(String digit) => switch (digit) {
+    '*' => const _FunctionGlyph(scale: 0.80, inkTop: 0.70, inkBottom: 0.35),
+    '#' => const _FunctionGlyph(scale: 0.56, inkTop: 0.70, inkBottom: 0.0),
+    _ => throw ArgumentError.value(digit, 'digit', 'no es tecla de función'),
+  };
+
+  /// Centro de la tinta, en ems sobre la línea base.
+  double get inkCenter => (inkTop + inkBottom) / 2;
 }
