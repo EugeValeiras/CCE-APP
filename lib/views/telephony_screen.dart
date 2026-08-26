@@ -217,7 +217,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
   ///    dónde voy a escuchar?" existe y se contesta con las dos salidas.
   Widget? _idleAudioBlock(TelephonyService t) {
     final audio = t.audio;
-    if (audio.isOn || audio.busy || audio.error != null) {
+    if (audio.taken || audio.busy || audio.error != null) {
       return CallAudioPanel(audio: audio);
     }
     return null;
@@ -581,7 +581,13 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
       ),
       // Atender desde la app no trae el audio al celular por sí solo: hay que
       // decirlo ANTES de atender, y ofrecer traerlo ahí mismo.
-      routeLine: AudioRouteLine.forIncoming(onThisPhone: t.audio.isOn),
+      // `taken` y no `isOn`: con el motor parado el audio SIGUE ruteado acá
+      // (no suena en la casa), y el panel de abajo es el que dice que ahora
+      // mismo no suena y ofrece reintentar.
+      routeLine: AudioRouteLine.forIncoming(
+        onThisPhone: t.audio.taken,
+        stalled: t.audio.stalled,
+      ),
     );
   }
 
@@ -629,7 +635,11 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
       // EL aviso, mientras la llamada está viva y el usuario se pregunta por
       // qué no escucha nada — o, con el audio ya en el celular, por qué sí lo
       // escucha.
-      routeLine: AudioRouteLine.forCall(t.status, onThisPhone: t.audio.isOn),
+      routeLine: AudioRouteLine.forCall(
+        t.status,
+        onThisPhone: t.audio.taken,
+        stalled: t.audio.stalled,
+      ),
     );
   }
 
