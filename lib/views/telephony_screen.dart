@@ -22,6 +22,16 @@ import 'telephony/dial_pad.dart';
 import 'telephony/line_status_chip.dart';
 import 'telephony/phone_surface.dart';
 
+/// El primer texto con contenido, o null. Un '' que viene del backend no es
+/// un dato y no tiene que ganarle a un valor real de otra fuente.
+String? _firstNonBlank(Object? a, Object? b) {
+  for (final v in [a, b]) {
+    final text = v?.toString().trim();
+    if (text != null && text.isNotEmpty) return text;
+  }
+  return null;
+}
+
 /// Pantalla del teléfono 4G (HAT SIM7600G-H).
 ///
 /// Es, ante todo, UN TECLADO PARA DISCAR (issue #10, que reemplaza la decisión
@@ -573,8 +583,13 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     TelephonyService t,
   ) {
     final s = d.state;
-    final name = (incoming?['contactName'] ?? s.peerName ?? '').toString();
-    final number = (incoming?['number'] ?? s.peerNumber ?? '').toString();
+    // El aviso del socket puede llegar SIN número (`number: ''`): sale con el
+    // primer RING y el caller ID viene después, en un delta del device
+    // (`peerNumber`). En el event store son 3 de cada 4 entrantes. Un '' no es
+    // un dato: se cae a lo que diga el device, o la card anunciaría "Número
+    // desconocido" con el número ya en pantalla en la card de la home (CCE#21).
+    final name = _firstNonBlank(incoming?['contactName'], s.peerName) ?? '';
+    final number = _firstNonBlank(incoming?['number'], s.peerNumber) ?? '';
     final who = name.isNotEmpty
         ? name
         : (number.isEmpty ? 'Número desconocido' : number);

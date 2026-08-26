@@ -45,6 +45,47 @@ void main() {
       expect(st.lineLabel, 'AR PERSONAL Personal');
     });
 
+    test('la llamada del snapshot trae dirección, número y contacto', () {
+      // CCE#21: con esto `refresh()` re-deriva la card de la entrante tras
+      // reconectar. `ringingIn` es la pregunta exacta que hace el servicio.
+      final ringing = PhoneStatus.fromJson({
+        'call': {
+          'state': 'ringing',
+          'direction': 'in',
+          'peerNumber': '+542616110154',
+          'contactId': 'cmt96lp8k',
+          'contactName': 'Cami',
+          'startedAt': 1787776653609,
+          'elapsedMs': 4120,
+        },
+      });
+      expect(ringing.callState, 'ringing');
+      expect(ringing.callDirection, 'in');
+      expect(ringing.callNumber, '+542616110154');
+      expect(ringing.callContactId, 'cmt96lp8k');
+      expect(ringing.callContactName, 'Cami');
+      expect(ringing.ringingIn, isTrue);
+
+      // Sin caller ID todavía: el número vacío no es un número.
+      final blank = PhoneStatus.fromJson({
+        'call': {'state': 'ringing', 'direction': 'in', 'peerNumber': ''},
+      });
+      expect(blank.callNumber, isNull);
+      expect(blank.ringingIn, isTrue);
+
+      // Un `ringing` saliente ("Llamando…") no es una entrante.
+      final out = PhoneStatus.fromJson({
+        'call': {'state': 'ringing', 'direction': 'out'},
+      });
+      expect(out.ringingIn, isFalse);
+
+      // Y el reposo real, tal como lo manda el backend.
+      final idle = PhoneStatus.fromJson({'call': {'state': 'idle', 'elapsedMs': 0}});
+      expect(idle.callDirection, isNull);
+      expect(idle.callNumber, isNull);
+      expect(idle.ringingIn, isFalse);
+    });
+
     test('un status vacío no inventa un ruteo de audio', () {
       final st = PhoneStatus.fromJson({});
       expect(st.audioRoute, AudioRoute.unknown);

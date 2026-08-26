@@ -33,11 +33,14 @@ class TelephonyService extends ChangeNotifier {
   final ApiService _api;
   final SocketService _socket;
 
+  /// [api] se inyecta SÓLO en tests, para probar [refresh] sin red: en la app
+  /// se arma de [config].
   TelephonyService({
     required ServerConfig config,
     required SocketService socket,
     this.reloadPhoneDevice,
-  })  : _api = ApiService(config),
+    ApiService? api,
+  })  : _api = api ?? ApiService(config),
         _socket = socket,
         audio = PhoneAudioService(config: config);
 
@@ -56,7 +59,21 @@ class TelephonyService extends ChangeNotifier {
   String? _error;
   bool _disposed = false;
 
-  /// Llamada entrante sonando AHORA (para el banner de la pantalla).
+  /// Llamada entrante sonando AHORA (para la card de la pantalla). Lo arma el
+  /// `phone:call-state` de `incoming` y lo retira **cualquiera** de las vías
+  /// por las que la app se entera de que dejó de sonar (CCE#21):
+  ///
+  ///  - el `phone:call-state` de fin;
+  ///  - el `device:state-changed` de `dev_phone` a un estado que no sea
+  ///    `ringing` (terminó, o la atendieron desde otro lado);
+  ///  - la re-lectura de `/phone/status` en [refresh], tras reconectar.
+  ///
+  /// Los tres pasan por [_clearIncoming], que es idempotente: pueden llegar en
+  /// cualquier orden, o uno solo. Hasta este fix colgaba del primero nada más,
+  /// y si ese evento se perdía —app en segundo plano, socket reconectando— la
+  /// card quedaba pegada con Rechazar/Atender sobre una llamada que ya no
+  /// existía. Mismo patrón que CCE#19: un estado que dependía de un único
+  /// evento sin red de seguridad.
   Map<String, dynamic>? _incoming;
 
   /// Perdidas nuevas desde la última vez que se abrió el historial. Alimenta el
@@ -90,7 +107,13 @@ class TelephonyService extends ChangeNotifier {
   StreamSubscription<PhoneCallStateEvent>? _callSub;
   StreamSubscription<DeviceStateEvent>? _deviceSub;
   StreamSubscription<bool>? _connSub;
-  bool _wasConnected = false;
+
+  /// El socket ya estuvo conectado alguna vez: el próximo `connected` es una
+  /// RE-conexión y hay que re-sincronizar. Se compara contra esto y no contra
+  /// "el último valor fue conectado": el socket avisa `true` → `false` →
+  /// `true`, y con el último valor la reconexión evaluaba `true && false` y el
+  /// refresh de acá abajo no corría nunca (encontrado en CCE#21).
+  bool _everConnected = false;
 
   PhoneStatus get status => _status;
   List<PhoneCall> get calls => _calls;
@@ -122,8 +145,9 @@ class TelephonyService extends ChangeNotifier {
     refresh();
 
     // El estado EN VIVO de la llamada viaja por `device:state-changed` sobre
-    // `dev_phone`, no por `phone:call-state`. Acá sólo se lo usa para retirar
-    // el placeholder de "marcando": el estado que pinta la pantalla sale de
+    // `dev_phone`, no por `phone:call-state`. Acá se lo usa para retirar lo
+    // que este servicio sostiene por su cuenta —el placeholder de "marcando" y
+    // la card de la entrante—: el estado que pinta la pantalla sale de
     // DevicesService, y duplicarlo sería tener dos verdades.
     _deviceSub = _socket.onDeviceChanged.listen((event) {
       if (event.deviceId != kPhoneDeviceId) return;
@@ -134,6 +158,15 @@ class TelephonyService extends ChangeNotifier {
       // plano o con el teléfono cerrado: un micrófono abierto después de colgar
       // es exactamente lo que nadie quiere en su celular.
       audio.syncWithCall(state != 'idle' && state != 'ended');
+      // La entrante vive mientras el device diga que SUENA. Cualquier otro
+      // estado la retira: `ended`/`idle` porque terminó, `active` porque la
+      // atendieron desde otro lado (dashboard, el HAT). Es la segunda fuente
+      // del fin de la llamada, y hasta CCE#21 este listener la ignoraba: si el
+      // `phone:call-state` de fin se perdía, la card quedaba pegada.
+      if (state != 'ringing') _clearIncoming();
+      // El placeholder de "marcando" NO se retira con un fin: el `idle` de la
+      // llamada anterior puede llegar con el `ATD` de la nueva en vuelo, y
+      // soltarlo ahí dejaría la pantalla quieta después de tocar Llamar.
       if (state == 'idle' || state == 'ended') return;
       _clearDialing();
     });
@@ -144,9 +177,11 @@ class TelephonyService extends ChangeNotifier {
         _safeNotify();
         return;
       }
-      // 'ended': cae el banner y la llamada entra al historial en el acto, sin
-      // volver a pedirlo al servidor.
-      _incoming = null;
+      // 'ended': cae la card y la llamada entra al historial en el acto, sin
+      // volver a pedirlo al servidor. El historial y el contador NO dependen
+      // de que la card siguiera montada: si el device ya la retiró, la
+      // perdida entra igual.
+      _clearIncoming(notify: false);
       _clearDialing(notify: false);
       audio.syncWithCall(false);
       final call = PhoneCall.fromJson(event.payload);
@@ -156,10 +191,14 @@ class TelephonyService extends ChangeNotifier {
     });
 
     // Tras una RE-conexión pudimos perder eventos: re-sincronizar. En la
-    // conexión inicial no hace falta (el seed de arriba ya corrió).
+    // conexión inicial no hace falta (el seed de arriba ya corrió). Si el
+    // socket ya estaba conectado al arrancar, su primer `true` ya pasó y el
+    // próximo es una reconexión.
+    _everConnected = _socket.isConnected;
     _connSub = _socket.onConnectionChanged.listen((connected) {
-      if (connected && _wasConnected) refresh();
-      _wasConnected = connected;
+      if (!connected) return;
+      if (_everConnected) refresh();
+      _everConnected = true;
     });
   }
 
@@ -176,10 +215,17 @@ class TelephonyService extends ChangeNotifier {
 
   /// Re-lee estado e historial. Nunca tira: un teléfono que no responde deja la
   /// pantalla en su último estado conocido con el error a la vista.
+  ///
+  /// También re-deriva la entrante del estado real (CCE#21): es la
+  /// re-sincronización que corre tras reconectar el socket, o sea el momento en
+  /// que es más probable que se haya perdido el evento de fin.
   Future<void> refresh() async {
     if (_loading) return;
     _loading = true;
     _safeNotify();
+    // Lo que había al PEDIR el snapshot. Si mientras el GET viajaba llegó una
+    // entrante por el socket, es más nueva que la respuesta y no se la pisa.
+    final incomingBefore = _incoming;
     try {
       final results = await Future.wait([
         _api.getPhoneStatus(),
@@ -188,6 +234,7 @@ class TelephonyService extends ChangeNotifier {
       _status = results[0] as PhoneStatus;
       _calls = results[1] as List<PhoneCall>;
       _error = null;
+      _reconcileIncoming(_status, before: incomingBefore);
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -203,10 +250,37 @@ class TelephonyService extends ChangeNotifier {
     _safeNotify();
   }
 
-  void dismissIncoming() {
+  void dismissIncoming() => _clearIncoming();
+
+  /// Retira la card de la entrante. Idempotente a propósito: la llaman las
+  /// tres vías por las que la app se entera de que dejó de sonar (ver
+  /// [_incoming]) y pueden correr en cualquier orden, o una sola.
+  void _clearIncoming({bool notify = true}) {
     if (_incoming == null) return;
     _incoming = null;
-    _safeNotify();
+    if (notify) _safeNotify();
+  }
+
+  /// Alinea la entrante con el snapshot de `/phone/status`: si dice que suena
+  /// una entrante, hay card (la que había, o una armada del snapshot si el
+  /// aviso del socket se perdió); si no, no la hay.
+  ///
+  /// Sólo toca lo que había al pedir el snapshot ([before]): una entrante que
+  /// entró por el socket mientras el GET viajaba —o una que el device retiró
+  /// en ese mismo lapso— es más nueva que la respuesta y manda ella.
+  void _reconcileIncoming(PhoneStatus status, {Map<String, dynamic>? before}) {
+    if (!identical(_incoming, before)) return;
+    if (!status.ringingIn) {
+      _incoming = null;
+      return;
+    }
+    _incoming ??= <String, dynamic>{
+      'event': 'incoming',
+      'direction': 'in',
+      'number': status.callNumber ?? '',
+      if (status.callContactId != null) 'contactId': status.callContactId,
+      if (status.callContactName != null) 'contactName': status.callContactName,
+    };
   }
 
   // ── Libreta ───────────────────────────────────────────────────────────────
@@ -249,7 +323,7 @@ class TelephonyService extends ChangeNotifier {
   Future<bool> hangup() => _command(
         _api.phoneHangup,
         onSent: () {
-          _incoming = null;
+          _clearIncoming(notify: false);
           _clearDialing(notify: false);
         },
       );
