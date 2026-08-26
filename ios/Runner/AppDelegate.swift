@@ -7,6 +7,11 @@ import UserNotifications
   private var methodChannel: FlutterMethodChannel?
   private var pendingToken: String?
 
+  /// Audio de la llamada del HAT 4G en el celular (CCE#12). Se crea junto con el
+  /// canal de APNs porque necesita lo mismo: el `binaryMessenger` del
+  /// FlutterViewController, que no existe hasta que la escena montó.
+  private var phoneAudio: PhoneAudioPlugin?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -96,6 +101,9 @@ import UserNotifications
       name: "com.cce.apns",
       binaryMessenger: controller.binaryMessenger
     )
+    if phoneAudio == nil {
+      phoneAudio = PhoneAudioPlugin(messenger: controller.binaryMessenger)
+    }
     print("📱 MethodChannel setup OK")
 
     if let token = pendingToken {

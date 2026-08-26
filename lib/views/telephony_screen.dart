@@ -12,6 +12,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../utils/dial_number.dart';
 import 'telephony/audio_notice.dart';
+import 'telephony/call_audio_panel.dart';
 import 'telephony/call_history_screen.dart';
 import 'telephony/contacts_sheet.dart';
 import 'telephony/dial_actions.dart';
@@ -24,12 +25,13 @@ import 'telephony/dial_pad.dart';
 /// de #4 de no discar desde la app). El historial pasó detrás de un botón:
 /// [CallHistoryScreen].
 ///
-/// LO QUE ESTA PANTALLA TIENE QUE DECIR SIEMPRE: **la app no lleva audio**. La
-/// llamada sale de verdad y el destino suena, pero la voz va al jack del HAT o
-/// al navegador del dashboard, nunca al celular. Un usuario que disca, no
-/// escucha nada y no sabe por qué, concluye que la app está rota — por eso el
-/// aviso está a la vista en reposo y en grande durante la llamada, y no en
-/// letra chica.
+/// LO QUE ESTA PANTALLA TIENE QUE DECIR SIEMPRE: **dónde se escucha la voz**.
+/// Con el #12 el celular puede llevar el audio (`CallAudioPanel`), pero
+/// mientras no lo tenga tomado sigue siendo cierto lo del #10 — la llamada sale
+/// de verdad y el destino suena, pero la voz va al jack del HAT o al navegador
+/// del dashboard. Un usuario que disca, no escucha nada y no sabe por qué,
+/// concluye que la app está rota, así que el aviso está a la vista en reposo y
+/// durante la llamada, y no en letra chica.
 ///
 /// Se llama `TelephonyScreen` y no `PhoneScreen` (como decía el plan) porque en
 /// este repo `phone_*` ya significa "layout de celular" (phone_home_view.dart):
@@ -100,7 +102,13 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
       resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: AnimatedBuilder(
-          animation: Listenable.merge([widget.service, widget.telephony]),
+          animation: Listenable.merge([
+            widget.service,
+            widget.telephony,
+            // El audio del celular tiene su propio estado (niveles, altavoz,
+            // desalojo) y cambia varias veces por segundo mientras hay llamada.
+            widget.telephony.audio,
+          ]),
           builder: (context, _) {
             final d = _device;
             final t = widget.telephony;
@@ -123,8 +131,12 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
                   _incomingCard(d, incoming)
                 else if (live)
                   _activeCall(d, t)
-                else
+                else if (!t.audio.isOn)
+                  // Con el audio ya tomado, el panel de abajo dice lo mismo y
+                  // mejor: repetirlo sería gastar la mitad de la pantalla en
+                  // dos carteles que dicen que se escucha por acá.
                   _audioNotice(t.status),
+                _audioPanel(t),
                 _display(live: live, enabled: !ringingIn),
                 Expanded(
                   child: Padding(
@@ -469,6 +481,18 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     );
   }
 
+  /// Traer o soltar el audio, altavoz, mudo y los medidores (CCE#12).
+  ///
+  /// Va SIEMPRE, con llamada o sin ella: tomar el audio antes de discar es el
+  /// flujo natural —y el que evita perderse el principio de la conversación—,
+  /// igual que en el dashboard.
+  Widget _audioPanel(TelephonyService t) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
+      child: CallAudioPanel(audio: t.audio),
+    );
+  }
+
   // ── Llamada entrante y en curso ───────────────────────────────────────────
 
   Widget _incomingCard(Device d, Map<String, dynamic>? incoming) {
@@ -580,8 +604,9 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             ),
             const SizedBox(height: 10),
             // EL aviso, mientras la llamada está viva y el usuario se pregunta
-            // por qué no escucha nada.
-            AudioRouteLine.forCall(t.status),
+            // por qué no escucha nada — o, con el audio ya en el celular, por
+            // qué sí lo escucha.
+            AudioRouteLine.forCall(t.status, onThisPhone: t.audio.isOn),
           ],
         ),
       ),

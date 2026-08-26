@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/phone_call.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
+import 'phone_audio_service.dart';
 import 'socket_service.dart';
 
 /// Id canónico del teléfono 4G en /merged. Emite `device:state-changed` con el
@@ -11,10 +12,15 @@ const String kPhoneDeviceId = 'dev_phone';
 
 /// Estado, historial y comandos de la telefonía 4G (HAT SIM7600G-H).
 ///
-/// La app DISCA (issue #10, que reemplaza la decisión de #4): además de leer el
-/// estado y el historial, manda call / answer / hangup / dtmf. Lo que la app NO
-/// lleva es AUDIO: la voz sale por el jack del HAT o por el navegador, nunca
-/// por el celular — ver [PhoneStatus.audioNotice].
+/// La app DISCA (issue #10) y desde el #12 también **lleva el audio**: se habla
+/// y se escucha por el celular. Esa parte vive en [audio], que es un servicio
+/// aparte porque es otra cosa —un WebSocket binario y código nativo de iOS—,
+/// pero cuelga de acá porque su ciclo de vida es el del teléfono: tiene que
+/// sobrevivir a que se cierre la pantalla y morir con el shell.
+///
+/// Mientras el audio NO esté tomado por esta app, sigue valiendo el aviso del
+/// #10: la voz sale por el jack del HAT o por el navegador del dashboard, y hay
+/// que decirlo — ver [PhoneStatus.audioNotice].
 ///
 /// SEED + PUSH, sin polling: un `GET /phone/status` y un `GET /phone/calls` al
 /// arrancar, y de ahí en más manda el socket. El historial se actualiza solo
@@ -28,7 +34,11 @@ class TelephonyService extends ChangeNotifier {
 
   TelephonyService({required ServerConfig config, required SocketService socket})
       : _api = ApiService(config),
-        _socket = socket;
+        _socket = socket,
+        audio = PhoneAudioService(config: config);
+
+  /// El audio de la llamada en ESTE celular (CCE#12). Ver [PhoneAudioService].
+  final PhoneAudioService audio;
 
   PhoneStatus _status = const PhoneStatus();
   List<PhoneCall> _calls = const [];
@@ -107,7 +117,13 @@ class TelephonyService extends ChangeNotifier {
     _deviceSub = _socket.onDeviceChanged.listen((event) {
       if (event.deviceId != kPhoneDeviceId) return;
       final state = (event.state?['callState'] ?? '').toString();
-      if (state.isEmpty || state == 'idle' || state == 'ended') return;
+      if (state.isEmpty) return;
+      // El audio del celular se suelta solo cuando la llamada termina. Va acá y
+      // no en la pantalla porque tiene que pasar igual con la app en segundo
+      // plano o con el teléfono cerrado: un micrófono abierto después de colgar
+      // es exactamente lo que nadie quiere en su celular.
+      audio.syncWithCall(state != 'idle' && state != 'ended');
+      if (state == 'idle' || state == 'ended') return;
       _clearDialing();
     });
 
@@ -121,6 +137,7 @@ class TelephonyService extends ChangeNotifier {
       // volver a pedirlo al servidor.
       _incoming = null;
       _clearDialing(notify: false);
+      audio.syncWithCall(false);
       final call = PhoneCall.fromJson(event.payload);
       _calls = [call, ..._calls].take(200).toList();
       if (call.isMissed) _unseenMissed++;
@@ -202,8 +219,8 @@ class TelephonyService extends ChangeNotifier {
   /// Disca. Devuelve true si el backend aceptó el comando — que NO es lo mismo
   /// que "la llamada conectó": eso lo dirá el socket.
   ///
-  /// CUESTA PLATA y suena del otro lado de verdad. El audio, en cambio, se
-  /// queda en la casa: ver [PhoneStatus.audioNotice].
+  /// CUESTA PLATA y suena del otro lado de verdad. Dónde se escucha depende de
+  /// si el audio está tomado por [audio]: si no lo está, se queda en la casa.
   Future<bool> call({String? number, String? contactId}) async {
     if (_busy) return false;
     final dialed = number?.trim();
@@ -226,7 +243,8 @@ class TelephonyService extends ChangeNotifier {
         },
       );
 
-  /// Atiende la entrante que suena. El audio sigue en la casa.
+  /// Atiende la entrante que suena. El audio va a donde esté el ruteo: a la
+  /// casa, o a este celular si [audio] lo tiene tomado.
   Future<bool> answer() => _command(_api.phoneAnswer);
 
   /// Manda un tono a la llamada en curso. No toca [_busy]: los tonos se tipean
@@ -316,6 +334,9 @@ class TelephonyService extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     stop();
+    // Soltar el audio apaga el micrófono y devuelve la sesión al sistema. Que
+    // quede prendido después de cerrar la app es inaceptable.
+    audio.dispose();
     super.dispose();
   }
 }

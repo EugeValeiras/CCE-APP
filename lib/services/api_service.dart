@@ -148,9 +148,20 @@ class ApiService {
   /// de una entrante: el backend no tiene un endpoint aparte.
   Future<void> phoneHangup() => _phoneCommand('hangup');
 
-  /// Atiende la entrante que está sonando (POST /phone/answer). El audio sigue
-  /// yendo al HAT o al navegador: atender desde la app no lo trae al celular.
+  /// Atiende la entrante que está sonando (POST /phone/answer). El audio va a
+  /// donde diga el ruteo: al HAT, o al celular si esta app lo tomó (CCE#12).
   Future<void> phoneAnswer() => _phoneCommand('answer');
+
+  /// Ruteo del audio de la llamada (POST /phone/audio-route).
+  ///
+  ///  - 'headset' / 'speaker' → el jack del HAT, en la casa.
+  ///  - 'web' → PCM sobre USB, que es por donde lo levanta quien tenga tomada
+  ///    la sesión de audio: el dashboard o esta app.
+  ///
+  /// Es una PREFERENCIA del módem, no una sesión: ponerlo en 'web' sin nadie
+  /// conectado deja la voz en el jack, y no corta la llamada en ningún caso.
+  Future<void> phoneAudioRoute(String route) =>
+      _phoneCommand('audio-route', {'route': route});
 
   /// Manda tonos DTMF a la llamada en curso (POST /phone/dtmf). Es lo que
   /// permite navegar un menú de voz desde el celular aunque no se escuche el

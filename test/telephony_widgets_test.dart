@@ -61,7 +61,33 @@ void main() {
 
     testWidgets('una entrante avisa antes de atender', (t) async {
       await t.pumpWidget(_host(const AudioRouteLine.forIncoming()));
-      expect(find.textContaining('el celular no lleva el audio'), findsOneWidget);
+      expect(
+        find.textContaining('hablás por el teléfono de la casa'),
+        findsOneWidget,
+      );
+      // Y dice qué hacer si querés escuchar por acá (CCE#12).
+      expect(find.textContaining('traer el audio'), findsOneWidget);
+    });
+
+    testWidgets('con el audio EN ESTE celular, el aviso se da vuelta', (t) async {
+      // Es el otro lado del mismo criterio de aceptación: seguir diciendo "por
+      // el celular no vas a escuchar" con el audio tomado sería el peor mensaje
+      // posible de toda la pantalla.
+      final status = PhoneStatus.fromJson({
+        'audioRoute': 'web',
+        'webAudio': {'client': 'app', 'sessionActive': true},
+      });
+      await t.pumpWidget(
+        _host(AudioRouteNotice(status: status, onThisPhone: true)),
+      );
+
+      expect(find.text('El audio está en este celular'), findsOneWidget);
+      expect(find.textContaining('no vas a escuchar'), findsNothing);
+
+      await t.pumpWidget(
+        _host(AudioRouteLine.forCall(status, onThisPhone: true)),
+      );
+      expect(find.textContaining('Estás hablando por el celular'), findsOneWidget);
     });
   });
 

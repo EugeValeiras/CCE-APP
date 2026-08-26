@@ -4,13 +4,17 @@ import '../../models/phone_call.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 
-/// EL aviso de la pantalla del teléfono: **la app no lleva audio**.
+/// EL aviso de la pantalla del teléfono: **dónde se escucha esta llamada**.
 ///
-/// La llamada sale de verdad y el teléfono del destino suena, pero la voz va al
-/// jack del HAT (en la casa) o al navegador del dashboard — nunca al celular.
-/// Quien disca desde la app y no escucha nada concluye que está rota, así que
-/// esto es criterio de aceptación del issue #10 y no un detalle de diseño: vive
-/// en widgets propios, a la vista, y con tests que lo cubren.
+/// Nació en el issue #10, cuando la respuesta era siempre "en la casa": la
+/// llamada salía de verdad y el destino sonaba, pero la voz iba al jack del HAT
+/// o al navegador del dashboard, nunca al celular. Quien discaba desde la app y
+/// no escuchaba nada concluía que estaba rota.
+///
+/// Con el #12 el celular **sí** puede llevar el audio, y el aviso se da vuelta
+/// según [onThisPhone]: cuando el audio está acá, decir "no vas a escuchar"
+/// sería el peor mensaje posible. Sigue siendo criterio de aceptación en las dos
+/// direcciones, y por eso vive en widgets propios con tests que lo cubren.
 ///
 /// Dos formas del mismo aviso:
 ///  - [AudioRouteNotice]: bloque en reposo, para saber qué esperar ANTES de
@@ -18,39 +22,56 @@ import '../../theme/cce_tokens.dart';
 ///  - [AudioRouteLine]: línea dentro de la card de la llamada, para el momento
 ///    en que el usuario se pregunta por qué no escucha nada.
 class AudioRouteNotice extends StatelessWidget {
-  const AudioRouteNotice({super.key, required this.status});
+  const AudioRouteNotice({
+    super.key,
+    required this.status,
+    this.onThisPhone = false,
+  });
 
   final PhoneStatus status;
 
+  /// ¿Esta app tiene el audio tomado ahora mismo?
+  final bool onThisPhone;
+
   @override
   Widget build(BuildContext context) {
+    final color = onThisPhone ? CceColors.ok : CceColors.accent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: CceColors.accentWash,
+        color: onThisPhone
+            ? CceColors.ok.withValues(alpha: 0.12)
+            : CceColors.accentWash,
         borderRadius: BorderRadius.circular(CceRadii.control),
         border: Border.all(color: CceColors.stroke),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CceIcon(CceIcons.speaker, size: 18, color: CceColors.accent),
+          CceIcon(
+            onThisPhone ? CceIcons.volume2 : CceIcons.speaker,
+            size: 18,
+            color: color,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'El audio se queda en la casa',
-                  style: CceText.label.copyWith(
-                    fontSize: 13,
-                    color: CceColors.accent,
-                  ),
+                  onThisPhone
+                      ? 'El audio está en este celular'
+                      : 'El audio se queda en la casa',
+                  style: CceText.label.copyWith(fontSize: 13, color: color),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'La llamada sale y el destino suena, pero por el celular no '
-                  'vas a escuchar ni hablar. ${status.audioRouteLabel}.',
+                  onThisPhone
+                      ? 'Vas a hablar y escuchar por el celular. Si soltás el '
+                          'audio, la voz vuelve al teléfono de la casa.'
+                      : 'La llamada sale y el destino suena, pero por el '
+                          'celular no vas a escuchar ni hablar. '
+                          '${status.audioRouteLabel}.',
                   style: CceText.caption,
                 ),
               ],
@@ -66,16 +87,22 @@ class AudioRouteNotice extends StatelessWidget {
 class AudioRouteLine extends StatelessWidget {
   const AudioRouteLine(this.text, {super.key});
 
-  /// Versión de la llamada EN CURSO: dice que el audio no está en el celular
-  /// **y** por dónde está saliendo, que es lo que el issue pide mostrar
-  /// mientras la llamada vive.
-  AudioRouteLine.forCall(PhoneStatus status, {super.key})
-      : text = '${status.audioNotice} ${status.audioRouteLabel}.';
+  /// Versión de la llamada EN CURSO: dice dónde está saliendo la voz.
+  ///
+  /// Con el audio tomado por esta app ([onThisPhone]) el mensaje es el
+  /// contrario, y es igual de necesario: sin él, alguien con el audio tomado
+  /// seguiría leyendo que no se escucha por el celular.
+  AudioRouteLine.forCall(PhoneStatus status, {super.key, bool onThisPhone = false})
+      : text = onThisPhone
+            ? 'Estás hablando por el celular. Soltá el audio para devolverlo al '
+                'teléfono de la casa.'
+            : '${status.audioNotice} ${status.audioRouteLabel}.';
 
-  /// Versión de la ENTRANTE: atender desde la app no trae el audio al celular.
+  /// Versión de la ENTRANTE: atender desde la app no trae el audio al celular
+  /// por sí solo — hay que tomarlo, antes o después de atender.
   const AudioRouteLine.forIncoming({super.key})
-      : text = 'Si atendés, hablás por el teléfono de la casa: el celular no '
-            'lleva el audio.';
+      : text = 'Si atendés, hablás por el teléfono de la casa: para escuchar '
+            'por el celular hay que traer el audio acá.';
 
   final String text;
 
