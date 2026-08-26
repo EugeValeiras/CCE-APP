@@ -34,6 +34,7 @@ class AudioRouteNotice extends StatelessWidget {
     required this.status,
     this.onThisPhone = false,
     this.action,
+    this.color,
   });
 
   final PhoneStatus status;
@@ -45,10 +46,14 @@ class AudioRouteNotice extends StatelessWidget {
   /// bloque porque el aviso plantea la pregunta y el botón es la respuesta.
   final Widget? action;
 
+  /// Superficie. Sobre un sheet (que ya es `surface`) va un escalón arriba.
+  final Color? color;
+
   @override
   Widget build(BuildContext context) {
     final color = onThisPhone ? CceColors.ok : CceColors.accent;
     return PhoneSurface(
+      color: this.color,
       padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

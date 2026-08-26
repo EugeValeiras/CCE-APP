@@ -36,6 +36,9 @@ class _FakeAudio extends PhoneAudioService {
     notifyListeners();
   }
 
+  /// Cuántas veces la pantalla pidió tomar el audio.
+  int takes = 0;
+
   @override
   PhoneAudioState get state => _on ? PhoneAudioState.on : PhoneAudioState.off;
   @override
@@ -45,7 +48,12 @@ class _FakeAudio extends PhoneAudioService {
   @override
   String? get error => null;
   @override
-  Future<bool> take() async => true;
+  Future<bool> take() async {
+    takes++;
+    on = true;
+    return true;
+  }
+
   @override
   Future<void> release() async {}
 }
@@ -62,6 +70,9 @@ class _FakeTelephony extends TelephonyService {
   /// Qué contesta [sendDtmf], y qué tonos le llegaron.
   bool dtmfOk = true;
   final List<String> dtmf = [];
+
+  /// Llamadas que llegaron a [call]: (number, contactId).
+  final List<(String?, String?)> dialed = [];
 
   @override
   _FakeAudio get audio => _audio;
@@ -84,6 +95,12 @@ class _FakeTelephony extends TelephonyService {
   Future<bool> sendDtmf(String digits) async {
     dtmf.add(digits);
     return dtmfOk;
+  }
+
+  @override
+  Future<bool> call({String? number, String? contactId}) async {
+    dialed.add((number, contactId));
+    return true;
   }
 }
 
@@ -206,6 +223,81 @@ void main() {
       await _settle(t);
       expect(find.byType(CallAudioPanel), findsOneWidget);
       expect(find.byType(AudioRouteNotice), findsNothing);
+
+      await _teardown(t);
+    });
+  });
+
+  group('al llamar', () {
+    Future<void> typeAndCall(WidgetTester t) async {
+      for (final k in ['9', '1', '1']) {
+        await t.tap(find.text(k));
+      }
+      await _settle(t);
+      await t.tap(find.byTooltip('Llamar'));
+      await t.pumpAndSettle();
+    }
+
+    testWidgets('con el audio en la casa avisa ANTES y no disca hasta elegir',
+        (t) async {
+      // Espejo de CCE#15: la llamada saldría, el destino sonaría, y el
+      // usuario no escucharía nada. Se entera acá, no con la llamada en curso.
+      final rig = _Rig();
+      await t.pumpWidget(rig.screen);
+      await typeAndCall(t);
+
+      expect(find.text('El audio se queda en la casa'), findsWidgets);
+      expect(find.text('Escuchar acá y llamar'), findsOneWidget);
+      expect(find.text('Llamar igual'), findsOneWidget);
+      expect(rig.telephony.dialed, isEmpty,
+          reason: 'sin elegir, la llamada no sale');
+
+      // "Llamar igual" disca sin tocar el audio.
+      await t.tap(find.text('Llamar igual'));
+      await t.pumpAndSettle();
+      expect(rig.telephony.dialed, [('911', null)]);
+      expect(rig.telephony.audio.takes, 0);
+
+      await _teardown(t);
+    });
+
+    testWidgets('"Escuchar acá y llamar" toma el audio y DESPUÉS disca',
+        (t) async {
+      final rig = _Rig();
+      await t.pumpWidget(rig.screen);
+      await typeAndCall(t);
+
+      await t.tap(find.text('Escuchar acá y llamar'));
+      await t.pumpAndSettle();
+      expect(rig.telephony.audio.takes, 1);
+      expect(rig.telephony.dialed, [('911', null)]);
+
+      await _teardown(t);
+    });
+
+    testWidgets('cerrar el aviso sin elegir no disca nada', (t) async {
+      final rig = _Rig();
+      await t.pumpWidget(rig.screen);
+      await typeAndCall(t);
+
+      await t.tap(find.text('Cancelar'));
+      await t.pumpAndSettle();
+      expect(rig.telephony.dialed, isEmpty);
+      expect(rig.telephony.audio.takes, 0);
+
+      await _teardown(t);
+    });
+
+    testWidgets('con el audio ya en este celular no pregunta nada', (t) async {
+      // El caso normal no gana ningún toque (criterio de CCE#15).
+      final rig = _Rig();
+      await t.pumpWidget(rig.screen);
+      rig.telephony.audio.on = true;
+      await _settle(t);
+      await typeAndCall(t);
+
+      expect(find.text('Llamar igual'), findsNothing);
+      expect(rig.telephony.dialed, [('911', null)]);
 
       await _teardown(t);
     });

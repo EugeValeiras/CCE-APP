@@ -3,16 +3,16 @@ import 'package:flutter/services.dart';
 
 import '../../theme/cce_tokens.dart';
 import '../../utils/dial_number.dart';
-import 'phone_surface.dart';
 
-/// El visor de la pantalla: la superficie, el número que se está discando y
-/// el botón de pegar ADENTRO del campo.
+/// El visor de la pantalla: el número que se está discando, grande y sobre el
+/// fondo, sin ningún chrome alrededor.
 ///
 /// Es el protagonista de la mitad de arriba (CCE#14): la única cosa que el
 /// usuario mira mientras toca el teclado, y antes era la franja más chica y
-/// apagada de la pantalla, con el botón de pegar flotando afuera. Ahora es una
-/// [PhoneSurface] al escalón de los inputs ([CceColors.surfaceHigh]), con el
-/// número como el texto más grande de la pantalla.
+/// apagada de la pantalla. Va SIN contenedor, como el Teléfono del iPhone: el
+/// número no es un campo que haya que encontrar, es lo más grande que hay, y
+/// una caja alrededor sólo le quitaba aire. Tampoco hay botón de pegar: se
+/// pega como en cualquier campo, manteniendo apretado — el menú del sistema.
 ///
 /// Sólo existe en reposo: durante la llamada el acuse de los tonos DTMF va
 /// dentro de la card de la llamada, y el lugar del visor se lo lleva el
@@ -24,52 +24,28 @@ class DialDisplay extends StatelessWidget {
     required this.focusNode,
     required this.enabled,
     this.onChanged,
-    this.onPaste,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool enabled;
   final ValueChanged<String>? onChanged;
-  final VoidCallback? onPaste;
 
   /// Alto fijo: el número no lo cambia (se achica él), así que el teclado no
   /// se mueve mientras se disca.
   static const double height = 68;
 
-  /// Ancho del botón de pegar y de su contrapeso del otro lado: es lo que deja
-  /// el número CENTRADO en la superficie aunque el botón esté sólo a la
-  /// derecha.
-  static const double _sideWidth = 48;
-
   @override
   Widget build(BuildContext context) {
-    return PhoneSurface(
-      color: CceColors.surfaceHigh,
-      padding: EdgeInsets.zero,
-      child: SizedBox(
-        height: height,
-        child: Row(
-          children: [
-            const SizedBox(width: _sideWidth),
-            Expanded(
-              child: DialNumberField(
-                controller: controller,
-                focusNode: focusNode,
-                enabled: enabled,
-                onChanged: onChanged,
-              ),
-            ),
-            SizedBox(
-              width: _sideWidth,
-              child: IconButton(
-                onPressed: enabled ? onPaste : null,
-                icon: const Icon(Icons.content_paste_rounded, size: 20),
-                color: CceColors.textTertiary,
-                tooltip: 'Pegar un número',
-              ),
-            ),
-          ],
+    return SizedBox(
+      height: height,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: CceSpace.sm),
+        child: DialNumberField(
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          onChanged: onChanged,
         ),
       ),
     );
@@ -85,13 +61,12 @@ class DialDisplay extends StatelessWidget {
 /// de esas vías pasa por [sanitizeDialInput] vía [DialInputFormatter].
 ///
 /// SE ACHICA SOLO. Un número internacional con prefijo (`+5492616260811`) no
-/// entra a 34px en un teléfono angosto: antes que cortarlo con puntos
+/// entra a 40px en un teléfono angosto: antes que cortarlo con puntos
 /// suspensivos — un número a medias es inservible — baja la tipografía hasta
 /// que entra entero.
 ///
-/// No pinta superficie propia: la pinta [DialDisplay]. Por eso el `filled` del
-/// tema de inputs se apaga acá — era lo que dejaba el rectángulo gris sin radio
-/// del #14.
+/// No pinta superficie: por eso el `filled` del tema de inputs se apaga acá —
+/// era lo que dejaba el rectángulo gris sin radio del #14.
 class DialNumberField extends StatelessWidget {
   const DialNumberField({
     super.key,
@@ -106,8 +81,9 @@ class DialNumberField extends StatelessWidget {
   final bool enabled;
   final ValueChanged<String>? onChanged;
 
-  /// Tamaño de reposo: el número es lo más grande de la mitad de arriba.
-  static const double maxFontSize = 34;
+  /// Tamaño de reposo: el número es lo más grande de la pantalla. Sin caja
+  /// alrededor puede ir al tamaño del Teléfono del iPhone.
+  static const double maxFontSize = 40;
 
   /// Piso. Por debajo, un número deja de leerse de un vistazo; a esta altura
   /// entran de sobra los 15 dígitos de un E.164 en la pantalla más angosta.

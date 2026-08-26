@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/device.dart';
+import '../models/phone_call.dart';
 import '../services/devices_service.dart';
 import '../services/telephony_service.dart';
 import '../theme/cce_icons.dart';
@@ -12,6 +13,7 @@ import '../theme/components/status_dot.dart';
 import '../utils/dial_number.dart';
 import 'telephony/audio_notice.dart';
 import 'telephony/call_audio_panel.dart';
+import 'telephony/call_confirm_sheet.dart';
 import 'telephony/call_history_screen.dart';
 import 'telephony/contacts_sheet.dart';
 import 'telephony/dial_actions.dart';
@@ -155,7 +157,6 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
                       focusNode: _numberFocus,
                       enabled: true,
                       onChanged: (_) => setState(() {}),
-                      onPaste: _paste,
                     ),
                   ),
                   // El teclado se corre suave cuando el aviso entra o sale, en
@@ -289,30 +290,39 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     setState(() {});
   }
 
-  /// Pegar un número copiado de otra app. Existe como BOTÓN además del menú
-  /// contextual del campo porque el long-press sobre un número que se está
-  /// escribiendo no es un gesto que nadie descubra solo.
-  Future<void> _paste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final clean = sanitizeDialInput(data?.text ?? '');
-    if (!mounted) return;
-    if (clean.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay un número en el portapapeles.')),
-      );
-      return;
-    }
-    HapticFeedback.selectionClick();
-    _setNumber(clean);
-  }
+  // Pegar un número no tiene botón propio: el campo es un TextField y el
+  // long-press abre el menú del sistema, como en cualquier app. Lo que entre
+  // pasa igual por [sanitizeDialInput] (DialInputFormatter).
 
   // ── Comandos ──────────────────────────────────────────────────────────────
 
-  Future<void> _call({String? number, String? contactId}) async {
-    HapticFeedback.mediumImpact();
+  /// Disca, avisando ANTES cuando corresponde (espejo de CCE#15): con el
+  /// audio en la casa, la llamada saldría, el destino sonaría y el usuario no
+  /// escucharía nada — se entera acá, no con la llamada en curso. Con el
+  /// audio ya en este celular no se pregunta nada: el caso normal no gana
+  /// ningún toque.
+  Future<void> _call({String? number, PhoneContact? contact}) async {
+    final t = widget.telephony;
     _numberFocus.unfocus();
+    if (!t.audio.isOn) {
+      final choice = await showCallConfirmSheet(
+        context,
+        telephony: t,
+        who: contact?.displayName ?? number ?? '',
+        number: contact?.number ?? number,
+      );
+      if (choice == null || !mounted) return;
+      if (choice == CallChoice.takeAudioAndCall) {
+        // Primero el audio, después el POST, como en el dashboard. Si tomarlo
+        // falla (micrófono negado, red), la llamada sale IGUAL — nunca se
+        // deja al usuario sin llamar — y el panel de la card explica qué pasó.
+        await t.audio.take();
+        if (!mounted) return;
+      }
+    }
+    HapticFeedback.mediumImpact();
     setState(() => _dtmfSent = '');
-    await widget.telephony.call(number: number, contactId: contactId);
+    await t.call(number: number, contactId: contact?.id);
     // No se hace polling: el estado real llega por `device:state-changed`.
   }
 
@@ -340,7 +350,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     final pick = await showContactsSheet(context, widget.telephony);
     if (pick == null || !mounted) return;
     if (pick.callNow) {
-      await _call(contactId: pick.contact.id);
+      await _call(contact: pick.contact);
     } else {
       _setNumber(pick.contact.number);
     }

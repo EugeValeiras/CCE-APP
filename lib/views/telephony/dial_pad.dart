@@ -231,10 +231,18 @@ class _DialKey extends StatelessWidget {
   }
 
   Widget _digit({required double size, required Color ink}) {
+    // El `*` y el `#` van más grandes que un dígito, como en el teclado del
+    // iPhone: a tamaño de dígito el asterisco es una mota y el numeral se lee
+    // como un dígito más; los dos son teclas de función y tienen que verse.
+    final scale = switch (data.digit) {
+      '*' => 0.58,
+      '#' => 0.48,
+      _ => 0.40,
+    };
     final text = Text(
       data.digit,
       style: CceText.display.copyWith(
-        fontSize: size * 0.40,
+        fontSize: size * scale,
         fontWeight: FontWeight.w400,
         letterSpacing: 0,
         height: 1.0,
@@ -245,7 +253,7 @@ class _DialKey extends StatelessWidget {
     // un dígito), así que sin bajarlo queda flotando contra el borde de la
     // tecla en vez de centrado, que es como se ve en un teléfono.
     return data.digit == '*'
-        ? Transform.translate(offset: Offset(0, size * 0.07), child: text)
+        ? Transform.translate(offset: Offset(0, size * 0.09), child: text)
         : text;
   }
 }

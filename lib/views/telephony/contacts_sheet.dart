@@ -10,9 +10,10 @@ import 'phone_surface.dart';
 /// Lo que el usuario eligió en la libreta.
 ///
 /// Dos caminos a propósito: tocar la fila TRAE el número al teclado (gesto
-/// barato, reversible) y el botón verde LLAMA (gesto caro, con confirmación).
-/// Un solo camino obligaría a elegir entre un tap que gasta plata sin querer o
-/// no poder llamar a un contacto de una.
+/// barato, reversible) y el botón verde LLAMA (gesto caro — la pantalla lo
+/// confirma con el aviso previo de [showCallConfirmSheet] cuando el audio no
+/// está en este celular). Un solo camino obligaría a elegir entre un tap que
+/// gasta plata sin querer o no poder llamar a un contacto de una.
 class ContactPick {
   final PhoneContact contact;
 
@@ -158,64 +159,17 @@ class _ContactsSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
+          // El aviso previo (dónde va a sonar la voz, con la opción de traer
+          // el audio) lo pone la pantalla al discar, para que sea EL MISMO
+          // venga de donde venga la llamada: showCallConfirmSheet.
           _CallButton(
             label: 'Llamar a ${c.displayName}',
-            onPressed: () async {
-              final ok = await _confirmCall(context, c);
-              if (!ok || !context.mounted) return;
-              Navigator.of(context).pop(ContactPick(c, callNow: true));
-            },
+            onPressed: () =>
+                Navigator.of(context).pop(ContactPick(c, callNow: true)),
           ),
         ],
       ),
     );
-  }
-
-  /// Llamar desde la libreta es UN tap sobre una lista: con la línea activa,
-  /// ese tap cuesta plata. Discar desde el teclado no pregunta (el número lo
-  /// acabás de escribir), pero acá sí.
-  ///
-  /// Y dice dónde va a sonar la voz, en la dirección que corresponda: con el
-  /// audio ya tomado por este celular, "se queda allá" sería mentira (CCE#12).
-  Future<bool> _confirmCall(BuildContext context, PhoneContact c) async {
-    final onThisPhone = telephony.audio.isOn;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: CceColors.surfaceHigh,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CceRadii.card),
-        ),
-        title: Text(
-          'Llamar a ${c.displayName}',
-          style: const TextStyle(color: CceColors.textPrimary),
-        ),
-        content: Text(
-          onThisPhone
-              ? '${c.number}\n\nLa llamada sale del teléfono de la casa y el '
-                  'audio ya está en este celular: vas a hablar y escuchar '
-                  'por acá.'
-              : '${c.number}\n\nLa llamada sale del teléfono de la casa y el '
-                  'audio se queda allá: por el celular no vas a escuchar ni '
-                  'hablar.',
-          style: CceText.caption,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text(
-              'Llamar',
-              style: TextStyle(color: CceColors.ok),
-            ),
-          ),
-        ],
-      ),
-    );
-    return ok == true;
   }
 }
 
