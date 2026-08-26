@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -27,15 +28,27 @@ import 'phone_surface.dart';
 /// error que leer. Dentro de la card de la llamada ([embedded]) va con la
 /// [AudioRouteLine] como [headline]: la verdad de por dónde sale la voz y el
 /// botón para cambiarla son UNA fila, no dos carteles que dicen lo mismo.
+///
+/// Desde el #18 **"Hablás por el celular" sólo se muestra con el motor de
+/// audio vivo** ([PhoneAudioService.isOn]). Con la sesión tomada pero el motor
+/// parado ([PhoneAudioState.interrupted]) el panel lo dice, explica por qué y
+/// ofrece reintentar: un mensaje tranquilizador sobre un teléfono mudo es
+/// peor que no tener la función. Y en debug muestra [PhoneAudioService
+/// .diagnostics], que es lo que distingue "llegan bytes" de "suenan".
 class CallAudioPanel extends StatelessWidget {
   const CallAudioPanel({
     super.key,
     required this.audio,
     this.headline,
     this.embedded = false,
+    this.showDiagnostics = kDebugMode,
   });
 
   final PhoneAudioService audio;
+
+  /// La línea de contadores del motor. Por defecto sólo en debug: al usuario
+  /// no le dice nada, y a quien depura le dice todo.
+  final bool showDiagnostics;
 
   /// Reemplaza al título y subtítulo del panel. Lo usa la card de la llamada
   /// para poner el aviso de ruteo en su lugar, con el botón de tomar/soltar a
@@ -48,6 +61,11 @@ class CallAudioPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final on = audio.isOn;
+    // Tomado pero mudo: el motor nativo no está corriendo. Los medidores y
+    // los controles siguen (la línea sigue llegando, y soltar tiene que estar
+    // a mano), pero el titular dice la verdad y aparece Reintentar.
+    final stalled = audio.stalled;
+    final taken = on || stalled;
     final busy = audio.busy;
 
     if (headline case final head?) {
@@ -58,12 +76,17 @@ class CallAudioPanel extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Con el motor parado el titular de ruteo ya lo dice (la card lo
+          // arma con `stalled`): acá van el botón de reintentar y el motivo.
           head,
-          if (on) ...[
+          if (taken) ...[
             const SizedBox(height: 12),
             _meters(),
             const SizedBox(height: 10),
-            _controls(trailing: AudioTakeButton(audio: audio, height: 40)),
+            _controls(
+              retry: stalled,
+              trailing: AudioTakeButton(audio: audio, height: 40),
+            ),
           ] else ...[
             const SizedBox(height: 10),
             Row(
@@ -74,6 +97,10 @@ class CallAudioPanel extends StatelessWidget {
           if (audio.error case final message?) ...[
             const SizedBox(height: 10),
             _errorLine(message),
+          ],
+          if (showDiagnostics && taken) ...[
+            const SizedBox(height: 8),
+            _diagnosticsLine(),
           ],
         ],
       );
@@ -87,7 +114,11 @@ class CallAudioPanel extends StatelessWidget {
             CceIcon(
               on ? CceIcons.volume2 : CceIcons.speaker,
               size: 18,
-              color: on ? CceColors.ok : CceColors.textTertiary,
+              color: on
+                  ? CceColors.ok
+                  : stalled
+                      ? CceColors.danger
+                      : CceColors.textTertiary,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -95,8 +126,15 @@ class CallAudioPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    on ? 'Hablás por el celular' : 'El audio está en la casa',
-                    style: CceText.label.copyWith(fontSize: 13),
+                    on
+                        ? 'Hablás por el celular'
+                        : stalled
+                            ? 'El celular no reproduce el audio'
+                            : 'El audio está en la casa',
+                    style: CceText.label.copyWith(
+                      fontSize: 13,
+                      color: stalled ? CceColors.danger : null,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -110,18 +148,22 @@ class CallAudioPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            AudioTakeButton(audio: audio, on: on, busy: busy),
+            AudioTakeButton(audio: audio, on: taken, busy: busy),
           ],
         ),
-        if (on) ...[
+        if (taken) ...[
           const SizedBox(height: 12),
           _meters(),
           const SizedBox(height: 10),
-          _controls(),
+          _controls(retry: stalled),
         ],
         if (audio.error case final message?) ...[
           const SizedBox(height: 10),
           _errorLine(message),
+        ],
+        if (showDiagnostics && taken) ...[
+          const SizedBox(height: 8),
+          _diagnosticsLine(),
         ],
       ],
     );
@@ -161,9 +203,56 @@ class CallAudioPanel extends StatelessWidget {
     );
   }
 
+  /// Los contadores del motor, en una línea. Ver [PhoneAudioService
+  /// .diagnostics].
+  Widget _diagnosticsLine() {
+    return Text(
+      audio.diagnostics,
+      style: CceText.caption.copyWith(
+        color: CceColors.textMuted,
+        fontFeatures: const [FontFeature.tabularFigures()],
+      ),
+      maxLines: 3,
+    );
+  }
+
   /// Altavoz y mudo; con [trailing], además el botón de soltar al final de la
-  /// misma fila — todos los controles del audio en un renglón.
-  Widget _controls({Widget? trailing}) {
+  /// misma fila — todos los controles del audio en un renglón. Con [retry],
+  /// encima de esa fila y a todo el ancho, el botón de volver a arrancar el
+  /// motor: en ese estado es LA acción, y metido como cuarto chip en la fila
+  /// no entraba ni se distinguía.
+  Widget _controls({bool retry = false, Widget? trailing}) {
+    final row = _toggles(trailing: trailing);
+    if (!retry) return row;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: () {
+            HapticFeedback.mediumImpact();
+            audio.retry();
+          },
+          icon: const Icon(Icons.refresh, size: 18),
+          label: const Text(
+            'Reintentar',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: CceColors.accent,
+            foregroundColor: CceColors.inkOnAmber,
+            minimumSize: const Size.fromHeight(40),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(CceRadii.sm),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        row,
+      ],
+    );
+  }
+
+  Widget _toggles({Widget? trailing}) {
     // Con auriculares o manos libres conectados el altavoz no se ofrece: iOS ya
     // está mandando el audio ahí y forzarlo al parlante sería sacárselo de la
     // oreja al usuario sin que lo haya pedido.
@@ -288,7 +377,7 @@ class AudioTakeButton extends StatelessWidget {
     bool? on,
     bool? busy,
     this.height = 36,
-  })  : on = on ?? audio.isOn,
+  })  : on = on ?? audio.taken,
         busy = busy ?? audio.busy;
 
   final PhoneAudioService audio;

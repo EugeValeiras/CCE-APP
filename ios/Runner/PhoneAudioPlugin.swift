@@ -7,7 +7,7 @@ import Foundation
 /// Tres canales, y cada uno existe por un motivo:
 ///
 ///  - **`com.cce.phoneaudio`** (`MethodChannel`): control. Permiso, arrancar,
-///    parar, altavoz, mudo. Poquitos mensajes y con respuesta.
+///    parar, reintentar, altavoz, mudo. Poquitos mensajes y con respuesta.
 ///  - **`com.cce.phoneaudio/events`** (`EventChannel`): lo que sube. Van los
 ///    frames del micrófono (50 por segundo) y los avisos del sistema. Un
 ///    `MethodChannel` por frame a 50 fps sería pagar un round-trip con respuesta
@@ -23,6 +23,15 @@ import Foundation
 /// **Nada de esto puede tumbar la app.** La app es la que controla la alarma de
 /// la casa: cualquier falla del audio se contesta con un error legible y la
 /// llamada sigue por el jack del HAT.
+///
+/// ## Los avisos no se pierden (CCE#18)
+///
+/// En el #12 un aviso emitido antes de que Dart se suscribiera al
+/// `EventChannel` (el de la cancelación de eco, que sale DENTRO de `start()`)
+/// se tiraba en silencio. Ahora Dart se suscribe antes de pedir `start`, y por
+/// si acaso lo que se emite sin suscriptor se guarda (acotado) y se entrega
+/// en cuanto aparece uno. Los frames del micrófono no: un frame viejo no
+/// sirve para nada.
 final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
   static let methodChannelName = "com.cce.phoneaudio"
   static let eventsChannelName = "com.cce.phoneaudio/events"
@@ -34,6 +43,11 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
 
   private var engine: PhoneAudioEngine?
   private var sink: FlutterEventSink?
+  /// Avisos emitidos sin nadie escuchando. 16 es de sobra: entre `start` y
+  /// el `listen` de Dart caben dos o tres.
+  private var pending: [[String: Any]] = []
+  /// Con qué se arrancó, para que el reintento cree un motor igual.
+  private var lastArgs: [String: Any] = [:]
 
   init(messenger: FlutterBinaryMessenger) {
     methods = FlutterMethodChannel(
@@ -66,6 +80,9 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
 
     case "start":
       start(args: call.arguments as? [String: Any] ?? [:], result: result)
+
+    case "restart":
+      restart(result: result)
 
     case "stop":
       engine?.stop()
@@ -112,10 +129,28 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
     startEngine(args: args, result: result)
   }
 
+  /// El reintento del usuario (o de la app) cuando el motor se murió.
+  ///
+  /// Primero se intenta rearmar el motor que hay, que es rápido y no suelta la
+  /// sesión; si no puede (por ejemplo tras un reset del servidor de audio, que
+  /// invalida el `AVAudioEngine` entero) se crea uno nuevo desde cero.
+  private func restart(result: @escaping FlutterResult) {
+    if let engine = engine, engine.restart(reason: "Reintento:", manual: true) {
+      result([
+        "granted": true,
+        "permission": "granted",
+        "output": engine.currentOutput().rawValue,
+      ])
+      return
+    }
+    start(args: lastArgs, result: result)
+  }
+
   private func startEngine(args: [String: Any], result: @escaping FlutterResult) {
     // Un arranque sobre otro (la app reintenta, o el usuario tocó dos veces)
     // deja el grafo anterior colgado y el segundo tap revienta: se suelta antes.
     engine?.stop()
+    lastArgs = args
 
     let engine = PhoneAudioEngine(
       targetMs: args["targetMs"] as? Double ?? 80,
@@ -130,8 +165,22 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
         onInterruption: { [weak self] began, resumed in
           self?.emit(["type": "interruption", "began": began, "resumed": resumed])
         },
-        onStats: { [weak self] bufferedMs, dropped in
-          self?.emit(["type": "stats", "bufferedMs": bufferedMs, "dropped": dropped])
+        onEngine: { [weak self] running, reason in
+          var payload: [String: Any] = ["type": "engine", "running": running]
+          if let reason = reason { payload["reason"] = reason }
+          self?.emit(payload)
+        },
+        onStats: { [weak self] stats in
+          self?.emit([
+            "type": "stats",
+            "bufferedMs": stats.bufferedMs,
+            "dropped": stats.dropped,
+            "renderCalls": stats.renderCalls,
+            "renderedSamples": stats.renderedSamples,
+            "captureCalls": stats.captureCalls,
+            "engineRunning": stats.engineRunning,
+            "restarts": stats.restarts,
+          ])
         },
         onFailure: { [weak self] message in
           self?.emit(["type": "failure", "message": message])
@@ -159,7 +208,11 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
   }
 
   private func emit(_ payload: [String: Any]) {
-    sink?(payload)
+    guard let sink = sink else {
+      if pending.count < 16 { pending.append(payload) }
+      return
+    }
+    sink(payload)
   }
 
   // ── FlutterStreamHandler ──────────────────────────────────────────────────
@@ -168,11 +221,15 @@ final class PhoneAudioPlugin: NSObject, FlutterStreamHandler {
     withArguments arguments: Any?, eventSink: @escaping FlutterEventSink
   ) -> FlutterError? {
     sink = eventSink
+    let queued = pending
+    pending.removeAll()
+    for payload in queued { eventSink(payload) }
     return nil
   }
 
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
     sink = nil
+    pending.removeAll()
     return nil
   }
 }

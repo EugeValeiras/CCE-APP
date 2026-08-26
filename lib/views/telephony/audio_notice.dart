@@ -112,35 +112,59 @@ class AudioRouteNotice extends StatelessWidget {
 /// Es una fila (ícono + texto), no una caja: la card que la contiene ya es la
 /// superficie, y una caja adentro de otra era parte del ruido del #14.
 class AudioRouteLine extends StatelessWidget {
-  const AudioRouteLine(this.text, {super.key, this.onThisPhone = false});
+  const AudioRouteLine(
+    this.text, {
+    super.key,
+    this.onThisPhone = false,
+    this.stalled = false,
+  });
 
   /// Versión de la llamada EN CURSO: dice dónde está saliendo la voz.
   ///
   /// Con el audio tomado por esta app ([onThisPhone]) el mensaje es el
   /// contrario, y es igual de necesario: sin él, alguien con el audio tomado
-  /// seguiría leyendo que no se escucha por el celular.
-  AudioRouteLine.forCall(PhoneStatus status, {super.key, this.onThisPhone = false})
-      : text = onThisPhone
-            ? 'Estás hablando por el celular. Soltá el audio para devolverlo al '
-                'teléfono de la casa.'
-            : '${status.audioNotice} ${status.audioRouteLabel}.';
+  /// seguiría leyendo que no se escucha por el celular. Y con el audio tomado
+  /// pero el motor parado ([stalled], CCE#18) es la TERCERA verdad: está
+  /// ruteado acá y no suena en ningún lado — decir "estás hablando por el
+  /// celular" sería exactamente la mentira que el #18 vino a sacar.
+  AudioRouteLine.forCall(
+    PhoneStatus status, {
+    super.key,
+    this.onThisPhone = false,
+    this.stalled = false,
+  }) : text = stalled
+            ? 'El audio está en este celular, pero ahora no suena: hasta que '
+                'vuelva, no lo escucha nadie.'
+            : onThisPhone
+                ? 'Estás hablando por el celular. Soltá el audio para '
+                    'devolverlo al teléfono de la casa.'
+                : '${status.audioNotice} ${status.audioRouteLabel}.';
 
   /// Versión de la ENTRANTE: atender desde la app no trae el audio al celular
   /// por sí solo — hay que tomarlo, antes o después de atender. Y si ya está
   /// tomado, hay que decir eso: con el audio acá, "hablás por el teléfono de
   /// la casa" sería mentira.
-  const AudioRouteLine.forIncoming({super.key, this.onThisPhone = false})
-      : text = onThisPhone
-            ? 'Si atendés, hablás y escuchás por el celular. Soltá el audio '
-                'para que la llamada suene en el teléfono de la casa.'
-            : 'Si atendés, hablás por el teléfono de la casa: para escuchar '
-                'por el celular hay que traer el audio acá.';
+  const AudioRouteLine.forIncoming({
+    super.key,
+    this.onThisPhone = false,
+    this.stalled = false,
+  }) : text = stalled
+            ? 'El audio está en este celular, pero ahora no suena. Si atendés, '
+                'reintentá o soltalo para que suene en el teléfono de la casa.'
+            : onThisPhone
+                ? 'Si atendés, hablás y escuchás por el celular. Soltá el audio '
+                    'para que la llamada suene en el teléfono de la casa.'
+                : 'Si atendés, hablás por el teléfono de la casa: para escuchar '
+                    'por el celular hay que traer el audio acá.';
 
   final String text;
 
   /// ¿Esta app tiene el audio tomado? Cambia el ícono y su color, además del
   /// texto que eligió el constructor.
   final bool onThisPhone;
+
+  /// ¿Tomado pero mudo? Manda sobre [onThisPhone]: ícono de silencio en rojo.
+  final bool stalled;
 
   @override
   Widget build(BuildContext context) {
@@ -150,11 +174,13 @@ class AudioRouteLine extends StatelessWidget {
         Padding(
           // Centrado con la primera línea del texto.
           padding: const EdgeInsets.only(top: 1),
-          child: CceIcon(
-            onThisPhone ? CceIcons.volume2 : CceIcons.speaker,
-            size: 16,
-            color: onThisPhone ? CceColors.ok : CceColors.accent,
-          ),
+          child: stalled
+              ? const Icon(Icons.volume_off, size: 16, color: CceColors.danger)
+              : CceIcon(
+                  onThisPhone ? CceIcons.volume2 : CceIcons.speaker,
+                  size: 16,
+                  color: onThisPhone ? CceColors.ok : CceColors.accent,
+                ),
         ),
         const SizedBox(width: 10),
         Expanded(

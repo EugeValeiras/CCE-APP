@@ -21,8 +21,16 @@ enum PhoneAudioState {
   /// Armando el audio y abriendo el WebSocket.
   connecting,
 
-  /// Tomado. Si además hay llamada, se habla y se escucha por acá.
+  /// Tomado Y con el motor de audio del celular entregando audio. Si además
+  /// hay llamada, se habla y se escucha por acá.
   on,
+
+  /// Tomado (el socket y el ruteo están acá) pero el motor nativo NO está
+  /// corriendo: iOS lo paró (una llamada al celular, Siri, un cambio de
+  /// hardware) o el micrófono dejó de entregar. Nadie escucha nada hasta que
+  /// se recupere — solo o con [PhoneAudioService.retry]. Es el estado que el
+  /// #12 no tenía y por eso mostraba "Hablás por el celular" en mudo (CCE#18).
+  interrupted,
 
   /// Otro dispositivo se lo llevó (gana el último).
   evicted,
@@ -59,6 +67,13 @@ const double kJitterMaxMs = 200;
 /// lo que importa: que una red trabada no acumule una cola de audio que después
 /// se escucha corrida hacia atrás para siempre.
 const int kUplinkStallMs = 3000;
+
+/// Sin un frame del micrófono hace este tiempo, el motor del celular está
+/// muerto aunque el nativo no haya dicho nada. El nativo tiene su propio
+/// watchdog (1,5 s) y avisa antes; éste es la red de abajo, para el caso en
+/// que lo que se rompió sea el puente mismo. "Tu voz" en cero es el dato duro
+/// del CCE#18, y acá es donde se convierte en estado.
+const int kEngineStallMs = 2500;
 
 /// Cómo se lee un cierre del WebSocket. Puro: la pantalla lo muestra tal cual y
 /// el test lo verifica sin abrir un socket.
@@ -129,18 +144,33 @@ const int kUplinkStallMs = 3000;
 /// `ChangeNotifier` + `AnimatedBuilder`, como el resto del repo. Nada de
 /// Riverpod/Provider/Bloc.
 ///
+/// ## `on` es que SUENA, no que se pidió (CCE#18)
+///
+/// El motor nativo se puede parar solo después de haber arrancado (Apple lo
+/// documenta: un cambio de hardware detiene el `AVAudioEngine`; una llamada
+/// al celular o Siri lo interrumpen). Por eso `on` exige que el motor esté
+/// entregando audio: el nativo lo mide con su watchdog y lo cuenta con el
+/// evento `engine`, y acá hay una segunda red sobre los frames del micrófono
+/// ([kEngineStallMs]). Cuando el motor no está, el estado es [interrupted]:
+/// la sesión sigue tomada, la pantalla lo dice y ofrece [retry].
+///
 /// ## Lo que NO hace
 ///
 /// No corta llamadas y no cambia el jack. Tomar o soltar el audio sólo cambia
 /// por dónde sale la voz: si esto falla entero, la llamada sigue sonando en el
 /// teléfono de la casa, que es el respaldo que el backend deja siempre armado.
 class PhoneAudioService extends ChangeNotifier {
-  PhoneAudioService({required ServerConfig config})
-      : _config = config,
+  PhoneAudioService({
+    required ServerConfig config,
+    this.engineStallMs = kEngineStallMs,
+  })  : _config = config,
         _api = ApiService(config);
 
   final ServerConfig _config;
   final ApiService _api;
+
+  /// Ver [kEngineStallMs]. Configurable para que el test no espere 2,5 s.
+  final int engineStallMs;
 
   /// Canales nativos (`ios/Runner/PhoneAudioPlugin.swift`).
   static const MethodChannel _control = MethodChannel('com.cce.phoneaudio');
@@ -164,6 +194,18 @@ class PhoneAudioService extends ChangeNotifier {
   /// Milisegundos en el jitter buffer nativo, y muestras tiradas por atraso.
   int _bufferedMs = 0;
   int _dropped = 0;
+
+  /// Diagnóstico del motor nativo (evento `stats`, cada ~1 s). Ver
+  /// [diagnostics]: es lo que distingue "llegan bytes" de "suenan".
+  bool _engineRunning = false;
+  int _renderCalls = 0;
+  int _renderedSamples = 0;
+  int _captureCalls = 0;
+  int _restarts = 0;
+
+  /// Cuándo llegó el último frame del micrófono. Es el pulso del motor visto
+  /// desde acá; ver [kEngineStallMs].
+  int _lastFrameAt = 0;
 
   /// Ida y vuelta al servidor, medido con el ping de control. `null` hasta el
   /// primer pong.
@@ -191,8 +233,47 @@ class PhoneAudioService extends ChangeNotifier {
   int get droppedSamples => _dropped;
   int? get rttMs => _rttMs;
 
-  /// ¿El audio está en ESTE celular ahora mismo?
+  /// ¿El motor nativo está corriendo y entregando audio? Es lo que el nativo
+  /// midió, no lo que se pidió.
+  bool get engineRunning => _engineRunning;
+
+  /// Veces que el `AVAudioSourceNode` pidió audio, y muestras de la línea que
+  /// se reprodujeron de verdad (a 8 kHz; 160 = un frame de 20 ms).
+  int get renderCalls => _renderCalls;
+  int get renderedSamples => _renderedSamples;
+
+  /// Taps del micrófono que entregaron audio, y reinicios del motor.
+  int get captureCalls => _captureCalls;
+  int get restarts => _restarts;
+
+  /// Una línea con el estado real del motor, para el panel en debug. Cuando
+  /// "no se escucha nada", esto dice si el problema es que no llegan bytes
+  /// (`reproducidas` no sube), que el motor no corre (`parado`) o que el
+  /// micrófono no entrega (`mic` no sube).
+  String get diagnostics {
+    final frames = _renderedSamples ~/ 160;
+    final rtt = _rttMs == null ? '—' : '$_rttMs ms';
+    return 'motor ${_engineRunning ? 'vivo' : 'parado'} · '
+        'mic $_captureCalls · render $_renderCalls · '
+        'reproducidas $frames fr · buffer $_bufferedMs ms · '
+        'rtt $rtt · reinicios $_restarts';
+  }
+
+  /// ¿El audio está en ESTE celular ahora mismo, y suena? Sólo con el motor
+  /// nativo entregando audio: con el motor parado esto es `false` aunque la
+  /// sesión siga tomada — ver [taken].
   bool get isOn => _state == PhoneAudioState.on;
+
+  /// ¿La sesión está tomada (socket abierto y ruteo en este celular)? Incluye
+  /// [PhoneAudioState.interrupted]: el audio está ruteado acá aunque ahora no
+  /// suene. Es lo que decide si hay que SOLTAR al terminar la llamada.
+  bool get taken =>
+      state == PhoneAudioState.on || state == PhoneAudioState.interrupted;
+
+  /// ¿Tomado pero mudo? El audio está ruteado a este celular y el motor no
+  /// corre: hasta que vuelva, no lo escucha nadie. Es el estado que la
+  /// pantalla tiene que decir con todas las letras.
+  bool get stalled => state == PhoneAudioState.interrupted;
 
   /// ¿Hay algo en curso que conviene no interrumpir con otro toque?
   bool get busy =>
@@ -201,9 +282,11 @@ class PhoneAudioService extends ChangeNotifier {
 
   /// Qué decir del estado, en castellano y corto.
   String get stateLabel {
-    switch (_state) {
+    switch (state) {
       case PhoneAudioState.on:
         return 'En el celular';
+      case PhoneAudioState.interrupted:
+        return 'Está tomado, pero ahora no suena';
       case PhoneAudioState.requesting:
         return 'Pidiendo micrófono…';
       case PhoneAudioState.connecting:
@@ -237,9 +320,17 @@ class PhoneAudioService extends ChangeNotifier {
   /// audio en la casa, y el motivo en [error].
   Future<bool> take() async {
     if (_state == PhoneAudioState.on || busy) return _state == PhoneAudioState.on;
+    // Volver a tomar desde `interrupted` es un reintento completo: se suelta lo
+    // que hubiera (socket, motor) antes de armar todo de nuevo.
+    if (_ws != null) await _teardown();
     _error = null;
     _state = PhoneAudioState.requesting;
     _notify();
+
+    // La suscripción va ANTES del `start`: los avisos que el motor emite
+    // mientras arranca (la cancelación de eco que no se pudo activar, por
+    // ejemplo) se perdían en el #12 porque todavía nadie escuchaba.
+    _listenNative();
 
     final Map<Object?, Object?>? started;
     try {
@@ -267,7 +358,6 @@ class PhoneAudioService extends ChangeNotifier {
     _output = _parseOutput(started?['output']);
     _speaker = _output == PhoneAudioOutput.speaker;
     _muted = false;
-    _listenNative();
 
     _state = PhoneAudioState.connecting;
     _notify();
@@ -294,8 +384,58 @@ class PhoneAudioService extends ChangeNotifier {
       return false;
     }
 
-    _state = PhoneAudioState.on;
+    _engineOn();
     _startMeters();
+    _notify();
+    return true;
+  }
+
+  /// El motor nativo acaba de arrancar (o de volver): se le da el margen de
+  /// [engineStallMs] antes de reclamarle frames.
+  void _engineOn() {
+    _state = PhoneAudioState.on;
+    _engineRunning = true;
+    _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  /// El motor nativo se paró: la sesión sigue tomada y [reason] es para el
+  /// usuario. Sólo tiene sentido desde `on`; en cualquier otro estado la
+  /// verdad ya está dicha.
+  void _engineOff(String reason) {
+    _engineRunning = false;
+    if (_state != PhoneAudioState.on) return;
+    _state = PhoneAudioState.interrupted;
+    _error = reason;
+  }
+
+  /// Vuelve a arrancar el motor del celular sin soltar la sesión. Es la acción
+  /// del botón "Reintentar" del panel cuando el estado es [interrupted]; el
+  /// nativo ya reintentó solo (acotado) antes de que el usuario llegara acá.
+  Future<bool> retry() async {
+    if (_state != PhoneAudioState.interrupted) return isOn;
+    _error = null;
+    _notify();
+    try {
+      final started = await _control.invokeMapMethod<Object?, Object?>('restart');
+      if (started?['granted'] != true) {
+        _error = 'El celular no dio el micrófono. Podés darlo en Ajustes › CCE '
+            'Home.';
+        _notify();
+        return false;
+      }
+      _output = _parseOutput(started?['output']);
+      _speaker = _output == PhoneAudioOutput.speaker;
+    } on PlatformException catch (e) {
+      _error = e.message ?? 'No se pudo volver a arrancar el audio.';
+      _notify();
+      return false;
+    } on MissingPluginException {
+      _error = 'Esta versión de la app no trae el audio en el celular.';
+      _notify();
+      return false;
+    }
+    if (_ws == null) return false; // nos desalojaron mientras tanto
+    _engineOn();
     _notify();
     return true;
   }
@@ -367,7 +507,7 @@ class PhoneAudioService extends ChangeNotifier {
   /// Tomarlo ANTES de discar sigue siendo válido: esto sólo actúa en el borde
   /// de bajada.
   void syncWithCall(bool live) {
-    if (_wasLive && !live && _state == PhoneAudioState.on) {
+    if (_wasLive && !live && taken) {
       unawaited(release());
     }
     _wasLive = live;
@@ -480,6 +620,7 @@ class PhoneAudioService extends ChangeNotifier {
     // Un frame del micrófono llega como bytes; todo lo demás, como mapa.
     if (event is Uint8List) {
       _inputMeter.add(event);
+      _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
       final ws = _ws;
       if (ws == null || _uplinkStalled) return;
       try {
@@ -500,6 +641,17 @@ class PhoneAudioService extends ChangeNotifier {
       case 'stats':
         _bufferedMs = (map['bufferedMs'] as num?)?.toInt() ?? 0;
         _dropped = (map['dropped'] as num?)?.toInt() ?? 0;
+        _renderCalls = (map['renderCalls'] as num?)?.toInt() ?? _renderCalls;
+        _renderedSamples =
+            (map['renderedSamples'] as num?)?.toInt() ?? _renderedSamples;
+        _captureCalls = (map['captureCalls'] as num?)?.toInt() ?? _captureCalls;
+        _restarts = (map['restarts'] as num?)?.toInt() ?? _restarts;
+        if (map['engineRunning'] is bool) {
+          _engineRunning = map['engineRunning'] as bool;
+        }
+        break;
+      case 'engine':
+        _onEngine(map['running'] == true, map['reason']?.toString());
         break;
       case 'interruption':
         _onInterruption(map['began'] == true, map['resumed'] == true);
@@ -511,30 +663,46 @@ class PhoneAudioService extends ChangeNotifier {
     }
   }
 
+  /// La verdad del motor, medida por el nativo: corre y entrega audio, o no.
+  /// Con `running: false` la sesión sigue tomada (el nativo ya está
+  /// reintentando solo); con `true` desde [PhoneAudioState.interrupted], el
+  /// motor volvió y se vuelve a `on`.
+  void _onEngine(bool running, String? reason) {
+    if (running) {
+      _engineRunning = true;
+      if (_state == PhoneAudioState.interrupted) {
+        _error = null;
+        _engineOn();
+      }
+    } else {
+      _engineOff(reason ?? 'El celular detuvo el audio.');
+    }
+    _notify();
+  }
+
   /// Una llamada telefónica DE VERDAD al celular, Siri o una alarma.
   ///
-  /// Mientras dura, el audio de la llamada de la casa no suena — no hay forma
-  /// de evitarlo, iOS le da la sesión a quien interrumpió. Lo que sí se puede
-  /// es no quedar en un estado mentiroso: si el sistema deja volver, se vuelve;
-  /// si no, se suelta y la voz se queda en la casa, dicho con todas las letras.
+  /// Mientras dura, el audio de la llamada de la casa no suena en ningún lado
+  /// — no hay forma de evitarlo, iOS le da la sesión a quien interrumpió. Lo
+  /// que sí se puede es no quedar en un estado mentiroso: el estado pasa a
+  /// [PhoneAudioState.interrupted], y si el sistema deja volver, se vuelve
+  /// solo; si no, queda dicho con todas las letras y el panel ofrece
+  /// reintentar (o soltar, para que la voz vuelva a la casa).
   void _onInterruption(bool began, bool resumed) {
     if (began) {
-      _error = 'El celular interrumpió el audio (una llamada, Siri o una '
-          'alarma). Mientras tanto la voz sale por el teléfono de la casa.';
+      _engineOff('El celular interrumpió el audio (una llamada, Siri o una '
+          'alarma). Hasta que vuelva, nadie escucha esta llamada.');
       _notify();
       return;
     }
     if (resumed) {
-      _error = null;
-      _notify();
+      _onEngine(true, null);
       return;
     }
-    _error = 'No se pudo recuperar el audio después de la interrupción. La '
-        'llamada sigue, con el audio en la casa.';
-    unawaited(_teardown().then((_) {
-      _state = PhoneAudioState.error;
-      _notify();
-    }));
+    _engineOff('El celular no devolvió el audio.');
+    _error = 'No se pudo recuperar el audio después de la interrupción. '
+        'Reintentá, o soltalo para que la voz vuelva a la casa.';
+    _notify();
   }
 
   // ── Interno ───────────────────────────────────────────────────────────────
@@ -546,8 +714,20 @@ class PhoneAudioService extends ChangeNotifier {
     _levelTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
       _inputMeter.tick();
       _outputMeter.tick();
+      _checkEngine();
       _notify();
     });
+  }
+
+  /// La red de abajo del CCE#18: "Tu voz" clavado en cero ES el motor muerto,
+  /// diga lo que diga el resto. Sin frames del micrófono en [engineStallMs],
+  /// el estado deja de afirmar que se habla por el celular.
+  void _checkEngine() {
+    if (_state != PhoneAudioState.on) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastFrameAt <= engineStallMs) return;
+    _engineOff('El micrófono del celular no está entregando audio. Reintentá, '
+        'o soltá el audio para que la voz vuelva a la casa.');
   }
 
   Future<bool> _fail(PhoneAudioState state, String message) async {
@@ -570,6 +750,7 @@ class PhoneAudioService extends ChangeNotifier {
     _rttMs = null;
     _uplinkStalled = false;
     _muted = false;
+    _engineRunning = false;
 
     final ws = _ws;
     _ws = null;

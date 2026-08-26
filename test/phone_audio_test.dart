@@ -15,6 +15,15 @@
 //     falla de la app.
 //  4. Los medidores se mueven en las dos direcciones.
 //  5. El micrófono llega al socket como PCM crudo.
+//
+// Y desde el CCE#18, que el estado diga la VERDAD sobre el motor nativo:
+//
+//  6. `on` sólo con el motor entregando audio: si el nativo avisa que se paró,
+//     o si dejan de llegar frames del micrófono, el estado cae a
+//     `interrupted`, el panel deja de decir "Hablás por el celular" y ofrece
+//     reintentar (sin soltar la sesión).
+//  7. Una interrupción del sistema que no vuelve tampoco queda en el limbo.
+//  8. El diagnóstico del motor (render, mic, reinicios) llega al panel.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -103,6 +112,14 @@ class _FakeNative {
   final List<MethodCall> calls = [];
   String output = 'receiver';
 
+  /// Todo lo que le llegó, en orden: métodos y el `listen` del EventChannel.
+  /// Sirve para verificar que Dart se suscribe ANTES de pedir `start`.
+  final List<String> sequence = [];
+
+  /// Qué contesta `restart`: `null` es éxito, un texto es un `PlatformException`
+  /// con ese mensaje.
+  String? restartError;
+
   static const _control = MethodChannel('com.cce.phoneaudio');
   static const _events = 'com.cce.phoneaudio/events';
 
@@ -111,6 +128,7 @@ class _FakeNative {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(_control, (call) async {
       calls.add(call);
+      sequence.add(call.method);
       switch (call.method) {
         case 'permissionStatus':
           return granted ? 'granted' : 'denied';
@@ -118,6 +136,11 @@ class _FakeNative {
           return granted
               ? {'granted': true, 'permission': 'granted', 'output': output}
               : {'granted': false, 'permission': 'denied'};
+        case 'restart':
+          if (restartError case final message?) {
+            throw PlatformException(code: 'audio-start', message: message);
+          }
+          return {'granted': true, 'permission': 'granted', 'output': output};
         case 'setSpeaker':
           output = (call.arguments as Map)['speaker'] == true
               ? 'speaker'
@@ -129,6 +152,10 @@ class _FakeNative {
     });
     // El EventChannel contesta al `listen` para que la suscripción prospere.
     messenger.setMockMessageHandler(_events, (message) async {
+      if (message != null) {
+        final call = const StandardMethodCodec().decodeMethodCall(message);
+        sequence.add('events.${call.method}');
+      }
       return const StandardMethodCodec().encodeSuccessEnvelope(null);
     });
   }
@@ -402,7 +429,10 @@ void main() {
           {'type': 'interruption', 'began': true, 'resumed': false});
       await waitFor(() => audio.error != null,
           reason: 'la interrupción no dijo nada');
-      expect(audio.error, contains('teléfono de la casa'));
+      expect(audio.error, contains('interrumpió'));
+      // Mientras dura, NO se afirma que se habla por el celular (CCE#18).
+      expect(audio.isOn, isFalse);
+      expect(audio.state, PhoneAudioState.interrupted);
 
       await native.emitEvent(
           {'type': 'interruption', 'began': false, 'resumed': true});
@@ -507,6 +537,218 @@ void main() {
       expect(audio.state, PhoneAudioState.error);
       expect(audio.error, isNotNull);
       expect(gateway.sockets, isEmpty);
+    });
+
+    // ── CCE#18: el estado dice la verdad sobre el motor ─────────────────────
+
+    test('Dart se suscribe a los avisos ANTES de pedir el arranque', () async {
+      // El aviso de la cancelación de eco sale DENTRO de `start()`: en el #12
+      // se emitía sin nadie escuchando y se perdía.
+      await audio.take();
+
+      final listen = native.sequence.indexOf('events.listen');
+      final start = native.sequence.indexOf('start');
+      expect(listen, isNonNegative, reason: 'no hubo listen: ${native.sequence}');
+      expect(listen, lessThan(start), reason: native.sequence.toString());
+    });
+
+    test('si el nativo avisa que el motor se paró, deja de estar "on"', () async {
+      await audio.take();
+      expect(audio.isOn, isTrue);
+
+      await native.emitEvent({
+        'type': 'engine',
+        'running': false,
+        'reason': 'iOS cambió la configuración del audio.',
+      });
+      await waitFor(() => audio.state == PhoneAudioState.interrupted,
+          reason: 'el aviso del motor no cambió el estado');
+
+      expect(audio.isOn, isFalse);
+      expect(audio.engineRunning, isFalse);
+      // La sesión sigue tomada: el socket no se cerró ni se paró el motor —
+      // el nativo ya está reintentando solo y un toque lo reintenta a mano.
+      expect(audio.taken, isTrue);
+      expect(native.called('stop'), isFalse);
+      expect(gateway.sockets.first.readyState, WebSocket.open);
+      expect(audio.error, contains('configuración'));
+
+      // Cuando el motor vuelve (solo), el estado vuelve con él.
+      await native.emitEvent({'type': 'engine', 'running': true});
+      await waitFor(() => audio.isOn, reason: 'el motor volvió y no se vio');
+      expect(audio.error, isNull);
+    });
+
+    test('reintentar vuelve a arrancar el motor sin soltar la sesión', () async {
+      await audio.take();
+      await native.emitEvent(
+          {'type': 'engine', 'running': false, 'reason': 'iOS detuvo el audio.'});
+      await waitFor(() => audio.state == PhoneAudioState.interrupted);
+
+      final ok = await audio.retry();
+
+      expect(ok, isTrue);
+      expect(audio.isOn, isTrue);
+      expect(native.called('restart'), isTrue);
+      expect(native.called('stop'), isFalse);
+      expect(gateway.sockets, hasLength(1));
+    });
+
+    test('un reintento que falla lo dice y sigue ofreciendo reintentar',
+        () async {
+      await audio.take();
+      await native.emitEvent(
+          {'type': 'engine', 'running': false, 'reason': 'iOS detuvo el audio.'});
+      await waitFor(() => audio.state == PhoneAudioState.interrupted);
+      native.restartError = 'No se pudo arrancar el audio: boom';
+
+      final ok = await audio.retry();
+
+      expect(ok, isFalse);
+      expect(audio.state, PhoneAudioState.interrupted);
+      expect(audio.error, contains('boom'));
+    });
+
+    test('sin frames del micrófono el estado cae solo a interrumpido', () async {
+      // "Tu voz" clavado en cero ES el motor muerto: aunque el nativo no diga
+      // nada (el puente mismo puede estar roto), Dart lo ve por su cuenta.
+      audio.dispose();
+      audio = PhoneAudioService(
+        config: ServerConfig(host: '127.0.0.1', port: gateway.port),
+        engineStallMs: 300,
+      );
+      await audio.take();
+      expect(audio.isOn, isTrue);
+
+      // Mientras llegan frames, sigue `on` aunque pase el plazo.
+      for (var i = 0; i < 4; i++) {
+        await native.emitFrame(tone(160, 0.5));
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+      }
+      expect(audio.isOn, isTrue);
+
+      await waitFor(() => audio.state == PhoneAudioState.interrupted,
+          reason: 'el silencio del micrófono no cambió el estado');
+      expect(audio.error, contains('micrófono'));
+      expect(audio.taken, isTrue);
+    });
+
+    test('una interrupción que no vuelve no queda en el limbo', () async {
+      await audio.take();
+
+      await native.emitEvent(
+          {'type': 'interruption', 'began': true, 'resumed': false});
+      await waitFor(() => audio.state == PhoneAudioState.interrupted,
+          reason: 'la interrupción no bajó el estado');
+      expect(audio.isOn, isFalse);
+
+      await native.emitEvent(
+          {'type': 'interruption', 'began': false, 'resumed': false});
+      await waitFor(() => (audio.error ?? '').contains('Reintentá'),
+          reason: 'no se ofreció reintentar');
+      // La sesión sigue tomada: no se soltó a escondidas.
+      expect(audio.state, PhoneAudioState.interrupted);
+      expect(native.called('stop'), isFalse);
+
+      // Y al terminar la llamada se suelta igual que desde `on`.
+      audio.syncWithCall(true);
+      audio.syncWithCall(false);
+      await waitFor(() => audio.state == PhoneAudioState.off);
+      expect(native.called('stop'), isTrue);
+    });
+
+    test('el diagnóstico del motor llega desde las stats del nativo', () async {
+      await audio.take();
+
+      await native.emitEvent({
+        'type': 'stats',
+        'bufferedMs': 80,
+        'dropped': 0,
+        'renderCalls': 1234,
+        'renderedSamples': 160 * 50,
+        'captureCalls': 321,
+        'engineRunning': true,
+        'restarts': 1,
+      });
+      await waitFor(() => audio.renderCalls == 1234,
+          reason: 'las stats no llegaron');
+
+      expect(audio.renderedSamples, 8000);
+      expect(audio.captureCalls, 321);
+      expect(audio.restarts, 1);
+      expect(audio.diagnostics, contains('motor vivo'));
+      expect(audio.diagnostics, contains('render 1234'));
+      expect(audio.diagnostics, contains('reproducidas 50 fr'));
+      expect(audio.diagnostics, contains('reinicios 1'));
+    });
+
+    testWidgets('con el motor parado el panel NO dice "Hablás por el celular"',
+        (t) async {
+      // El criterio de aceptación del #18: nunca el mensaje tranquilizador con
+      // el motor muerto. En su lugar, el problema y el botón para reintentar.
+      await t.runAsync(() => audio.take());
+      await t.runAsync(() async {
+        await native.emitEvent({
+          'type': 'engine',
+          'running': false,
+          'reason': 'iOS detuvo el audio del celular.',
+        });
+        await waitFor(() => audio.state == PhoneAudioState.interrupted);
+      });
+      await t.pumpWidget(
+        _host(CallAudioPanel(audio: audio, showDiagnostics: false)),
+      );
+
+      expect(find.text('Hablás por el celular'), findsNothing);
+      expect(find.text('El celular no reproduce el audio'), findsOneWidget);
+      expect(find.textContaining('iOS detuvo'), findsOneWidget);
+      expect(find.text('Reintentar'), findsOneWidget);
+      // Soltar sigue a mano: es la otra salida (la voz vuelve a la casa).
+      expect(find.text('Soltar'), findsOneWidget);
+      // Y los medidores se quedan: "La línea" moviéndose con "Tu voz" en cero
+      // es exactamente la foto que hay que poder ver.
+      expect(find.text('Tu voz'), findsOneWidget);
+
+      await t.tap(find.text('Reintentar'));
+      await t.runAsync(() => waitFor(() => audio.isOn));
+      await t.pumpWidget(
+        _host(CallAudioPanel(audio: audio, showDiagnostics: false)),
+      );
+      expect(find.text('Hablás por el celular'), findsOneWidget);
+      expect(find.text('Reintentar'), findsNothing);
+
+      await t.runAsync(() => audio.release());
+    });
+
+    testWidgets('en debug el panel muestra los contadores del motor', (t) async {
+      await t.runAsync(() => audio.take());
+      await t.runAsync(() async {
+        await native.emitEvent({
+          'type': 'stats',
+          'bufferedMs': 60,
+          'dropped': 0,
+          'renderCalls': 500,
+          'renderedSamples': 160 * 20,
+          'captureCalls': 250,
+          'engineRunning': true,
+          'restarts': 0,
+        });
+        await waitFor(() => audio.renderCalls == 500);
+      });
+
+      await t.pumpWidget(
+        _host(CallAudioPanel(audio: audio, showDiagnostics: true)),
+      );
+      expect(find.textContaining('render 500'), findsOneWidget);
+      expect(find.textContaining('reproducidas 20 fr'), findsOneWidget);
+
+      // Sin el flag, nada: al usuario esa línea no le dice nada.
+      await t.pumpWidget(
+        _host(CallAudioPanel(audio: audio, showDiagnostics: false)),
+      );
+      expect(find.textContaining('render 500'), findsNothing);
+
+      await t.runAsync(() => audio.release());
     });
   });
 }

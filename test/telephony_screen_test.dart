@@ -37,17 +37,28 @@ class _FakeAudio extends PhoneAudioService {
     notifyListeners();
   }
 
+  /// Tomado pero con el motor parado (CCE#18).
+  bool _stalled = false;
+  set stalledNow(bool value) {
+    _stalled = value;
+    notifyListeners();
+  }
+
   /// Cuántas veces la pantalla pidió tomar el audio.
   int takes = 0;
 
   @override
-  PhoneAudioState get state => _on ? PhoneAudioState.on : PhoneAudioState.off;
+  PhoneAudioState get state => _stalled
+      ? PhoneAudioState.interrupted
+      : _on
+          ? PhoneAudioState.on
+          : PhoneAudioState.off;
   @override
-  bool get isOn => _on;
+  bool get isOn => _on && !_stalled;
   @override
   bool get busy => false;
   @override
-  String? get error => null;
+  String? get error => _stalled ? 'iOS detuvo el audio del celular.' : null;
   @override
   Future<bool> take() async {
     takes++;
@@ -368,6 +379,34 @@ void main() {
       expect(find.text('Tu voz'), findsOneWidget);
       expect(find.text('Altavoz'), findsOneWidget);
       expect(find.text('Soltar'), findsOneWidget);
+
+      await _teardown(t);
+    });
+
+    testWidgets('con el motor parado la card NO dice que hablás por el celular',
+        (t) async {
+      // CCE#18: tomado pero mudo. Ni "estás hablando" ni "no vas a escuchar"
+      // (está ruteado acá): la tercera verdad, con el botón para reintentar.
+      // Más alto que el viewport por defecto (800×600 pt): con Reintentar, el
+      // motivo y el diagnóstico la card no entra en 600. El ancho se deja: con
+      // la fuente de test, a 393 pt desbordan filas que en el teléfono entran.
+      t.view.physicalSize = const Size(2400, 4200);
+      addTearDown(t.view.reset);
+      final rig = _Rig(
+        device: _phone(callState: 'active', dir: 'out', peer: 'Porton'),
+      );
+      await t.pumpWidget(rig.screen);
+      rig.telephony.audio.on = true;
+      rig.telephony.audio.stalledNow = true;
+      await _settle(t);
+
+      expect(find.textContaining('Estás hablando por el celular'), findsNothing);
+      expect(find.textContaining('no vas a escuchar'), findsNothing);
+      expect(find.textContaining('ahora no suena'), findsOneWidget);
+      expect(find.textContaining('iOS detuvo'), findsOneWidget);
+      expect(find.text('Reintentar'), findsOneWidget);
+      expect(find.text('Soltar'), findsOneWidget);
+      expect(find.text('Tu voz'), findsOneWidget);
 
       await _teardown(t);
     });
