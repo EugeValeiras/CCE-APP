@@ -16,6 +16,7 @@ class CceCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.border = false,
+    this.borderColor,
     this.neo = false,
     this.neoInset = false,
   });
@@ -28,6 +29,10 @@ class CceCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final bool border;
+
+  /// Color del hairline cuando [border] es true. Default [CceColors.stroke];
+  /// un bloque que ES un estado (error) lo tiñe con su color semántico.
+  final Color? borderColor;
 
   /// OPT-IN: extrusión neumórfica externa (highlight sup-izq + sombra inf-der).
   /// Default false ⇒ render plano idéntico al actual.
@@ -88,7 +93,7 @@ class CceCard extends StatelessWidget {
           : null,
       gradient: gradient,
       borderRadius: borderRadius,
-      border: border ? Border.all(color: CceColors.stroke) : null,
+      border: border ? Border.all(color: borderColor ?? CceColors.stroke) : null,
       // La inner-shadow del inset vive en la propia decoración (no overlay).
       boxShadow: neoInset ? CceShadows.neoInset() : null,
     );

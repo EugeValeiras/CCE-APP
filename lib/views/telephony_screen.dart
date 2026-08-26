@@ -9,15 +9,18 @@ import '../services/devices_service.dart';
 import '../services/telephony_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
-import '../theme/components/cce_card.dart';
+import '../theme/components/status_dot.dart';
 import '../utils/dial_number.dart';
 import 'telephony/audio_notice.dart';
 import 'telephony/call_audio_panel.dart';
+import 'telephony/call_confirm_sheet.dart';
 import 'telephony/call_history_screen.dart';
 import 'telephony/contacts_sheet.dart';
 import 'telephony/dial_actions.dart';
 import 'telephony/dial_display.dart';
 import 'telephony/dial_pad.dart';
+import 'telephony/line_status_chip.dart';
+import 'telephony/phone_surface.dart';
 
 /// Pantalla del teléfono 4G (HAT SIM7600G-H).
 ///
@@ -25,13 +28,29 @@ import 'telephony/dial_pad.dart';
 /// de #4 de no discar desde la app). El historial pasó detrás de un botón:
 /// [CallHistoryScreen].
 ///
-/// LO QUE ESTA PANTALLA TIENE QUE DECIR SIEMPRE: **dónde se escucha la voz**.
-/// Con el #12 el celular puede llevar el audio (`CallAudioPanel`), pero
-/// mientras no lo tenga tomado sigue siendo cierto lo del #10 — la llamada sale
-/// de verdad y el destino suena, pero la voz va al jack del HAT o al navegador
-/// del dashboard. Un usuario que disca, no escucha nada y no sabe por qué,
-/// concluye que la app está rota, así que el aviso está a la vista en reposo y
-/// durante la llamada, y no en letra chica.
+/// LO QUE ESTA PANTALLA TIENE QUE DECIR SIEMPRE QUE IMPORTA: **dónde se escucha
+/// la voz**. Con el #12 el celular puede llevar el audio (`CallAudioPanel`),
+/// pero mientras no lo tenga tomado sigue siendo cierto lo del #10 — la llamada
+/// sale de verdad y el destino suena, pero la voz va al jack del HAT o al
+/// navegador del dashboard. Un usuario que disca, no escucha nada y no sabe por
+/// qué, concluye que la app está rota.
+///
+/// El #14 reordenó la pantalla alrededor del número discado. La mitad de
+/// arriba se lee así, de arriba hacia abajo:
+///
+///  1. Header: nombre, número propio, historial (con las perdidas sin ver) y
+///     refresh.
+///  2. Un chip fino con el estado de la línea ([LineStatusChip]).
+///  3. UN bloque de estado, según el momento:
+///     - en reposo, el número que se está discando ([DialDisplay]), y debajo el
+///       aviso del audio SÓLO cuando importa: al empezar a discar (con el botón
+///       para traer el audio al lado), o cuando el audio ya está acá, se está
+///       tomando, o falló;
+///     - con una entrante sonando, la card de la entrante;
+///     - con una llamada viva, la card de la llamada — con el ruteo real de la
+///       voz en sus dos direcciones y los controles del audio adentro.
+///  4. El teclado, con el aire que liberan los bloques que ya no están.
+///  5. La botonera.
 ///
 /// Se llama `TelephonyScreen` y no `PhoneScreen` (como decía el plan) porque en
 /// este repo `phone_*` ya significa "layout de celular" (phone_home_view.dart):
@@ -125,24 +144,38 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             return Column(
               children: [
                 _header(d, t),
-                _lineStrip(d, t),
-                if (t.actionError != null) _errorBanner(t.actionError!),
+                _block(LineStatusChip(status: t.status, state: s)),
+                if (t.actionError != null) _block(_errorBanner(t.actionError!)),
                 if (ringingIn)
-                  _incomingCard(d, incoming)
+                  _block(_incomingCard(d, incoming, t))
                 else if (live)
-                  _activeCall(d, t)
-                else if (!t.audio.isOn)
-                  // Con el audio ya tomado, el panel de abajo dice lo mismo y
-                  // mejor: repetirlo sería gastar la mitad de la pantalla en
-                  // dos carteles que dicen que se escucha por acá.
-                  _audioNotice(t.status),
-                _audioPanel(t),
-                _display(live: live, enabled: !ringingIn),
+                  _block(_activeCall(d, t))
+                else ...[
+                  _block(
+                    DialDisplay(
+                      controller: _number,
+                      focusNode: _numberFocus,
+                      enabled: true,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ),
+                  // El teclado se corre suave cuando el aviso entra o sale, en
+                  // vez de saltar al primer dígito.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    child: switch (_idleAudioBlock(t)) {
+                      final block? => _block(block),
+                      null => const SizedBox(width: double.infinity),
+                    },
+                  ),
+                ],
                 Expanded(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                       horizontal: CceSpace.lg,
-                      vertical: CceSpace.sm,
+                      vertical: CceSpace.md,
                     ),
                     child: DialPad(
                       enabled: !ringingIn,
@@ -159,6 +192,42 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         ),
       ),
     );
+  }
+
+  /// Todo bloque de la mitad de arriba lleva el mismo margen lateral y el
+  /// mismo aire con el de arriba: es lo que hace que se lean como una pila y
+  /// no como parches (CCE#14).
+  Widget _block(Widget child) => Padding(
+        padding: const EdgeInsets.fromLTRB(
+          CceSpace.lg,
+          CceSpace.md,
+          CceSpace.lg,
+          0,
+        ),
+        child: child,
+      );
+
+  /// El bloque de audio en REPOSO, sólo cuando importa (CCE#14):
+  ///
+  ///  - con el audio tomado, tomándose o fallado, el panel: un micrófono
+  ///    abierto no se esconde, y un error hay que poder leerlo y cerrarlo;
+  ///  - con algo escrito y el audio en la casa, el aviso del #10/#12 con el
+  ///    botón para traer el audio al lado — es el momento en que la pregunta
+  ///    "¿por dónde voy a escuchar?" existe, y tomar el audio antes de discar
+  ///    es el flujo natural;
+  ///  - con el teclado vacío, nada: la pantalla es teclado.
+  Widget? _idleAudioBlock(TelephonyService t) {
+    final audio = t.audio;
+    if (audio.isOn || audio.busy || audio.error != null) {
+      return CallAudioPanel(audio: audio);
+    }
+    if (_number.text.isNotEmpty) {
+      return AudioRouteNotice(
+        status: t.status,
+        action: AudioTakeButton(audio: audio),
+      );
+    }
+    return null;
   }
 
   // ── Teclado ───────────────────────────────────────────────────────────────
@@ -221,30 +290,39 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     setState(() {});
   }
 
-  /// Pegar un número copiado de otra app. Existe como BOTÓN además del menú
-  /// contextual del campo porque el long-press sobre un número que se está
-  /// escribiendo no es un gesto que nadie descubra solo.
-  Future<void> _paste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final clean = sanitizeDialInput(data?.text ?? '');
-    if (!mounted) return;
-    if (clean.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No hay un número en el portapapeles.')),
-      );
-      return;
-    }
-    HapticFeedback.selectionClick();
-    _setNumber(clean);
-  }
+  // Pegar un número no tiene botón propio: el campo es un TextField y el
+  // long-press abre el menú del sistema, como en cualquier app. Lo que entre
+  // pasa igual por [sanitizeDialInput] (DialInputFormatter).
 
   // ── Comandos ──────────────────────────────────────────────────────────────
 
-  Future<void> _call({String? number, String? contactId}) async {
-    HapticFeedback.mediumImpact();
+  /// Disca, avisando ANTES cuando corresponde (espejo de CCE#15): con el
+  /// audio en la casa, la llamada saldría, el destino sonaría y el usuario no
+  /// escucharía nada — se entera acá, no con la llamada en curso. Con el
+  /// audio ya en este celular no se pregunta nada: el caso normal no gana
+  /// ningún toque.
+  Future<void> _call({String? number, PhoneContact? contact}) async {
+    final t = widget.telephony;
     _numberFocus.unfocus();
+    if (!t.audio.isOn) {
+      final choice = await showCallConfirmSheet(
+        context,
+        telephony: t,
+        who: contact?.displayName ?? number ?? '',
+        number: contact?.number ?? number,
+      );
+      if (choice == null || !mounted) return;
+      if (choice == CallChoice.takeAudioAndCall) {
+        // Primero el audio, después el POST, como en el dashboard. Si tomarlo
+        // falla (micrófono negado, red), la llamada sale IGUAL — nunca se
+        // deja al usuario sin llamar — y el panel de la card explica qué pasó.
+        await t.audio.take();
+        if (!mounted) return;
+      }
+    }
+    HapticFeedback.mediumImpact();
     setState(() => _dtmfSent = '');
-    await widget.telephony.call(number: number, contactId: contactId);
+    await t.call(number: number, contactId: contact?.id);
     // No se hace polling: el estado real llega por `device:state-changed`.
   }
 
@@ -272,17 +350,17 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     final pick = await showContactsSheet(context, widget.telephony);
     if (pick == null || !mounted) return;
     if (pick.callNow) {
-      await _call(contactId: pick.contact.id);
+      await _call(contact: pick.contact);
     } else {
       _setNumber(pick.contact.number);
     }
   }
 
-  // ── Header y estado de la línea ───────────────────────────────────────────
+  // ── Header ────────────────────────────────────────────────────────────────
 
   Widget _header(Device d, TelephonyService t) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.sm, CceSpace.sm, CceSpace.sm, 0),
+      padding: const EdgeInsets.fromLTRB(CceSpace.sm, CceSpace.sm, CceSpace.sm, 0),
       child: Row(
         children: [
           IconButton(
@@ -363,139 +441,115 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     );
   }
 
-  /// Estado de la línea, compacto: dejó de ser una card grande porque el lugar
-  /// principal es del teclado.
+  // ── Llamada entrante y en curso ───────────────────────────────────────────
+
+  /// La card de una llamada, entrante o en curso: quién arriba, y debajo —
+  /// separado por un hairline— el ruteo de la voz con los controles del audio
+  /// ([CallAudioPanel] embebido, con [AudioRouteLine] como titular). Una
+  /// superficie, un lenguaje: antes eran dos cards y una caja adentro de otra.
   ///
-  /// Registrado y OPERATIVO son cosas distintas: una línea sin habilitar se
-  /// registra igual y muestra operador y señal impecables sin poder cursar
-  /// nada. Por eso el estado de la línea se dice aparte del operador.
-  Widget _lineStrip(Device d, TelephonyService t) {
-    final st = t.status;
-    final s = d.state;
-    final bars = s.signalBars ?? st.signalBars;
-    final lineActive = s.lineActive ?? st.lineActive;
-
-    final (String lineText, Color lineColor) = switch (lineActive) {
-      'active' => ('Línea activa', CceColors.ok),
-      'inactive' => ('Línea inactiva', CceColors.danger),
-      _ => ('Línea sin verificar', CceColors.textTertiary),
-    };
-
-    final detail = [
-      s.networkTech ?? st.tech ?? 'sin red',
-      lineText,
-      if (st.balance != null) 'Saldo ${st.balance}',
-    ].join(' · ');
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: CceCard(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration:
-                      BoxDecoration(color: lineColor, shape: BoxShape.circle),
+  /// Los tonos DTMF que salieron ([tones]) van acá y no en un visor aparte: el
+  /// acuse importa, pero un visor de 68 px para él dejaba al teclado —que en
+  /// llamada ES el teclado de tonos— en teclas de 40 px.
+  Widget _callCard({
+    required Widget glyph,
+    required String who,
+    required Widget subtitle,
+    required Widget trailing,
+    required Widget routeLine,
+    required TelephonyService t,
+    String tones = '',
+  }) {
+    return PhoneSurface(
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              glyph,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      who,
+                      style: CceText.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    subtitle,
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        s.networkOperator ?? st.operator ?? 'Sin operador',
-                        style: CceText.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(
-                        detail,
-                        style: CceText.caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _bars(bars),
-              ],
-            ),
-            if (!st.enabled || !st.online) ...[
-              const SizedBox(height: 6),
-              Text(
-                !st.enabled
-                    ? 'La telefonía está deshabilitada en el servidor.'
-                    : 'El módem no responde. Se reconecta solo cuando vuelva.',
-                style: CceText.caption.copyWith(color: CceColors.danger),
               ),
-            ] else if (st.rateLimitNear) ...[
-              const SizedBox(height: 6),
-              // El tope del backend existe y corta: mejor verlo venir que
-              // descubrirlo con un rechazo.
-              Text(
-                '${st.rateLimitLabel}. Al llegar al tope el servidor no deja '
-                'llamar por un rato.',
-                style: CceText.caption.copyWith(color: CceColors.accent),
-              ),
+              const SizedBox(width: 8),
+              trailing,
             ],
+          ),
+          if (tones.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _tonesLine(tones),
           ],
-        ),
+          const SizedBox(height: 12),
+          const PhoneDivider(),
+          const SizedBox(height: 12),
+          CallAudioPanel(
+            audio: t.audio,
+            embedded: true,
+            headline: routeLine,
+          ),
+        ],
       ),
     );
   }
 
-  Widget _bars(int bars) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        for (var i = 1; i <= 5; i++) ...[
-          Container(
-            width: 3,
-            height: 4.0 + i * 2.4,
-            decoration: BoxDecoration(
-              color: i <= bars ? CceColors.accent : CceColors.strokeStrong,
-              borderRadius: BorderRadius.circular(1),
+  /// El acuse de los tonos mandados a la llamada. Sin esto el teclado DTMF no
+  /// devuelve nada: el menú de voz que responde está sonando en la casa.
+  Widget _tonesLine(String tones) {
+    return Semantics(
+      label: 'Tonos enviados: $tones',
+      child: Row(
+        children: [
+          const Icon(Icons.dialpad, size: 16, color: CceColors.textTertiary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              tones,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CceText.data.copyWith(
+                fontSize: 17,
+                letterSpacing: 3,
+                color: CceColors.textPrimary,
+              ),
             ),
           ),
-          if (i < 5) const SizedBox(width: 2),
         ],
-      ],
+      ),
     );
   }
 
-  // ── El aviso del audio ────────────────────────────────────────────────────
-
-  /// En reposo: qué esperar ANTES de discar. Va acá arriba y no en un tooltip
-  /// porque es la diferencia entre "la app anda" y "la app está rota" para
-  /// quien disca por primera vez desde el celular.
-  Widget _audioNotice(PhoneStatus st) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: AudioRouteNotice(status: st),
+  /// El ícono de la llamada, en un disco del color del estado.
+  Widget _callGlyph(String icon, Color color) {
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: CceIcon(icon, size: 20, color: color),
     );
   }
 
-  /// Traer o soltar el audio, altavoz, mudo y los medidores (CCE#12).
-  ///
-  /// Va SIEMPRE, con llamada o sin ella: tomar el audio antes de discar es el
-  /// flujo natural —y el que evita perderse el principio de la conversación—,
-  /// igual que en el dashboard.
-  Widget _audioPanel(TelephonyService t) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: CallAudioPanel(audio: t.audio),
-    );
-  }
-
-  // ── Llamada entrante y en curso ───────────────────────────────────────────
-
-  Widget _incomingCard(Device d, Map<String, dynamic>? incoming) {
+  Widget _incomingCard(
+    Device d,
+    Map<String, dynamic>? incoming,
+    TelephonyService t,
+  ) {
     final s = d.state;
     final name = (incoming?['contactName'] ?? s.peerName ?? '').toString();
     final number = (incoming?['number'] ?? s.peerNumber ?? '').toString();
@@ -503,42 +557,38 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
         ? name
         : (number.isEmpty ? 'Número desconocido' : number);
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: CceCard(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                const CceIcon(CceIcons.phoneIncoming,
-                    size: 22, color: CceColors.ok),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(who, style: CceText.title.copyWith(fontSize: 15)),
-                      Text(
-                        name.isNotEmpty && number.isNotEmpty
-                            ? number
-                            : 'Llamada entrante',
-                        style: CceText.caption,
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: widget.telephony.dismissIncoming,
-                  child: const Text('Ocultar'),
-                ),
-              ],
+    return _callCard(
+      t: t,
+      glyph: _callGlyph(CceIcons.phoneIncoming, CceColors.ok),
+      who: who,
+      subtitle: Row(
+        children: [
+          // El pulso es para lo que hay que atender AHORA.
+          const StatusDot(CceColors.ok, size: 6, pulse: true),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              name.isNotEmpty && number.isNotEmpty
+                  ? 'Entrante · $number'
+                  : 'Llamada entrante',
+              style: CceText.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
-            const AudioRouteLine.forIncoming(),
-          ],
-        ),
+          ),
+        ],
       ),
+      trailing: TextButton(
+        onPressed: t.dismissIncoming,
+        style: TextButton.styleFrom(
+          foregroundColor: CceColors.textSecondary,
+          visualDensity: VisualDensity.compact,
+        ),
+        child: const Text('Ocultar'),
+      ),
+      // Atender desde la app no trae el audio al celular por sí solo: hay que
+      // decirlo ANTES de atender, y ofrecer traerlo ahí mismo.
+      routeLine: AudioRouteLine.forIncoming(onThisPhone: t.audio.isOn),
     );
   }
 
@@ -562,54 +612,31 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             DateTime.fromMillisecondsSinceEpoch(started),
           );
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: CceCard(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                CceIcon(
-                  s.callDirection == 'in'
-                      ? CceIcons.phoneIncoming
-                      : CceIcons.phoneOutgoing,
-                  size: 22,
-                  color: CceColors.accent,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        who,
-                        style: CceText.title.copyWith(fontSize: 15),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      Text(label, style: CceText.caption),
-                    ],
-                  ),
-                ),
-                if (elapsed != null && elapsed.inSeconds >= 0)
-                  Text(
-                    formatCallDuration(elapsed),
-                    style: CceText.label.copyWith(
-                      color: CceColors.textSecondary,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // EL aviso, mientras la llamada está viva y el usuario se pregunta
-            // por qué no escucha nada — o, con el audio ya en el celular, por
-            // qué sí lo escucha.
-            AudioRouteLine.forCall(t.status, onThisPhone: t.audio.isOn),
-          ],
-        ),
+    return _callCard(
+      t: t,
+      tones: _dtmfSent,
+      glyph: _callGlyph(
+        s.callDirection == 'in' ? CceIcons.phoneIncoming : CceIcons.phoneOutgoing,
+        CceColors.accent,
       ),
+      who: who,
+      subtitle: Text(label, style: CceText.caption),
+      trailing: elapsed != null && elapsed.inSeconds >= 0
+          ? Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Text(
+                formatCallDuration(elapsed),
+                style: CceText.data.copyWith(
+                  fontSize: 17,
+                  color: CceColors.textSecondary,
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
+      // EL aviso, mientras la llamada está viva y el usuario se pregunta por
+      // qué no escucha nada — o, con el audio ya en el celular, por qué sí lo
+      // escucha.
+      routeLine: AudioRouteLine.forCall(t.status, onThisPhone: t.audio.isOn),
     );
   }
 
@@ -617,97 +644,28 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
   /// en curso", "rate limit de llamadas por hora alcanzado"). Un genérico haría
   /// que el usuario reintente contra un límite que no va a ceder.
   Widget _errorBanner(String reason) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.sm, CceSpace.lg, 0),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
-        decoration: BoxDecoration(
-          color: CceColors.danger.withValues(alpha: 0.14),
-          borderRadius: BorderRadius.circular(CceRadii.control),
-          border: Border.all(color: CceColors.danger.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, size: 18, color: CceColors.danger),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                reason,
-                style: CceText.caption.copyWith(color: CceColors.textPrimary),
-              ),
+    return PhoneSurface(
+      tint: CceColors.danger,
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, size: 18, color: CceColors.danger),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              reason,
+              style: CceText.caption.copyWith(color: CceColors.textPrimary),
             ),
-            IconButton(
-              onPressed: widget.telephony.clearActionError,
-              icon: const Icon(Icons.close, size: 16),
-              color: CceColors.textTertiary,
-              visualDensity: VisualDensity.compact,
-              tooltip: 'Cerrar',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Display del número / de los tonos ─────────────────────────────────────
-
-  Widget _display({required bool live, required bool enabled}) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(CceSpace.lg, CceSpace.md, CceSpace.lg, 0),
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          children: [
-            // Contrapeso del botón de pegar, para que el número quede centrado.
-            const SizedBox(width: 44),
-            Expanded(
-              child: live
-                  ? _toneDisplay()
-                  : DialNumberField(
-                      controller: _number,
-                      focusNode: _numberFocus,
-                      enabled: enabled,
-                      onChanged: (_) => setState(() {}),
-                    ),
-            ),
-            SizedBox(
-              width: 44,
-              child: live
-                  ? null
-                  : IconButton(
-                      onPressed: enabled ? _paste : null,
-                      icon: const Icon(Icons.content_paste_rounded, size: 20),
-                      color: CceColors.textTertiary,
-                      tooltip: 'Pegar un número',
-                    ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _toneDisplay() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          _dtmfSent.isEmpty ? 'Teclado de tonos' : _dtmfSent,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: _dtmfSent.isEmpty ? 15 : 26,
-            letterSpacing: 3,
-            color: _dtmfSent.isEmpty
-                ? CceColors.textTertiary
-                : CceColors.textPrimary,
           ),
-        ),
-        Text(
-          'Los tonos van a la llamada',
-          style: CceText.caption.copyWith(color: CceColors.textMuted),
-        ),
-      ],
+          IconButton(
+            onPressed: widget.telephony.clearActionError,
+            icon: const Icon(Icons.close, size: 16),
+            color: CceColors.textTertiary,
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Cerrar',
+          ),
+        ],
+      ),
     );
   }
 
@@ -732,7 +690,7 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             label: 'Rechazar',
             onPressed: t.busy ? null : _hangup,
           ),
-          const SizedBox(width: 40),
+          const SizedBox(width: CceSpace.xxxl),
           PhoneRoundButton(
             icon: CceIcons.phone,
             color: CceColors.ok,
@@ -761,11 +719,11 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     }
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(
+      padding: const EdgeInsets.fromLTRB(
         CceSpace.lg,
         CceSpace.sm,
         CceSpace.lg,
-        CceSpace.md,
+        CceSpace.lg,
       ),
       child: Center(child: row),
     );

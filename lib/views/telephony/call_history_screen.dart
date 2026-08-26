@@ -4,7 +4,7 @@ import '../../models/phone_call.dart';
 import '../../services/telephony_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
-import '../../theme/components/cce_card.dart';
+import 'phone_surface.dart';
 
 /// Historial de llamadas, en su propia pantalla.
 ///
@@ -15,6 +15,9 @@ import '../../theme/components/cce_card.dart';
 ///
 /// Al tocar una llamada VUELVE con el número cargado en el teclado en vez de
 /// discar: un tap suelto en una lista no puede gastar una llamada.
+///
+/// Las filas son [PhoneSurface], como todo en el teléfono (CCE#14): la misma
+/// pieza que el chip, el display y las cards de la pantalla de la que se viene.
 class CallHistoryScreen extends StatefulWidget {
   final TelephonyService telephony;
 
@@ -52,13 +55,10 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
   }
 
   Widget _header() {
+    final calls = widget.telephony.calls;
+    final missed = calls.where((c) => c.isMissed).length;
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        CceSpace.sm,
-        CceSpace.sm,
-        CceSpace.lg,
-        CceSpace.md,
-      ),
+      padding: const EdgeInsets.fromLTRB(CceSpace.sm, CceSpace.sm, CceSpace.sm, 0),
       child: Row(
         children: [
           IconButton(
@@ -66,7 +66,22 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
             icon: const Icon(Icons.arrow_back_ios_new, size: 20),
             color: CceColors.textSecondary,
           ),
-          Expanded(child: Text('Historial', style: CceText.title)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Historial', style: CceText.title),
+                Text(
+                  calls.isEmpty
+                      ? 'Sin llamadas'
+                      : missed == 0
+                          ? '${calls.length} llamadas'
+                          : '${calls.length} llamadas · $missed perdidas',
+                  style: CceText.caption,
+                ),
+              ],
+            ),
+          ),
           IconButton(
             onPressed: () => widget.telephony.refresh(),
             icon: const Icon(Icons.refresh, size: 20),
@@ -83,7 +98,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     if (calls.isEmpty) {
       return Center(
         child: Padding(
-          padding: EdgeInsets.all(CceSpace.xl),
+          padding: const EdgeInsets.all(CceSpace.xl),
           child: Text(
             widget.telephony.error != null
                 ? 'No se pudo leer el historial.'
@@ -100,9 +115,14 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
       color: CceColors.accent,
       backgroundColor: CceColors.surface,
       child: ListView.separated(
-        padding: EdgeInsets.fromLTRB(CceSpace.lg, 0, CceSpace.lg, CceSpace.xl),
+        padding: const EdgeInsets.fromLTRB(
+          CceSpace.lg,
+          CceSpace.md,
+          CceSpace.lg,
+          CceSpace.xl,
+        ),
         itemCount: calls.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 6),
+        separatorBuilder: (_, _) => const SizedBox(height: CceSpace.sm),
         itemBuilder: (context, i) => _callRow(calls[i]),
       ),
     );
@@ -116,8 +136,8 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
     final color = missed ? CceColors.danger : CceColors.textTertiary;
     final number = c.number.trim();
 
-    return CceCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    return PhoneSurface(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       // Sin número (entrante sin caller ID) no hay nada que devolver.
       onTap: number.isEmpty
           ? null
@@ -133,6 +153,7 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                 Text(
                   c.displayName,
                   style: CceText.label.copyWith(
+                    fontSize: 15,
                     // Las perdidas se leen distinto del resto: son el aviso.
                     color: missed ? CceColors.textPrimary : CceColors.textSecondary,
                     fontWeight: missed ? FontWeight.w700 : FontWeight.w600,
@@ -140,7 +161,13 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(c.resultLabel, style: CceText.caption),
+                const SizedBox(height: 2),
+                Text(
+                  c.resultLabel,
+                  style: CceText.caption.copyWith(
+                    color: missed ? CceColors.danger : CceColors.textSecondary,
+                  ),
+                ),
               ],
             ),
           ),
@@ -148,12 +175,22 @@ class _CallHistoryScreenState extends State<CallHistoryScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(formatCallWhen(c.startedAt), style: CceText.caption),
-              if (c.duration.inSeconds > 0)
+              Text(
+                formatCallWhen(c.startedAt),
+                style: CceText.caption.copyWith(
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              if (c.duration.inSeconds > 0) ...[
+                const SizedBox(height: 2),
                 Text(
                   formatCallDuration(c.duration),
-                  style: CceText.caption.copyWith(color: CceColors.textMuted),
+                  style: CceText.caption.copyWith(
+                    color: CceColors.textMuted,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
+              ],
             ],
           ),
         ],

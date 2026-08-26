@@ -9,9 +9,10 @@ import '../../theme/components/cce_neo_press.dart';
 /// lado de la habitación.
 const double kPhoneRoundButtonSize = 76;
 
-/// Lado de los botones satélite (contactos, borrar). Neutros y sin fondo: no
-/// compiten con el verde del medio.
-const double kPhoneSideButtonSize = 52;
+/// Lado de los botones satélite (contactos, borrar). Redondos y con la misma
+/// superficie que una tecla, más chicos que el de llamar: comparten línea de
+/// base y tratamiento con él sin competir con su verde (CCE#14).
+const double kPhoneSideButtonSize = 56;
 
 /// La botonera del teclado en reposo: contactos a la izquierda, LLAMAR en el
 /// centro, borrar a la derecha.
@@ -48,6 +49,7 @@ class DialActions extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(
           width: kPhoneSideButtonSize,
@@ -119,7 +121,7 @@ class PhoneRoundButton extends StatelessWidget {
     // lugar del botón de llamar se lee como un hueco en la pantalla.
     final glyph = CceIcon(
       icon,
-      size: 30,
+      size: 32,
       color: enabled ? CceColors.inkOnAmber : color.withValues(alpha: 0.45),
     );
 
@@ -138,8 +140,10 @@ class PhoneRoundButton extends StatelessWidget {
             decoration: BoxDecoration(
               color: enabled ? color : color.withValues(alpha: 0.16),
               shape: BoxShape.circle,
+              // Sobre el fondo negro el verde desaturado se leía apagado: el
+              // halo es lo que lo enciende, como a una luz prendida.
               boxShadow: enabled
-                  ? [...CceShadows.raised, ...CceShadows.glowOn(color)]
+                  ? [...CceShadows.raised, ...CceShadows.glowOn(color, strong: true)]
                   : null,
             ),
             child: rotate ? Transform.rotate(angle: 2.356, child: glyph) : glyph,
@@ -150,7 +154,8 @@ class PhoneRoundButton extends StatelessWidget {
   }
 }
 
-/// Acción secundaria al lado del botón de llamar: sin fondo, sólo el glifo.
+/// Acción secundaria al lado del botón de llamar: la misma pieza que una tecla
+/// del teclado (redonda, superficie alta, hairline), con el glifo en gris.
 class PhoneSideButton extends StatelessWidget {
   const PhoneSideButton({
     super.key,
@@ -177,9 +182,15 @@ class PhoneSideButton extends StatelessWidget {
         child: CceNeoPress(
           onTap: onPressed,
           onLongPress: enabled ? onLongPress : null,
-          child: SizedBox(
+          child: Container(
             width: kPhoneSideButtonSize,
             height: kPhoneSideButtonSize,
+            decoration: BoxDecoration(
+              color: enabled ? CceColors.surfaceHigh : CceColors.surface,
+              shape: BoxShape.circle,
+              border: Border.all(color: CceColors.stroke),
+              boxShadow: enabled ? CceShadows.raised : null,
+            ),
             child: IconTheme(
               data: IconThemeData(
                 color: enabled ? CceColors.textSecondary : CceColors.textMuted,
