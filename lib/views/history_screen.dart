@@ -11,10 +11,14 @@ import '../theme/components/status_dot.dart';
 import '../utils/time_format.dart';
 import 'history/event_grouping.dart';
 import 'history/event_presenter.dart';
+import 'history/phone_events.dart';
 
-enum HistoryFilter { all, lights, sensors, automations, alarm }
+enum HistoryFilter { all, lights, sensors, automations, alarm, telefono }
 
-extension _HistoryFilterX on HistoryFilter {
+/// Pública (no `_`) para que el filtro se pueda testear sin montar la
+/// pantalla: `accepts` es un switch compartido y un caso nuevo puede romper
+/// los demás sin que nadie lo vea.
+extension HistoryFilterX on HistoryFilter {
   String get label {
     switch (this) {
       case HistoryFilter.all: return 'Todos';
@@ -22,10 +26,15 @@ extension _HistoryFilterX on HistoryFilter {
       case HistoryFilter.sensors: return 'Sensores';
       case HistoryFilter.automations: return 'Automatizaciones';
       case HistoryFilter.alarm: return 'Alarma';
+      case HistoryFilter.telefono: return 'Teléfono';
     }
   }
 
   /// Matches an event to a filter by eventName/payload.
+  ///
+  /// Se evalúa sobre la lista YA depurada por [isCallLogNoise]: el ciclo de
+  /// una llamada (`{on: true, callState: 'dialing'}` de `dev_phone`) no llega
+  /// hasta acá, así que "Luces" no vuelve a listar "Teléfono: encendido".
   bool accepts(EventRecord e) {
     switch (this) {
       case HistoryFilter.all: return true;
@@ -49,6 +58,9 @@ extension _HistoryFilterX on HistoryFilter {
         return e.eventName.startsWith('automation:');
       case HistoryFilter.alarm:
         return e.eventName.startsWith('alarm:');
+      case HistoryFilter.telefono:
+        // `phone:*` (llamadas hoy, SMS con el #23) y `dev_phone`.
+        return isPhoneEvent(e);
     }
   }
 }
@@ -218,9 +230,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  /// Pipeline: items → filtro → grupos adyacentes → headers de día.
+  /// Pipeline: items → sin el log del teléfono → filtro → grupos adyacentes
+  /// → headers de día.
+  ///
+  /// UNA llamada = UNA entrada (CCE#24): de los cinco o seis eventos que deja
+  /// una llamada sobrevive sólo el `phone:call-state` de fin, que es el que
+  /// trae el veredicto; el resto lo saca [isCallLogNoise] ANTES del filtro,
+  /// para que "Todos" y "Teléfono" cuenten la misma historia.
   List<_Entry> _buildEntries() {
-    final filtered = _items.where(_filter.accepts).toList();
+    final filtered = _items
+        .where((e) => !isCallLogNoise(e))
+        .where(_filter.accepts)
+        .toList();
     final groups = groupEvents(filtered, widget.devices);
     final out = <_Entry>[];
     String? currentDay;
@@ -309,8 +330,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         icon: CceIcon(CceIcons.history,
             size: 48, color: _Glass.accent.withValues(alpha: 0.5)),
         title: 'Sin actividad todavía',
-        caption: 'Los eventos de luces, sensores, automatizaciones y alarma '
-            'van a aparecer acá.',
+        caption: 'Los eventos de luces, sensores, automatizaciones, alarma y '
+            'llamadas van a aparecer acá.',
       );
     }
     // Hay eventos pero el filtro no matchea ninguno.
