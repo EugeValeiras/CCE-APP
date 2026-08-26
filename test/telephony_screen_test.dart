@@ -182,6 +182,10 @@ void main() {
       for (final k in ['1', '5', '0', '*', '#']) {
         expect(find.text(k), findsOneWidget, reason: 'falta la tecla $k');
       }
+      // El header: historial sí, refresh no (CCE#19): el estado llega solo
+      // por el socket y el botón para pedirlo a mano se retiró.
+      expect(find.byTooltip('Historial de llamadas'), findsOneWidget);
+      expect(find.byTooltip('Actualizar'), findsNothing);
       expect(find.byType(AudioRouteNotice), findsNothing,
           reason: 'en reposo el aviso no ocupa la mitad de arriba');
       expect(find.byType(CallAudioPanel), findsNothing,

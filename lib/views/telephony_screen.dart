@@ -38,8 +38,9 @@ import 'telephony/phone_surface.dart';
 /// El #14 reordenó la pantalla alrededor del número discado. La mitad de
 /// arriba se lee así, de arriba hacia abajo:
 ///
-///  1. Header: nombre, número propio, historial (con las perdidas sin ver) y
-///     refresh.
+///  1. Header: volver, nombre, número propio e historial (con las perdidas sin
+///     ver). Sin botón de refresh (CCE#19): el estado llega solo por el socket
+///     y un botón para pedirlo a mano no servía y rompía con la interfaz.
 ///  2. Un chip fino con el estado de la línea ([LineStatusChip]).
 ///  3. UN bloque de estado, según el momento:
 ///     - en reposo, el número que se está discando ([DialDisplay]), y debajo el
@@ -379,12 +380,6 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
             ),
           ),
           _historyButton(t.unseenMissed),
-          IconButton(
-            onPressed: () => t.refresh(),
-            icon: const Icon(Icons.refresh, size: 20),
-            color: CceColors.textSecondary,
-            tooltip: 'Actualizar',
-          ),
         ],
       ),
     );
