@@ -35,16 +35,29 @@ import 'phone_surface.dart';
 /// ofrece reintentar: un mensaje tranquilizador sobre un teléfono mudo es
 /// peor que no tener la función. Y en debug muestra [PhoneAudioService
 /// .diagnostics], que es lo que distingue "llegan bytes" de "suenan".
+///
+/// Y desde el #20 la card de la ENTRANTE puede pedir que, sin el audio tomado,
+/// NO se ofrezca traerlo ([offerTake]): atender ya lo trae dentro del gesto,
+/// así que el botón antes de atender sobra — salvo cuando traerlo falló.
 class CallAudioPanel extends StatelessWidget {
   const CallAudioPanel({
     super.key,
     required this.audio,
     this.headline,
     this.embedded = false,
+    this.offerTake = true,
     this.showDiagnostics = kDebugMode,
   });
 
   final PhoneAudioService audio;
+
+  /// Sin el audio tomado, ¿ofrecer el botón de traerlo? Sólo cuenta con
+  /// [headline]. La card de la entrante lo apaga en el caso normal (CCE#20):
+  /// atender ya lo trae, y ofrecerlo antes sería el toque de más que el issue
+  /// vino a sacar; lo vuelve a prender cuando traerlo falló, que es cuando el
+  /// botón tiene algo que hacer. Con el audio tomado no aplica: Soltar está
+  /// siempre.
+  final bool offerTake;
 
   /// La línea de contadores del motor. Por defecto sólo en debug: al usuario
   /// no le dice nada, y a quien depura le dice todo.
@@ -87,7 +100,7 @@ class CallAudioPanel extends StatelessWidget {
               retry: stalled,
               trailing: AudioTakeButton(audio: audio, height: 40),
             ),
-          ] else ...[
+          ] else if (offerTake) ...[
             const SizedBox(height: 10),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

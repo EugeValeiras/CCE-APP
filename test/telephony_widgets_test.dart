@@ -59,14 +59,34 @@ void main() {
       expect(find.textContaining('no vas a escuchar ni hablar'), findsOneWidget);
     });
 
-    testWidgets('una entrante avisa antes de atender', (t) async {
+    testWidgets('una entrante anuncia que atender trae el audio al celular',
+        (t) async {
+      // CCE#20: el audio se toma dentro del gesto de Atender, así que en el
+      // caso normal no hay nada que ofrecer — y "hablás por el teléfono de la
+      // casa" pasó a ser mentira.
       await t.pumpWidget(_host(const AudioRouteLine.forIncoming()));
+      expect(find.textContaining('viene a este celular'), findsOneWidget);
+      expect(
+        find.textContaining('hablás por el teléfono de la casa'),
+        findsNothing,
+      );
+      expect(find.textContaining('traer el audio'), findsNothing);
+    });
+
+    testWidgets('si traer el audio falló, la entrante dice qué pasa al atender',
+        (t) async {
+      // La única forma en que el botón de traerlo vuelve a tener sentido:
+      // se avisa que no está acá, que atender lo vuelve a intentar, y que si
+      // no se puede la voz va al teléfono de la casa.
+      await t.pumpWidget(
+        _host(const AudioRouteLine.forIncoming(failed: true)),
+      );
+      expect(find.textContaining('no está en este celular'), findsOneWidget);
       expect(
         find.textContaining('hablás por el teléfono de la casa'),
         findsOneWidget,
       );
-      // Y dice qué hacer si querés escuchar por acá (CCE#12).
-      expect(find.textContaining('traer el audio'), findsOneWidget);
+      expect(find.textContaining('viene a este celular'), findsNothing);
     });
 
     testWidgets('con el audio EN ESTE celular, el aviso se da vuelta', (t) async {

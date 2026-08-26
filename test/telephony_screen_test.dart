@@ -10,8 +10,12 @@
 //  3. En llamada la card dice por dónde sale la voz, el número discado no se
 //     muestra, y el 0 es 0.
 //  4. Una entrante no se cuelga: se atiende o se rechaza, y el teclado no
-//     disca.
+//     disca. Atender toma el audio DENTRO del gesto y recién después manda
+//     el `answer`; si tomarlo falla se atiende igual; con el audio ya tomado
+//     no se vuelve a pedir (CCE#20).
 //  5. El acuse de un tono se revierte si el tono no salió.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -47,6 +51,20 @@ class _FakeAudio extends PhoneAudioService {
   /// Cuántas veces la pantalla pidió tomar el audio.
   int takes = 0;
 
+  /// Comandos en el orden en que salieron, compartido con la telefonía de
+  /// mentira: es lo que prueba que el audio va ANTES del `answer` (CCE#20).
+  List<String> log = [];
+
+  /// Si está, [take] se queda esperando a que se complete: es el permiso del
+  /// micrófono pendiente, que dura lo que tarde el usuario.
+  Completer<void>? takeGate;
+
+  /// Qué contesta [take]. En `false` deja el motivo en [error], como el real.
+  bool takeOk = true;
+
+  /// Motivo de la última falla al tomar, como lo dejaría el servicio real.
+  String? fakeError;
+
   @override
   PhoneAudioState get state => _stalled
       ? PhoneAudioState.interrupted
@@ -58,10 +76,19 @@ class _FakeAudio extends PhoneAudioService {
   @override
   bool get busy => false;
   @override
-  String? get error => _stalled ? 'iOS detuvo el audio del celular.' : null;
+  String? get error =>
+      _stalled ? 'iOS detuvo el audio del celular.' : fakeError;
   @override
   Future<bool> take() async {
     takes++;
+    log.add('take');
+    if (takeGate case final gate?) await gate.future;
+    if (!takeOk) {
+      fakeError = 'El celular no dio el micrófono.';
+      notifyListeners();
+      return false;
+    }
+    fakeError = null;
     on = true;
     return true;
   }
@@ -73,9 +100,15 @@ class _FakeAudio extends PhoneAudioService {
 /// Telefonía de mentira: estado inyectado, comandos que no salen a la red.
 class _FakeTelephony extends TelephonyService {
   _FakeTelephony({required super.config, required super.socket})
-      : _audio = _FakeAudio(config: config);
+      : _audio = _FakeAudio(config: config) {
+    _audio.log = log;
+  }
 
   final _FakeAudio _audio;
+
+  /// Comandos en el orden en que salieron: 'take' (del audio), 'answer',
+  /// 'hangup'.
+  final List<String> log = [];
   PhoneStatus fakeStatus = PhoneStatus.fromJson({'audioRoute': 'speaker'});
   Map<String, dynamic>? fakeIncoming;
 
@@ -112,6 +145,18 @@ class _FakeTelephony extends TelephonyService {
   @override
   Future<bool> call({String? number, String? contactId}) async {
     dialed.add((number, contactId));
+    return true;
+  }
+
+  @override
+  Future<bool> answer() async {
+    log.add('answer');
+    return true;
+  }
+
+  @override
+  Future<bool> hangup() async {
+    log.add('hangup');
     return true;
   }
 }
@@ -458,10 +503,12 @@ void main() {
       expect(find.byTooltip('Colgar'), findsNothing);
       expect(find.byTooltip('Llamar'), findsNothing);
 
-      // Avisa ANTES de atender, y ofrece traer el audio ahí mismo.
+      // La card anuncia que atender trae el audio acá, y no ofrece nada más:
+      // ofrecer traerlo sería el toque de más que CCE#20 vino a sacar.
+      expect(find.textContaining('viene a este celular'), findsOneWidget);
       expect(find.textContaining('hablás por el teléfono de la casa'),
-          findsOneWidget);
-      expect(find.text('Escuchar acá'), findsOneWidget);
+          findsNothing);
+      expect(find.text('Escuchar acá'), findsNothing);
 
       // El teclado está, pero apagado: no manda tonos a una llamada que no
       // existe todavía.
@@ -469,13 +516,118 @@ void main() {
       await t.pump();
       expect(rig.telephony.dtmf, isEmpty);
 
-      // Con el audio ya tomado, el aviso se da vuelta.
+      // Con el audio ya tomado, dice eso — y Soltar sigue a mano.
       rig.telephony.audio.on = true;
       await _settle(t);
       expect(find.textContaining('hablás y escuchás por el celular'),
           findsOneWidget);
+      expect(find.textContaining('viene a este celular'), findsNothing);
+      expect(find.text('Soltar'), findsOneWidget);
+
+      await _teardown(t);
+    });
+
+    testWidgets('atender toma el audio DENTRO del gesto y DESPUÉS atiende',
+        (t) async {
+      // El orden es el criterio (CCE#20): tocar Atender es el gesto que
+      // AVAudioSession necesita, así que `take()` sale en el toque y el
+      // `answer` espera a que termine — como el dashboard y como "Escuchar
+      // acá y llamar". El permiso del micrófono se deja pendiente para ver
+      // que el `answer` NO sale antes.
+      final rig = _Rig(
+        device: _phone(callState: 'ringing', dir: 'in', peer: 'Cami'),
+      );
+      rig.telephony.audio.takeGate = Completer<void>();
+      await t.pumpWidget(rig.screen);
+
+      await t.tap(find.byTooltip('Atender'));
+      await t.pump();
+      expect(rig.telephony.log, ['take'],
+          reason: 'el answer tiene que esperar a que el audio esté tomado');
+
+      // Mientras se atiende, ni un segundo Atender ni Rechazar hacen nada:
+      // dos toques no pueden mandar dos answer, y un hangup en el medio
+      // dejaría al answer sin entrante.
+      await t.tap(find.byTooltip('Atender'));
+      await t.tap(find.byTooltip('Rechazar'));
+      await t.pump();
+      expect(rig.telephony.log, ['take']);
+
+      rig.telephony.audio.takeGate!.complete();
+      await _settle(t);
+      expect(rig.telephony.log, ['take', 'answer']);
+      expect(rig.telephony.audio.takes, 1);
+      expect(rig.telephony.audio.isOn, isTrue);
+
+      await _teardown(t);
+    });
+
+    testWidgets('si tomar el audio falla, se atiende IGUAL y la card dice qué pasó',
+        (t) async {
+      // Nunca se pierde una llamada por un problema de audio (mismo criterio
+      // que las salientes). Y la card, que en el caso normal no ofrece nada,
+      // vuelve a decir que el audio no está acá y a ofrecer traerlo: ahora sí
+      // hay algo que hacer.
+      final rig = _Rig(
+        device: _phone(callState: 'ringing', dir: 'in', peer: 'Cami'),
+      );
+      rig.telephony.audio.takeOk = false;
+      await t.pumpWidget(rig.screen);
+
+      await t.tap(find.byTooltip('Atender'));
+      await _settle(t);
+      expect(rig.telephony.log, ['take', 'answer']);
+      expect(rig.telephony.audio.isOn, isFalse);
+
+      expect(find.textContaining('no está en este celular'), findsOneWidget);
       expect(find.textContaining('hablás por el teléfono de la casa'),
-          findsNothing);
+          findsOneWidget);
+      expect(find.textContaining('viene a este celular'), findsNothing);
+      expect(find.textContaining('no dio el micrófono'), findsOneWidget);
+      expect(find.text('Escuchar acá'), findsOneWidget);
+
+      await _teardown(t);
+    });
+
+    testWidgets('con el audio ya tomado, atender no lo vuelve a pedir',
+        (t) async {
+      // Idempotente: el caso normal no gana ningún toque ni corta nada.
+      final rig = _Rig(
+        device: _phone(callState: 'ringing', dir: 'in', peer: 'Cami'),
+      );
+      await t.pumpWidget(rig.screen);
+      rig.telephony.audio.on = true;
+      await _settle(t);
+
+      await t.tap(find.byTooltip('Atender'));
+      await _settle(t);
+      expect(rig.telephony.log, ['answer']);
+      expect(rig.telephony.audio.takes, 0);
+
+      await _teardown(t);
+    });
+
+    testWidgets('con el motor parado, atender tampoco lo vuelve a pedir',
+        (t) async {
+      // Tomado pero mudo (CCE#18) sigue siendo TOMADO: el audio está ruteado
+      // acá y volver a pedirlo tiraría la sesión. Eso lo resuelve Reintentar,
+      // que la card ofrece, no Atender.
+      t.view.physicalSize = const Size(2400, 4200);
+      addTearDown(t.view.reset);
+      final rig = _Rig(
+        device: _phone(callState: 'ringing', dir: 'in', peer: 'Cami'),
+      );
+      await t.pumpWidget(rig.screen);
+      rig.telephony.audio.on = true;
+      rig.telephony.audio.stalledNow = true;
+      await _settle(t);
+      expect(find.textContaining('ahora no suena'), findsOneWidget);
+      expect(find.text('Reintentar'), findsOneWidget);
+
+      await t.tap(find.byTooltip('Atender'));
+      await _settle(t);
+      expect(rig.telephony.log, ['answer']);
+      expect(rig.telephony.audio.takes, 0);
 
       await _teardown(t);
     });
