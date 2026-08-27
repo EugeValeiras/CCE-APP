@@ -38,9 +38,15 @@ abstract final class CceColors {
   /// L3 · lo que se apoya sobre L2 (menús, popovers, thumbs).
   static const surfaceTop = Color(0xFF2C2A27);
 
-  /// Superficie HUNDIDA (tracks de slider, huecos). Más oscura que el lienzo:
+  /// Superficie HUNDIDA (huecos, switch apagado). Más oscura que el lienzo:
   /// un hueco recibe menos luz. Reemplaza al viejo relieve `neoInset`.
   static const surfaceSunken = Color(0xFF0D0C0B);
+
+  /// Track VACÍO de todo slider de la app. Es [surfaceHigh], no
+  /// [surfaceSunken]: sobre un lienzo casi negro un hueco más oscuro es
+  /// invisible, y la barra se lee cortada en el punto del relleno en vez de
+  /// llena hasta el valor. Un control tiene que mostrar su recorrido completo.
+  static const sliderTrack = surfaceHigh;
 
   // ---------------------------------------------------------------------
   // Hairlines. Un borde no debe verse; debe encontrarse cuando se lo busca.
@@ -437,6 +443,17 @@ abstract final class CceText {
     fontWeight: FontWeight.w500,
     height: 1.2,
     color: CceColors.textPrimary,
+    fontFeatures: _tabular,
+  );
+
+  /// 13 · metadato numérico secundario (hora de un evento, "próxima 19:04",
+  /// "desde las 08:02") — cifras tabulares para que una columna de horas
+  /// quede alineada y un contador no mueva lo que tiene al lado.
+  static const dataCaption = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    height: 1.3,
+    color: CceColors.textTertiary,
     fontFeatures: _tabular,
   );
 }
