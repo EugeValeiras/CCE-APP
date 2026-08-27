@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cce_app/models/automation.dart';
+import 'package:cce_app/models/device.dart';
 import 'package:cce_app/models/event_record.dart';
 import 'package:cce_app/models/server_config.dart';
 import 'package:cce_app/services/devices_service.dart';
@@ -18,6 +19,7 @@ import 'package:cce_app/theme/components/featured_tile.dart';
 import 'package:cce_app/theme/components/light_card.dart';
 import 'package:cce_app/theme/components/section_header.dart';
 import 'package:cce_app/utils/time_format.dart';
+import 'package:cce_app/views/alarm_view.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
 import 'package:cce_app/views/history/event_grouping.dart';
 import 'package:cce_app/views/history/event_presenter.dart';
@@ -251,6 +253,42 @@ void main() {
           TimeFormat.relativeInSentence(DateTime(2026, 8, 27, 11, 48),
               now: now),
           'hace 12 min');
+    });
+  });
+
+  group('alarma: qué protege', () {
+    Device sensor(String id, String type, {bool? contact, bool? motion,
+        int? trigTime}) =>
+        Device(
+          id: id,
+          name: id,
+          type: type,
+          state: DeviceState(),
+          sensor: DeviceSensor(
+              contact: contact, motion: motion, trigTime: trigTime),
+        );
+
+    test('aperturas abiertas primero, después cerradas, después movimiento',
+        () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final list = protectedSensors([
+        sensor('Office movement', 'motion', motion: false,
+            trigTime: now - 36 * 60000),
+        sensor('Puerta de entrada', 'contact', contact: false),
+        sensor('Living movement', 'motion', motion: false,
+            trigTime: now - 2 * 60000),
+        sensor('Ventana del Living', 'contact', contact: true),
+        sensor('Termómetro', 'thermometer'),
+        Device(
+            id: 'oculto', name: 'oculto', type: 'contact', hidden: true,
+            state: DeviceState(), sensor: DeviceSensor(contact: true)),
+      ]);
+      expect(list.map((d) => d.id).toList(), [
+        'Ventana del Living', // abierta: lo que va a disparar la alarma
+        'Puerta de entrada',
+        'Living movement', // el más reciente
+        'Office movement',
+      ]);
     });
   });
 

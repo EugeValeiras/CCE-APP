@@ -3,16 +3,20 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/alarm_event.dart';
+import '../models/device.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
+import '../services/devices_service.dart';
 import '../services/push_channel.dart';
 import '../services/socket_service.dart';
 import '../services/siren_service.dart';
 import '../services/notification_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/section_header.dart';
 import '../utils/time_format.dart';
 import 'active_alarm_view.dart';
+import 'sensor_detail_screen.dart';
 import 'settings_view.dart';
 import 'in_app_notification.dart';
 
@@ -23,7 +27,17 @@ class AlarmView extends StatefulWidget {
   /// shell del tablet lo deja idéntico.
   final bool neo;
 
-  const AlarmView({super.key, this.initialConfig, this.neo = false});
+  /// Inventario de la casa, para la lista "qué protege" (sensores de
+  /// apertura y movimiento con su estado). Opcional: sin él la pantalla es
+  /// sólo el dial (flujo de configuración inicial).
+  final DevicesService? devices;
+
+  const AlarmView({
+    super.key,
+    this.initialConfig,
+    this.neo = false,
+    this.devices,
+  });
 
   @override
   State<AlarmView> createState() => _AlarmViewState();
@@ -378,11 +392,21 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       body: Stack(
         children: [
           // Main content
-          Center(
-            child: _config.isConfigured
-                ? _buildAlarmButton()
-                : _buildSetupPrompt(),
-          ),
+          if (!_config.isConfigured)
+            Center(child: _buildSetupPrompt())
+          else if (widget.devices == null)
+            Center(child: _buildAlarmButton())
+          else
+            // Dial arriba y, debajo, qué protege la alarma. Scrolleable: en
+            // una casa con muchos sensores la lista no entra bajo el dial.
+            ListView(
+              padding: EdgeInsets.fromLTRB(
+                  CceSpace.lg, CceSpace.xl, CceSpace.lg, CceSpace.xl),
+              children: [
+                _buildAlarmButton(),
+                _ProtectedList(devices: widget.devices!),
+              ],
+            ),
           // Active alarm overlay
           if (_activeAlarm != null)
             Positioned.fill(
@@ -427,6 +451,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     if (_isLoading && !_isToggling) {
       return Column(
         mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: const [
           CircularProgressIndicator(),
           SizedBox(height: 16),
@@ -455,6 +480,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
       children: [
         if (_error != null) ...[
           Text(
@@ -759,4 +785,138 @@ class _AlarmRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_AlarmRingPainter old) =>
       old.rotation != rotation || old.color != color;
+}
+
+/// Sensores que la alarma vigila, en el orden en que importan: aperturas
+/// primero (las ABIERTAS arriba de todo: son lo que va a disparar la alarma
+/// apenas la armes), después movimiento (activo primero, el resto por
+/// recencia). Pura, para testear el criterio sin montar la pantalla.
+List<Device> protectedSensors(Iterable<Device> all) {
+  final list = all
+      .where((d) => !d.hidden && (d.isContactSensor || d.isMotionSensor))
+      .toList();
+  int rank(Device d) {
+    if (d.isContactSensor) return d.sensor?.contact == true ? 0 : 1;
+    return d.sensor?.motion == true ? 2 : 3;
+  }
+
+  list.sort((a, b) {
+    final r = rank(a).compareTo(rank(b));
+    if (r != 0) return r;
+    if (rank(a) == 3) {
+      // Movimiento en reposo: el que se disparó más recientemente primero.
+      final ta = lastTriggerAt(a), tb = lastTriggerAt(b);
+      if (ta != null && tb != null && ta != tb) return tb.compareTo(ta);
+      if (ta == null && tb != null) return 1;
+      if (ta != null && tb == null) return -1;
+    }
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  });
+  return list;
+}
+
+/// Último disparo del sensor: el `trigTime` que reporta el propio sensor, o
+/// el último evento que la app le vio.
+DateTime? lastTriggerAt(Device d) {
+  final t = d.sensor?.trigTime;
+  if (t != null && t > 0) return DateTime.fromMillisecondsSinceEpoch(t);
+  return d.lastEventAt;
+}
+
+/// "Qué protege": los sensores de apertura y movimiento con su estado, en
+/// filas de 52 px con hairline (el mismo molde que el historial). Se
+/// reconstruye con cada evento del inventario; sin sensores no se dibuja.
+class _ProtectedList extends StatelessWidget {
+  const _ProtectedList({required this.devices});
+
+  final DevicesService devices;
+
+  static const double _row = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: devices,
+      builder: (context, _) {
+        final sensors = protectedSensors(devices.all);
+        if (sensors.isEmpty) return const SizedBox.shrink();
+        final open = sensors
+            .where((d) => d.isContactSensor && d.sensor?.contact == true)
+            .length;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(height: CceSpace.lg),
+            SectionHeader(
+              title: 'Qué protege',
+              counter: open == 0
+                  ? null
+                  : (open == 1 ? '1 abierta' : '$open abiertas'),
+            ),
+            for (final d in sensors) _row_(context, d),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _row_(BuildContext context, Device d) {
+    final String svg;
+    final Color iconColor;
+    final Widget trailing;
+    if (d.isContactSensor) {
+      final isOpen = d.sensor?.contact == true;
+      svg = isOpen ? CceIcons.doorOpen : CceIcons.doorClosed;
+      iconColor = isOpen ? CceColors.contact : CceColors.textTertiary;
+      // La abierta va en su color: es la que va a disparar la alarma.
+      trailing = Text(
+        isOpen ? 'Abierta' : 'Cerrada',
+        style: isOpen
+            ? CceText.label.copyWith(color: CceColors.contact)
+            : CceText.caption.copyWith(color: CceColors.textTertiary),
+      );
+    } else {
+      final active = d.sensor?.motion == true;
+      svg = active ? CceIcons.personStanding : CceIcons.footprints;
+      iconColor = active ? CceColors.motion : CceColors.textTertiary;
+      final last = lastTriggerAt(d);
+      trailing = active
+          ? Text('Movimiento',
+              style: CceText.label.copyWith(color: CceColors.motion))
+          : Text(
+              last == null ? 'Sin movimiento' : TimeFormat.relative(last),
+              style: CceText.dataCaption,
+            );
+    }
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => SensorDetailScreen(device: d, service: devices),
+        )),
+        child: Container(
+          height: _row,
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: CceColors.strokeSoft)),
+          ),
+          child: Row(
+            children: [
+              CceIcon(svg, size: 20, color: iconColor, emboss: false),
+              SizedBox(width: CceSpace.md),
+              Expanded(
+                child: Text(
+                  devices.displayName(d),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: CceText.body,
+                ),
+              ),
+              SizedBox(width: CceSpace.sm),
+              trailing,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

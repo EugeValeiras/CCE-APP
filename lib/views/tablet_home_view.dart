@@ -105,7 +105,7 @@ class _TabletHomeViewState extends State<TabletHomeView> {
           AutomationsView(devices: _devices, config: widget.config),
           HistoryScreen(config: widget.config, devices: _devices, neo: true),
           ChatScreenTablet(config: widget.config),
-          AlarmView(initialConfig: widget.config, neo: true),
+          AlarmView(initialConfig: widget.config, neo: true, devices: _devices),
         ];
 
         return Scaffold(
