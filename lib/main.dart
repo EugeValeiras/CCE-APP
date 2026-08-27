@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'models/server_config.dart';
 import 'services/app_messenger.dart';
+import 'services/push_channel.dart';
 import 'theme/cce_theme.dart';
 import 'views/alarm_view.dart';
 import 'views/phone_home_view.dart';
@@ -10,6 +11,10 @@ import 'views/tablet_home_view.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // El handler del canal de APNs se instala ANTES de montar nada: un toque
+  // sobre una push en un arranque en frío llega apenas existe el engine.
+  PushChannel.instance.install();
 
   // Never show red error screen - just log errors
   FlutterError.onError = (details) {

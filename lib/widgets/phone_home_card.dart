@@ -61,6 +61,9 @@ class PhoneHomeCard extends StatelessWidget {
         final inCall = d.phoneInCall;
         final ringing = s.callState == 'ringing';
         final missed = telephony.unseenMissed;
+        // Perdidas + SMS nuevos (CCE#23): las dos cosas se ven sin entrar. El
+        // rojo es de la perdida; con sólo mensajes el badge va en acento.
+        final pending = telephony.unseenTotal;
 
         // Una entrante sonando es lo más urgente que puede mostrar esta card.
         final Color accent;
@@ -139,7 +142,11 @@ class PhoneHomeCard extends StatelessWidget {
                     child: CceIcon(
                       ringing
                           ? CceIcons.phoneIncoming
-                          : (missed > 0 ? CceIcons.phoneMissed : CceIcons.phone),
+                          : missed > 0
+                              ? CceIcons.phoneMissed
+                              : pending > 0
+                                  ? CceIcons.sms
+                                  : CceIcons.phone,
                       size: 28,
                     ),
                   ),
@@ -201,8 +208,11 @@ class PhoneHomeCard extends StatelessWidget {
               const SizedBox(width: 8),
               if (trailing != null)
                 trailing!
-              else if (missed > 0)
-                _MissedBadge(count: missed)
+              else if (pending > 0)
+                _MissedBadge(
+                  count: pending,
+                  color: missed > 0 ? CceColors.danger : CceColors.accent,
+                )
               else
                 const Icon(Icons.chevron_right, color: CceColors.textTertiary),
             ],
@@ -226,12 +236,14 @@ class PhoneHomeCard extends StatelessWidget {
   }
 }
 
-/// Contador de perdidas no vistas. Va en la card y no sólo en la pantalla: una
-/// llamada perdida es el aviso de último recurso de la casa y tiene que verse
+/// Contador de perdidas y SMS no vistos. Va en la card y no sólo en la
+/// pantalla: una llamada perdida es el aviso de último recurso de la casa y
+/// un SMS suele ser un código que hay que leer ya; los dos tienen que verse
 /// sin entrar a ningún lado.
 class _MissedBadge extends StatelessWidget {
   final int count;
-  const _MissedBadge({required this.count});
+  final Color color;
+  const _MissedBadge({required this.count, this.color = CceColors.danger});
 
   @override
   Widget build(BuildContext context) {
@@ -239,7 +251,7 @@ class _MissedBadge extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 24),
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        color: CceColors.danger,
+        color: color,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Text(

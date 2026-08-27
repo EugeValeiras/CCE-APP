@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/alarm_event.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
+import '../services/push_channel.dart';
 import '../services/socket_service.dart';
 import '../services/siren_service.dart';
 import '../services/notification_service.dart';
@@ -44,6 +45,9 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   StreamSubscription? _alarmSub;
   StreamSubscription? _armedSub;
   StreamSubscription? _connSub;
+  StreamSubscription? _tokenSub;
+  StreamSubscription? _pushReceivedSub;
+  StreamSubscription? _pushTapSub;
 
   @override
   void initState() {
@@ -53,7 +57,6 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _init();
   }
 
-  static const _apnsChannel = MethodChannel('com.cce.apns');
   String? _deviceToken;
 
   Future<void> _init() async {
@@ -65,27 +68,28 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       debugPrint('📱 [Flutter] Error init servicios: $e');
     }
 
-    // Listen for native iOS events via MethodChannel
-    debugPrint('📱 [Flutter] Esperando token de APNs via MethodChannel...');
-    _apnsChannel.setMethodCallHandler((call) async {
-      try {
-        debugPrint('📱 [Flutter] MethodChannel call: ${call.method}');
-        if (call.method == 'onToken') {
-          _deviceToken = call.arguments as String;
-          debugPrint('📱 [Flutter] Token recibido: ${_deviceToken!.substring(0, 16)}...');
-          _registerTokenIfReady();
-        } else if (call.method == 'onPushReceived') {
-          final data = Map<String, dynamic>.from(call.arguments as Map);
-          debugPrint('📱 [Flutter] Push recibida in-app: ${data['title']}');
-          _showPushAsInApp(data);
-        } else if (call.method == 'onPushTapped') {
-          final data = Map<String, dynamic>.from(call.arguments as Map);
-          debugPrint('📱 [Flutter] Push tapped: ${data['title']}');
-          _handlePushTapped(data);
-        }
-      } catch (e) {
-        debugPrint('📱 [Flutter] Error en MethodChannel: $e');
-      }
+    // Los eventos nativos de APNs llegan por PushChannel (CCE#23), que es
+    // el dueño del MethodChannel desde `main()`: esta pantalla ya no es la
+    // única que los escucha (el shell atiende el toque de la push de un SMS)
+    // y el token puede haber llegado antes de que se montara.
+    debugPrint('📱 [Flutter] Esperando token de APNs via PushChannel...');
+    final push = PushChannel.instance;
+    push.install();
+    _deviceToken = push.lastToken;
+    _tokenSub = push.onToken.listen((token) {
+      _deviceToken = token;
+      debugPrint('📱 [Flutter] Token recibido: ${token.substring(0, 16)}...');
+      _registerTokenIfReady();
+    });
+    _pushReceivedSub = push.onPushReceived.listen((data) {
+      // La push de un SMS la muestra el shell, que es quien puede abrirla.
+      if (data['kind'] == 'phone-sms') return;
+      debugPrint('📱 [Flutter] Push recibida in-app: ${data['title']}');
+      _showPushAsInApp(data);
+    });
+    _pushTapSub = push.onPushTapped.listen((data) {
+      debugPrint('📱 [Flutter] Push tapped: ${data['title']}');
+      _handlePushTapped(data);
     });
 
     try {
@@ -279,6 +283,9 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _alarmSub?.cancel();
     _armedSub?.cancel();
     _connSub?.cancel();
+    _tokenSub?.cancel();
+    _pushReceivedSub?.cancel();
+    _pushTapSub?.cancel();
     _socket.dispose();
     _siren.dispose();
     super.dispose();

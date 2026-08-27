@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/event_record.dart';
 import '../../models/phone_call.dart';
+import '../../models/phone_sms.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -264,11 +265,20 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   );
 }
 
-/// Teléfono (CCE#24). Un `switch` por canal: hoy sólo `phone:call-state`;
-/// cuando entren los SMS (#23) van como otro `case` acá, con el mismo ícono
+/// Teléfono (CCE#24). Un `switch` por canal: las llamadas
+/// (`phone:call-state`) y los SMS (`phone:sms`, CCE#23), con el mismo ícono
 /// de base y la misma forma de nombrar al otro lado ([_callPeer]).
 EventPresentation _presentPhone(EventRecord e) {
   switch (e.eventName) {
+    case kSmsEvent:
+      final sms = smsFromEvent(e);
+      if (sms != null) return _presentSms(sms);
+      return EventPresentation(
+        icon: const CceIcon(CceIcons.sms, size: 20),
+        color: CceColors.textTertiary,
+        title: 'SMS',
+        subtitle: null,
+      );
     case kCallStateEvent:
       final call = callFromEvent(e);
       if (call != null) return _presentCall(call);
@@ -290,6 +300,20 @@ EventPresentation _presentPhone(EventRecord e) {
         subtitle: e.eventName,
       );
   }
+}
+
+/// Un SMS recibido: de quién, y el texto en una línea (el completo está en la
+/// pantalla de mensajes del teléfono).
+EventPresentation _presentSms(PhoneSms s) {
+  final who = s.displayName == 'Remitente desconocido'
+      ? 'remitente desconocido'
+      : s.displayName;
+  return EventPresentation(
+    icon: const CceIcon(CceIcons.sms, size: 20),
+    color: CceColors.accent,
+    title: 'SMS de $who',
+    subtitle: s.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
+  );
 }
 
 /// Una llamada terminada, en una línea: quién, qué pasó y cuánto duró.

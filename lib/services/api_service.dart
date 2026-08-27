@@ -14,6 +14,7 @@ import '../models/light_group.dart';
 import '../models/capability.dart';
 import '../models/vacuum_map.dart';
 import '../models/phone_call.dart';
+import '../models/phone_sms.dart';
 
 class ApiService {
   final ServerConfig config;
@@ -83,6 +84,24 @@ class ApiService {
     return items
         .whereType<Map>()
         .map((e) => PhoneCall.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  /// SMS recibidos (GET /phone/sms), del más nuevo al más viejo. Lista vacía
+  /// si el módulo no está o el events-store está apagado, como las llamadas.
+  Future<List<PhoneSms>> getPhoneSms({int limit = 50}) async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/phone/sms?limit=$limit'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 8));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    final data = jsonDecode(resp.body);
+    final items = data is Map ? (data['items'] as List? ?? []) : <dynamic>[];
+    return items
+        .whereType<Map>()
+        .map((e) => PhoneSms.fromJson(Map<String, dynamic>.from(e)))
         .toList();
   }
 
