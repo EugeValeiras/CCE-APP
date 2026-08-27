@@ -302,8 +302,10 @@ class _RoomCardState extends State<RoomCard> {
                       .clamp(0.0, 1.0)
                       .toDouble(),
                   activeColor: accent,
-                  // El riel vacío es un hueco en la superficie.
-                  thinTrackColor: CceColors.surfaceSunken,
+                  // El riel vacío se ve entero (CceColors.sliderTrack): un
+                  // hueco más oscuro que el lienzo desaparecía y la barra se
+                  // leía cortada en el valor en vez de llena hasta él.
+                  thinTrackColor: CceColors.sliderTrack,
                   onChanged: _onSliderChanged,
                   onChangeEnd: _onSliderEnd,
                 ),

@@ -140,7 +140,7 @@ class _CceBrightnessSliderState extends State<CceBrightnessSlider> {
                           height: 5,
                           decoration: BoxDecoration(
                             color: widget.thinTrackColor ??
-                                Colors.white.withValues(alpha: 0.30),
+                                CceColors.sliderTrack,
                             borderRadius: BorderRadius.circular(2.5),
                           ),
                         ),
@@ -186,7 +186,7 @@ class _CceBrightnessSliderState extends State<CceBrightnessSlider> {
                         fit: StackFit.expand,
                         children: [
                           // Track
-                          const ColoredBox(color: CceColors.surfaceHigh),
+                          const ColoredBox(color: CceColors.sliderTrack),
                           // Fill
                           Align(
                             alignment: Alignment.centerLeft,

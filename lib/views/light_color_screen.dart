@@ -493,6 +493,35 @@ class _LightColorScreenState extends State<LightColorScreen>
     return '${m.length} luces';
   }
 
+  /// Habitación de la luz abierta y, si la selección es una sola luz en
+  /// blanco, su temperatura de color ("Outside · 2700 K"). Con varias en
+  /// foco, cuáles son.
+  String _subtitle() {
+    final svc = widget.service;
+    final room = svc.rooms
+        .where((r) => r.deviceIds.contains(widget.device.id))
+        .map((r) => r.name)
+        .firstOrNull;
+    final m = _membersOf(_focus);
+    final parts = <String>[if (room != null) room];
+    if (m.length == 1) {
+      final d = svc.byId(m.first);
+      final ct = d?.state.ct;
+      if (d != null && ct != null && ct > 0 && resolveLightColor(d.state).isWhite) {
+        parts.add('${(1000000 / ct).round()} K');
+      }
+    } else if (m.length > 1) {
+      final names = m
+          .take(3)
+          .map(svc.byId)
+          .whereType<Device>()
+          .map(svc.displayName)
+          .toList();
+      parts.add(names.join(', ') + (m.length > 3 ? '…' : ''));
+    }
+    return parts.isEmpty ? 'Luz' : parts.join(' · ');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -687,15 +716,28 @@ class _LightColorScreenState extends State<LightColorScreen>
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: CceSpace.md),
+          // Qué luz y de qué habitación: antes entrabas al disco y la
+          // pantalla no decía de qué luz se trataba (con varias al mismo
+          // color, sólo "14 luces").
           Expanded(
-            child: Text(
-              _title(),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: CceText.title
-                  .copyWith(fontSize: 17, fontWeight: FontWeight.w600),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _title(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: CceText.headline,
+                ),
+                Text(
+                  _subtitle(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: CceText.caption,
+                ),
+              ],
             ),
           ),
           SizedBox(width: CceSpace.md),
@@ -1097,12 +1139,10 @@ class _BrightnessBar extends StatelessWidget {
                 // que la barra se veía cortada en vez de llena hasta el valor.
                 width: double.infinity,
                 decoration: BoxDecoration(
-                  // El track usa surfaceHigh, no surfaceSunken: sobre un
-                  // lienzo casi negro, un hueco todavía más oscuro es
-                  // invisible, y la barra se leía CORTADA en el punto del
-                  // relleno en vez de llena hasta ahí. El recorrido completo
-                  // tiene que verse para que el porcentaje signifique algo.
-                  color: CceColors.surfaceHigh,
+                  // Token único del track (CceColors.sliderTrack): el
+                  // recorrido completo tiene que verse para que el
+                  // porcentaje signifique algo.
+                  color: CceColors.sliderTrack,
                   borderRadius: BorderRadius.circular(CceRadii.control),
                   border: Border.all(color: CceColors.stroke),
                 ),
@@ -1119,29 +1159,29 @@ class _BrightnessBar extends StatelessWidget {
                       heightFactor: 1,
                       child: const ColoredBox(color: CceColors.accent),
                     ),
-                    // ASA. Es lo que le faltaba: sin una marca en el extremo
-                    // del relleno, la barra no dice dónde estás parado ni que
-                    // se puede arrastrar — al 100% se lee como un bloque de
-                    // color, no como un control.
-                    if (t > 0.02)
-                      LayoutBuilder(
-                        builder: (context, cc) {
-                          const grip = 5.0;
-                          final x = (cc.maxWidth * t - grip - CceSpace.sm)
-                              .clamp(0.0, cc.maxWidth - grip - CceSpace.sm);
-                          return Padding(
-                            padding: EdgeInsets.only(left: x),
-                            child: Container(
-                              width: grip,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: CceTint.inkOnPastel.withValues(alpha: 0.45),
-                                borderRadius: BorderRadius.circular(grip / 2),
-                              ),
+                    // ASA en el extremo del relleno: el mismo pomo circular
+                    // claro que usa el slider de las room cards. Sin ella,
+                    // al 100% la barra se lee como un bloque de color, no
+                    // como algo arrastrable.
+                    LayoutBuilder(
+                      builder: (context, cc) {
+                        const knob = 24.0;
+                        final x = (cc.maxWidth * t - knob - CceSpace.sm)
+                            .clamp(CceSpace.sm, cc.maxWidth - knob - CceSpace.sm);
+                        return Padding(
+                          padding: EdgeInsets.only(left: x),
+                          child: Container(
+                            width: knob,
+                            height: knob,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: CceColors.textPrimary,
+                              boxShadow: CceShadows.raised,
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
+                    ),
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
                       child: CceIcon(

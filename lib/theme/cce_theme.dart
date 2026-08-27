@@ -79,8 +79,8 @@ abstract final class CceTheme {
       sliderTheme: SliderThemeData(
         trackHeight: 6,
         activeTrackColor: CceColors.accent,
-        // El track vacío es un HUECO, no una superficie elevada.
-        inactiveTrackColor: CceColors.surfaceSunken,
+        // El track vacío tiene que VERSE entero (ver CceColors.sliderTrack).
+        inactiveTrackColor: CceColors.sliderTrack,
         thumbColor: CceColors.textPrimary,
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
