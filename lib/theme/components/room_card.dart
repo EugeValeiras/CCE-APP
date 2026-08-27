@@ -156,10 +156,16 @@ class _RoomCardState extends State<RoomCard> {
 
     // Subtítulo de estado (pedido del dueño v1.62): SIN "Encendido/Apagado"
     // (ni "Sin luces") — los dots solos comunican el estado. Con EXACTAMENTE
-    // UN dot activo se muestra su acción como texto; con 0 o 2+ dots, ''
-    // (el Text vacío conserva el line-height del caption para que el título
-    // no se recentre al cambiar el estado). El subtitleOverride de "Toda la
-    // casa" (sidebar tablet) sigue ganando y se muestra tal cual.
+    // UN dot activo se muestra su acción como texto; con 0 o 2+ dots, ''.
+    // El subtitleOverride de "Toda la casa" (sidebar tablet) sigue ganando y
+    // se muestra tal cual.
+    //
+    // Sin NADA que mostrar (ni dots ni texto) la fila del subtítulo NO se
+    // renderiza y el título queda centrado en la card. Antes se dibujaba un
+    // Text vacío que reservaba el line-height para que el título no se
+    // recentrara al cambiar de estado; el dueño lo vio en pantalla (PR #22)
+    // y prefirió "Living" y "Cocina" centrados. Efecto aceptado: una sala con
+    // sensor recentra el título cuando aparece "Movimiento detectado".
     final activeDots = (widget.contactOpen ? 1 : 0) +
         (widget.motion ? 1 : 0) +
         (widget.anyOn ? 1 : 0);
@@ -169,6 +175,8 @@ class _RoomCardState extends State<RoomCard> {
                 ? 'Puerta abierta'
                 : (widget.motion ? 'Movimiento detectado' : 'Luz encendida'))
             : '');
+    // OJO: con 2+ dots el texto es '' pero SÍ hay dots que dibujar.
+    final showStatus = activeDots > 0 || subtitle.isNotEmpty;
     // El subtítulo NO se tiñe: el dot que lo precede ya lleva el color del
     // estado. Pintar los dos del mismo color era decir dos veces lo mismo y
     // sumaba una fuente de color más a la lista.
@@ -207,48 +215,50 @@ class _RoomCardState extends State<RoomCard> {
                 overflow: TextOverflow.ellipsis,
                 style: CceText.headline,
               ),
-              SizedBox(height: CceSpace.xs),
-              Row(
-                children: [
-                  if (widget.contactOpen) ...[
-                    const StatusDot(
-                      CceColors.contact,
-                      pulse: true,
-                      semanticLabel: 'Puerta abierta',
-                    ),
-                    SizedBox(width: CceSpace.sm),
-                  ],
-                  if (widget.motion) ...[
-                    const StatusDot(
-                      CceColors.motion,
-                      pulse: true,
-                      semanticLabel: 'Movimiento',
-                    ),
-                    SizedBox(width: CceSpace.sm),
-                  ],
-                  // Punto AMARILLO fijo "luz encendida" (amberHi): siempre que
-                  // anyOn, SIN cantidad y SIN pulso; convive con los dots de
-                  // contact (naranja) y motion (azul) — ya no se suprime cuando
-                  // hay sensores activos.
-                  if (widget.anyOn) ...[
-                    const StatusDot(
-                      CceColors.amberHi,
-                      semanticLabel: 'Luz encendida',
-                    ),
-                    SizedBox(width: CceSpace.sm),
-                  ],
-                  Flexible(
-                    child: Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.caption.copyWith(
-                        color: subtitleColor,
+              if (showStatus) ...[
+                SizedBox(height: CceSpace.xs),
+                Row(
+                  children: [
+                    if (widget.contactOpen) ...[
+                      const StatusDot(
+                        CceColors.contact,
+                        pulse: true,
+                        semanticLabel: 'Puerta abierta',
+                      ),
+                      SizedBox(width: CceSpace.sm),
+                    ],
+                    if (widget.motion) ...[
+                      const StatusDot(
+                        CceColors.motion,
+                        pulse: true,
+                        semanticLabel: 'Movimiento',
+                      ),
+                      SizedBox(width: CceSpace.sm),
+                    ],
+                    // Punto AMARILLO fijo "luz encendida" (amberHi): siempre
+                    // que anyOn, SIN cantidad y SIN pulso; convive con los
+                    // dots de contact (naranja) y motion (azul) — ya no se
+                    // suprime cuando hay sensores activos.
+                    if (widget.anyOn) ...[
+                      const StatusDot(
+                        CceColors.amberHi,
+                        semanticLabel: 'Luz encendida',
+                      ),
+                      SizedBox(width: CceSpace.sm),
+                    ],
+                    Flexible(
+                      child: Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: CceText.caption.copyWith(
+                          color: subtitleColor,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -265,13 +275,22 @@ class _RoomCardState extends State<RoomCard> {
         SizedBox(width: CceSpace.md),
         // Switch unificado (CceSwitch): tamaño natural del JBL, sin FittedBox.
         // El título Expanded cede ancho; entra al final del Row sin desbordar.
-        CceSwitch(
-          value: widget.anyOn,
-          accent: accent,
-          onChanged: (!widget.toggleEnabled || widget.lightsTotal == 0)
-              ? null
-              : widget.onToggle,
-        ),
+        //
+        // Sin luces NO hay switch: un control que nunca se puede tocar es
+        // ruido (feedback del PR #22). Se RESERVA su ancho para que el badge
+        // de temperatura de las demás filas siga alineado en columna — sin
+        // eso, una sala con termómetro y sin luces corría su "20.7°" a la
+        // derecha y rompía el ritmo de la lista. [toggleEnabled] false es
+        // otra cosa: el control existe, sólo está bloqueado momentáneamente,
+        // y ahí sí se muestra deshabilitado.
+        if (widget.lightsTotal == 0)
+          const SizedBox(width: CceSwitch.width)
+        else
+          CceSwitch(
+            value: widget.anyOn,
+            accent: accent,
+            onChanged: widget.toggleEnabled ? widget.onToggle : null,
+          ),
       ],
     );
 

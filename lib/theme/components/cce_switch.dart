@@ -24,7 +24,9 @@ class CceSwitch extends StatelessWidget {
     this.accent,
   });
 
-  static const double _w = 50;
+  /// Ancho del control. Público para que una fila que NO lo muestra pueda
+  /// reservar su lugar y mantener alineado lo que tiene al lado (RoomCard).
+  static const double width = 50;
   static const double _h = 30;
   static const double _knob = 24;
   static const double _pad = 3;
@@ -41,7 +43,7 @@ class CceSwitch extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          width: _w,
+          width: width,
           height: _h,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(CceRadii.pill),
