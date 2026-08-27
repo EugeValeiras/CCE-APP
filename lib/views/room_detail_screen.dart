@@ -583,10 +583,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
-                        mainAxisSpacing: CceSpace.md,
-                        crossAxisSpacing: CceSpace.md,
+                        // El gap entre tiles es el mismo aire que tienen
+                        // adentro (ver LightCard.kCompactPadding).
+                        mainAxisSpacing: LightCard.kCompactPadding,
+                        crossAxisSpacing: LightCard.kCompactPadding,
                         mainAxisExtent: LightCard.kCompactHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(

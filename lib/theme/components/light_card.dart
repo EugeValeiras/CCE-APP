@@ -35,9 +35,22 @@ class LightCard extends StatelessWidget {
     this.compact = false,
   });
 
-  /// Altura del layout [compact]: 12 + fila del switch 30 + nombre 21 + 12,
-  /// con un poco de aire. Medida de componente, como `RoomCard.kHeight`.
-  static const double kCompactHeight = 78;
+  /// Altura del layout [compact]: 14 (padding) + 30 (fila del switch) + 6
+  /// (respiro) + 22 (nombre) + 14 (padding) = 86. Medida de componente, como
+  /// `RoomCard.kHeight`. Era 78 con padding 12 y sin respiro: el dueño lo vio
+  /// apretado (el nombre a 12 px del borde y las filas casi tocándose) y
+  /// aceptó ver 12 luces en pantalla en vez de 14 a cambio del aire.
+  static const double kCompactHeight = 86;
+
+  /// Padding interno del tile compacto Y gap de la grilla que lo hospeda: el
+  /// mismo aire adentro y entre tiles es lo que hace que la grilla se lea
+  /// como un ritmo. Fuera de la escala base 4 de [CceSpace] a propósito
+  /// (pedido del dueño mirando la pantalla); vive acá y no en los tokens
+  /// porque es una medida de ESTE componente.
+  static const double kCompactPadding = 14;
+
+  /// Respiro entre la fila ícono/switch y el nombre.
+  static const double _compactBreath = 6;
 
   final String name;
   /// Construye el ícono con el color de primer plano que decide la card
@@ -211,10 +224,15 @@ class LightCard extends StatelessWidget {
     );
 
     if (compact) {
+      // El Border de la decoración se descuenta como padding interno: los
+      // 14 px se miden desde el canto EXTERIOR (que es como se mide en el
+      // diseño), así que se le resta el ancho del borde — que además anima
+      // de 1 a 1.5 al encender. Sin esto el contenido desbordaba 1 px.
+      final double border = 1 + 0.5 * t;
       return Container(
         clipBehavior: Clip.antiAlias,
         decoration: decoration,
-        padding: EdgeInsets.all(CceSpace.md),
+        padding: EdgeInsets.all(kCompactPadding - border),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -244,6 +262,9 @@ class LightCard extends StatelessWidget {
                     value: on, accent: displayColor, onChanged: onToggle),
               ],
             ),
+            // Respiro fijo + Spacer: el nombre se apoya en el borde inferior
+            // y nunca queda a menos de 6 px de la fila del switch.
+            const SizedBox(height: _compactBreath),
             const Spacer(),
             Row(
               children: [
