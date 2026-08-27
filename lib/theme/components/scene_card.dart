@@ -3,6 +3,118 @@ import 'package:flutter/material.dart';
 import '../cce_tokens.dart';
 import 'status_pill.dart';
 
+/// Escena como CHIP de [kHeight] para una fila con scroll horizontal (detalle
+/// de habitación en el teléfono): swatch del color (o el ícono de la escena
+/// CCE) + nombre. Activa = fill de acento al 12% + hairline de acento, el
+/// mismo par que usa el filtro elegido del historial. Una escena sola ya no
+/// parece un error de layout, y la sección baja de 127 px a 44.
+class SceneChip extends StatelessWidget {
+  const SceneChip({
+    super.key,
+    required this.name,
+    this.colors = const <Color>[],
+    this.icon,
+    this.active = false,
+    this.isSmart = false,
+    this.busy = false,
+    required this.onTap,
+  });
+
+  final String name;
+  final List<Color> colors;
+  final Widget? icon;
+  final bool active;
+  final bool isSmart;
+  final bool busy;
+  final VoidCallback onTap;
+
+  /// Alto del chip. Medida de componente (como `RoomCard.kHeight`).
+  static const double kHeight = 44;
+  static const double _swatch = 16;
+
+  Widget _leading() {
+    if (busy) {
+      return const SizedBox(
+        width: _swatch,
+        height: _swatch,
+        child: CircularProgressIndicator(
+            strokeWidth: 2, color: CceColors.textSecondary),
+      );
+    }
+    if (colors.isNotEmpty) {
+      return Container(
+        width: _swatch,
+        height: _swatch,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colors.length == 1 ? colors.first : null,
+          gradient: colors.length > 1
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: colors.take(5).toList(),
+                )
+              : null,
+        ),
+      );
+    }
+    // Escena CCE: su ícono, en acento (es lo que la identifica).
+    return IconTheme.merge(
+      data: const IconThemeData(color: CceColors.accent, size: _swatch),
+      child: SizedBox(
+        width: _swatch,
+        height: _swatch,
+        child: Center(child: icon ?? const Icon(Icons.auto_awesome)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(CceRadii.pill);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          height: kHeight,
+          padding: EdgeInsets.symmetric(horizontal: CceSpace.lg),
+          decoration: BoxDecoration(
+            color: active ? CceColors.accentWash : CceColors.surface,
+            borderRadius: radius,
+            border: Border.all(
+              color: active ? CceColors.accent : CceColors.stroke,
+            ),
+            boxShadow: CceShadows.raised,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _leading(),
+              SizedBox(width: CceSpace.sm),
+              Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CceText.label.copyWith(
+                  color: active ? CceColors.accent : CceColors.textPrimary,
+                ),
+              ),
+              if (isSmart) ...[
+                SizedBox(width: CceSpace.sm),
+                Text('AUTO', style: CceText.section),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Card de escena (Hue nativa o CCE), réplica del formato Hue: card OSCURA
 /// fija de 132 con un CÍRCULO de color centrado (gradiente del swatch, o
 /// círculo cálido con el ícono para escenas CCE) y el nombre DEBAJO.

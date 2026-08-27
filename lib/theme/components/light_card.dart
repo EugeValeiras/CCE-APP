@@ -9,6 +9,15 @@ import 'cce_switch.dart';
 /// cuando está encendida el color va al ÍCONO + un borde y un glow del color
 /// (estilo "alerta" del sensor de movimiento), cuya intensidad sube con el
 /// BRILLO. Apagada = card neutra; sin conexión = color muteado + ícono wifi-off.
+///
+/// Dos layouts sobre el mismo material:
+///  - vertical (default): ícono grande, nombre a dos líneas y franja inferior
+///    con el switch. Es el tile de la tablet y de la tab de luces.
+///  - [compact]: fila de [kCompactHeight] para la grilla de DOS columnas del
+///    detalle de habitación en el teléfono — ícono y switch arriba, nombre
+///    abajo en una línea. Con tres columnas de 113 px los nombres de dos
+///    líneas se cortaban a media altura ("Front 3 DOWN" partido); con dos
+///    columnas de 179 el nombre entra entero.
 class LightCard extends StatelessWidget {
   const LightCard({
     super.key,
@@ -23,7 +32,12 @@ class LightCard extends StatelessWidget {
     this.onToggle,
     this.neo = false,
     this.automationCount = 0,
+    this.compact = false,
   });
+
+  /// Altura del layout [compact]: 12 + fila del switch 30 + nombre 21 + 12,
+  /// con un poco de aire. Medida de componente, como `RoomCard.kHeight`.
+  static const double kCompactHeight = 78;
 
   final String name;
   /// Construye el ícono con el color de primer plano que decide la card
@@ -33,7 +47,10 @@ class LightCard extends StatelessWidget {
   final double? brightness; // 0..1 → modula lightness/saturación del fill
   final Color? color; // color real de la luz (default CceColors.warm)
   final bool reachable;
-  final String? stateLabel; // 'Apagada' | 'Sin conexión' | null (encendida)
+
+  /// 'Sin conexión' | null. Ya no lleva "Apagada": el switch lo dice, y el
+  /// sistema prohíbe decir lo mismo dos veces.
+  final String? stateLabel;
   final double height;
   final ValueChanged<bool>? onToggle; // null ⇒ switch deshabilitado
 
@@ -47,6 +64,9 @@ class LightCard extends StatelessWidget {
   /// lo maneja algo?" — y para contestarla había que ir a la lista general de
   /// automatizaciones y leer los triggers y las acciones de cada una.
   final int automationCount;
+
+  /// Layout de fila para la grilla de dos columnas (ver doc de la clase).
+  final bool compact;
 
   /// Mutea el color para luces sin conexión (sat × 0.4).
   static Color _muted(Color c) {
@@ -62,7 +82,7 @@ class LightCard extends StatelessWidget {
     final displayColor = reachable ? base : _muted(base);
     final surfaceBase = neo ? CceColors.neoBase : CceColors.cardOff;
 
-    const double iconSize = 34;
+    final double iconSize = compact ? 24 : 34;
     final embHi = CceEmboss.highlight.color;
     final embSh = CceEmboss.shadow.color;
 
@@ -79,8 +99,9 @@ class LightCard extends StatelessWidget {
     // mismo tiempo que en la habitación, y a la misma velocidad a la que una
     // lámpara real levanta.
     final bool lit = on && reachable;
+    final double h = compact ? kCompactHeight : height;
     return SizedBox(
-      height: height,
+      height: h,
       child: TweenAnimationBuilder<double>(
         tween: Tween<double>(end: lit ? 1.0 : 0.0),
         duration: const Duration(milliseconds: 260),
@@ -111,6 +132,60 @@ class LightCard extends StatelessWidget {
     );
   }
 
+  BoxDecoration _decoration({
+    required double t,
+    required Color borderColor,
+    required Color displayColor,
+    required Color surfaceBase,
+  }) {
+    return BoxDecoration(
+      gradient: CceGradients.cardSurface(surfaceBase),
+      borderRadius: BorderRadius.circular(CceRadii.card),
+      // Sin conexión NO lleva borde de encendido aunque el último estado
+      // conocido sea `on`: una lámpara inalcanzable no está iluminando
+      // nada, y mostrarla igual que una encendida es afirmar algo que la
+      // app no sabe.
+      border: Border.all(color: borderColor, width: 1 + 0.5 * t),
+      boxShadow: [
+        if (neo) ...CceShadows.cardFloat(),
+        // El halo entra con la transición, no después de ella.
+        if (t > 0.01)
+          BoxShadow(
+            color: displayColor.withValues(alpha: 0.16 * t),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+            spreadRadius: -6,
+          ),
+      ],
+    );
+  }
+
+  Widget _glyph({
+    required double iconSize,
+    required Color glyphColor,
+    required Color embHi,
+    required Color embSh,
+  }) {
+    // Ícono extruido, SIN círculo (igual que RoomCard). EmbossedGlyph aplana
+    // y recolorea el glyph a [glyphColor] (cubre tanto el Icon de Material
+    // como el SVG de icons0 ya tintado por iconBuilder). FittedBox-ea a
+    // iconSize, así el size intrínseco que iconBuilder pasa al IconResolver
+    // es indiferente.
+    return SizedBox(
+      width: iconSize,
+      height: iconSize,
+      child: Center(
+        child: EmbossedGlyph(
+          size: iconSize,
+          color: glyphColor,
+          highlight: embHi,
+          shadow: embSh,
+          child: iconBuilder(glyphColor),
+        ),
+      ),
+    );
+  }
+
   Widget _buildCard({
     required double t,
     required Color borderColor,
@@ -122,30 +197,82 @@ class LightCard extends StatelessWidget {
     required Color embHi,
     required Color embSh,
   }) {
+    final decoration = _decoration(
+      t: t,
+      borderColor: borderColor,
+      displayColor: displayColor,
+      surfaceBase: surfaceBase,
+    );
+    final glyph = _glyph(
+      iconSize: iconSize,
+      glyphColor: glyphColor,
+      embHi: embHi,
+      embSh: embSh,
+    );
+
+    if (compact) {
+      return Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: decoration,
+        padding: EdgeInsets.all(CceSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                glyph,
+                const Spacer(),
+                // Contexto, no estado: en texto terciario para no competir
+                // con el color de la luz.
+                if (automationCount > 0) ...[
+                  const Icon(Icons.bolt,
+                      size: 13, color: CceColors.textTertiary),
+                  if (automationCount > 1)
+                    Text(
+                      '$automationCount',
+                      style: CceText.caption.copyWith(
+                        color: CceColors.textTertiary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  SizedBox(width: CceSpace.sm),
+                ],
+                // El switch PRENDE con el color real de la luz (mismo
+                // displayColor que tiñe el ícono), no con el ámbar por
+                // defecto.
+                CceSwitch(
+                    value: on, accent: displayColor, onChanged: onToggle),
+              ],
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: CceText.headline,
+                  ),
+                ),
+                // Sin conexión: el glyph, junto al nombre (como Hue).
+                if (!reachable) ...[
+                  SizedBox(width: CceSpace.sm),
+                  CceIcon(CceIcons.wifiOff,
+                      size: 14, color: fgSub, emboss: false),
+                ],
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return SizedBox(
       height: height,
       child: Container(
         clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          gradient: CceGradients.cardSurface(surfaceBase),
-          borderRadius: BorderRadius.circular(CceRadii.card),
-          // Sin conexión NO lleva borde de encendido aunque el último estado
-          // conocido sea `on`: una lámpara inalcanzable no está iluminando
-          // nada, y mostrarla igual que una encendida es afirmar algo que la
-          // app no sabe.
-          border: Border.all(color: borderColor, width: 1 + 0.5 * t),
-          boxShadow: [
-            if (neo) ...CceShadows.cardFloat(),
-            // El halo entra con la transición, no después de ella.
-            if (t > 0.01)
-              BoxShadow(
-                color: displayColor.withValues(alpha: 0.16 * t),
-                blurRadius: 20,
-                offset: const Offset(0, 4),
-                spreadRadius: -6,
-              ),
-          ],
-        ),
+        decoration: decoration,
         child: Stack(
           children: [
             // Contenido.
@@ -157,33 +284,10 @@ class LightCard extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Ícono GRANDE extruido, SIN círculo (igual que
-                        // RoomCard). EmbossedGlyph aplana y recolorea el glyph a
-                        // [glyphColor] (cubre tanto el Icon de Material como el
-                        // SVG de icons0 ya tintado por iconBuilder) y lo extruye
-                        // con 2 capas ghost. FittedBox-ea a iconSize, así el
-                        // size intrínseco que iconBuilder pasa al IconResolver es
-                        // indiferente.
                         // Caja que HUGGEA el glyph (iconSize x iconSize) para
-                        // preservar el footprint vertical del tile (altos fijos
-                        // 138/156/174): el relieve sobresale via Clip.none del
-                        // EmbossedGlyph, así que no necesita padding extra. Con
-                        // el viejo box de 40 el nombre OFF (2 líneas + "Apagada")
-                        // se comía el slack y colapsaba a ~0 líneas en el tile
-                        // chico; con iconSize recupera la 2da línea.
-                        SizedBox(
-                          width: iconSize,
-                          height: iconSize,
-                          child: Center(
-                            child: EmbossedGlyph(
-                              size: iconSize,
-                              color: glyphColor,
-                              highlight: embHi,
-                              shadow: embSh,
-                              child: iconBuilder(glyphColor),
-                            ),
-                          ),
-                        ),
+                        // preservar el footprint vertical del tile (altos
+                        // fijos 138/156/174).
+                        glyph,
                         const SizedBox(height: 6),
                         Flexible(
                           child: Text(
@@ -219,12 +323,8 @@ class LightCard extends StatelessWidget {
                 // el track (antes 48 con Transform.scale 0.95).
                 Container(
                   height: 56,
-                  decoration: BoxDecoration(
-                    border: Border(
-                      top: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.10),
-                      ),
-                    ),
+                  decoration: const BoxDecoration(
+                    border: Border(top: BorderSide(color: CceColors.strokeSoft)),
                   ),
                   alignment: Alignment.center,
                   // El switch PRENDE con el color real de la luz (mismo
@@ -239,7 +339,8 @@ class LightCard extends StatelessWidget {
               Positioned(
                 top: CceSpace.sm,
                 right: CceSpace.sm,
-                child: Icon(Icons.wifi_off, size: 14, color: fgSub),
+                child: CceIcon(CceIcons.wifiOff,
+                    size: 14, color: fgSub, emboss: false),
               ),
             // "Algo maneja esta luz". Arriba a la IZQUIERDA para no pelear con
             // el indicador de sin-conexión, y en texto terciario porque es

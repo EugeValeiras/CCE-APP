@@ -3,11 +3,14 @@ import 'package:flutter/services.dart';
 import '../models/room_ref.dart';
 import '../models/scene.dart';
 import '../services/devices_service.dart';
+import '../theme/cce_tokens.dart';
 import '../theme/components/scene_card.dart';
 import '../theme/components/section_header.dart';
 import '../theme/mdi.dart';
 
-/// Sección "Mis escenas": grilla de escenas Hue nativas + escenas CCE.
+/// Sección "Mis escenas": escenas Hue nativas + escenas CCE, como grilla de
+/// [SceneCard]s (tablet) o como fila de [SceneChip]s con scroll horizontal
+/// ([chips], detalle de habitación del teléfono).
 /// [room] == null = "Toda la casa" (todas las Hue + CCE con planId == null).
 /// Gestiona busy + anti doble-tap; se auto-oculta si no hay escenas.
 ///
@@ -23,6 +26,7 @@ class ScenesSection extends StatefulWidget {
     this.title = 'Mis escenas',
     this.maxCrossAxisExtent = 150,
     this.neo = false,
+    this.chips = false,
   });
 
   final DevicesService service;
@@ -32,6 +36,9 @@ class ScenesSection extends StatefulWidget {
 
   /// OPT-IN: relieve neumórfico en las scene cards (default false).
   final bool neo;
+
+  /// Fila de chips con scroll horizontal en vez de grilla de cards.
+  final bool chips;
 
   @override
   State<ScenesSection> createState() => _ScenesSectionState();
@@ -89,7 +96,7 @@ class _ScenesSectionState extends State<ScenesSection> {
     }
   }
 
-  /// Envuelve la card para drag&drop (solo salas con plano).
+  /// Envuelve la card/chip para drag&drop (solo salas con plano).
   Widget _draggable(String planId, String key, Widget card) {
     return DragTarget<String>(
       onWillAcceptWithDetails: (d) => d.data != key,
@@ -102,11 +109,13 @@ class _ScenesSectionState extends State<ScenesSection> {
           onDragEnd: (_) => setState(() => _dragging = false),
           feedback: Material(
             color: Colors.transparent,
-            child: SizedBox(
-              width: 150,
-              height: 132,
-              child: Opacity(opacity: 0.92, child: card),
-            ),
+            child: widget.chips
+                ? Opacity(opacity: 0.92, child: card)
+                : SizedBox(
+                    width: 150,
+                    height: 132,
+                    child: Opacity(opacity: 0.92, child: card),
+                  ),
           ),
           childWhenDragging: Opacity(opacity: 0.30, child: card),
           child: AnimatedScale(
@@ -141,32 +150,52 @@ class _ScenesSectionState extends State<ScenesSection> {
           return const SizedBox.shrink();
         }
 
+        final chips = widget.chips;
         // Entradas con su key tipada (la misma del actionOrder del dashboard).
         final entries = <(String, Widget)>[
           for (final s in hue)
             (
               'hueScene:${s.id}',
-              SceneCard(
-                name: s.name,
-                colors: s.swatch,
-                active: s.isActive,
-                isSmart: s.isSmart,
-                busy: _busyId == s.id,
-                neo: widget.neo,
-                onTap: () =>
-                    _run(s.id, () => widget.service.recallHueScene(s)),
-              ),
+              chips
+                  ? SceneChip(
+                      name: s.name,
+                      colors: s.swatch,
+                      active: s.isActive,
+                      isSmart: s.isSmart,
+                      busy: _busyId == s.id,
+                      onTap: () =>
+                          _run(s.id, () => widget.service.recallHueScene(s)),
+                    )
+                  : SceneCard(
+                      name: s.name,
+                      colors: s.swatch,
+                      active: s.isActive,
+                      isSmart: s.isSmart,
+                      busy: _busyId == s.id,
+                      neo: widget.neo,
+                      onTap: () =>
+                          _run(s.id, () => widget.service.recallHueScene(s)),
+                    ),
             ),
           for (final s in cce)
             (
               'scene:${s.id}',
-              SceneCard(
-                name: s.name,
-                icon: _cceIcon(s),
-                busy: _busyId == s.id,
-                neo: widget.neo,
-                onTap: () => _run(s.id, () => widget.service.applyScene(s)),
-              ),
+              chips
+                  ? SceneChip(
+                      name: s.name,
+                      icon: _cceIcon(s),
+                      busy: _busyId == s.id,
+                      onTap: () =>
+                          _run(s.id, () => widget.service.applyScene(s)),
+                    )
+                  : SceneCard(
+                      name: s.name,
+                      icon: _cceIcon(s),
+                      busy: _busyId == s.id,
+                      neo: widget.neo,
+                      onTap: () =>
+                          _run(s.id, () => widget.service.applyScene(s)),
+                    ),
             ),
         ];
 
@@ -178,7 +207,7 @@ class _ScenesSectionState extends State<ScenesSection> {
           final decorated = [
             for (var i = 0; i < entries.length; i++)
               (
-                orderKeys.indexOf(entries[i].$1) >= 0
+                orderKeys.contains(entries[i].$1)
                     ? orderKeys.indexOf(entries[i].$1)
                     : orderKeys.length + i,
                 i,
@@ -206,24 +235,39 @@ class _ScenesSectionState extends State<ScenesSection> {
             SectionHeader(title: widget.title),
             // Hint sutil mientras se arrastra.
             if (_dragging)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 6),
+              Padding(
+                padding: EdgeInsets.only(bottom: CceSpace.sm),
                 child: Text(
                   'Soltá sobre otra escena para reordenar',
-                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                  style: CceText.caption.copyWith(color: CceColors.textTertiary),
                 ),
               ),
-            GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: widget.maxCrossAxisExtent,
-                mainAxisExtent: 132, // alto fijo = SceneCard._height
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
+            if (chips)
+              // Una fila: las escenas de una habitación son pocas y todas
+              // cálidas; lo que las distingue es el nombre, que acá entra
+              // entero. Sombra raised fuera del clip: clipBehavior none.
+              SizedBox(
+                height: SceneChip.kHeight,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  clipBehavior: Clip.none,
+                  itemCount: cards.length,
+                  separatorBuilder: (_, __) => SizedBox(width: CceSpace.sm),
+                  itemBuilder: (_, i) => cards[i],
+                ),
+              )
+            else
+              GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: widget.maxCrossAxisExtent,
+                  mainAxisExtent: 132, // alto fijo = SceneCard._height
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                children: cards,
               ),
-              children: cards,
-            ),
           ],
         );
       },

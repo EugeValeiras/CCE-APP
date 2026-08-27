@@ -12,7 +12,9 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_neo_button.dart';
 import '../theme/components/cce_switch.dart';
+import '../theme/components/light_card.dart';
 import '../theme/components/section_header.dart';
+import '../theme/components/status_dot.dart';
 import '../utils/room_icon.dart';
 import '../widgets/light_tile.dart';
 import '../widgets/lock_tile.dart';
@@ -545,36 +547,47 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
 
         // Slivers por sección, renderizados según _order.
         final sectionSlivers = <String, List<Widget>>{
+          // Escenas como chips de 44 px en una fila con scroll horizontal
+          // (antes una grilla de cards de 118 px donde una escena sola
+          // parecía un error de layout).
           'scenes': widget.room != null
               ? [
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: ScenesSection(
-                          service: service, room: widget.room, neo: true),
+                        service: service,
+                        room: widget.room,
+                        title: 'Escenas',
+                        chips: true,
+                      ),
                     ),
                   ),
                 ]
               : const [],
+          // Luces en grilla de DOS columnas de tiles compactos (78 px): con
+          // tres columnas de 113 px los nombres de dos líneas se cortaban a
+          // media altura; con dos, el nombre entra entero y en una pantalla
+          // caben 14 de 15 luces en vez de 6.
           'lights': (lights.isNotEmpty || hasHueRoom)
               ? [
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
                       child: SectionHeader(
-                        title:
-                            'Luces · $onCount de ${lights.length} encendidas',
+                        title: 'Luces',
+                        counter: '$onCount de ${lights.length} encendidas',
                       ),
                     ),
                   ),
                   SliverPadding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                     sliver: SliverGrid(
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        mainAxisExtent: TileSize.medium.tileHeight,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: CceSpace.md,
+                        crossAxisSpacing: CceSpace.md,
+                        mainAxisExtent: LightCard.kCompactHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, i) => ListenableBuilder(
@@ -589,6 +602,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                                 archetype: hr.archetype,
                                 busy: _hueRoomBusy,
                                 neo: true,
+                                compact: true,
                                 onTap: () => _toggleHueRoom(hr),
                               );
                             }
@@ -599,6 +613,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                                 service: service,
                                 size: TileSize.medium,
                                 neo: true,
+                                compact: true,
                                 automations: widget.automations);
                           },
                         ),
@@ -757,6 +772,13 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
+                // Línea de estado bajo el título (header compacto: título en
+                // CceText.title + una línea): los mismos dots y palabras que
+                // la card de la home, alineados con el texto del título.
+                if (widget.room != null)
+                  SliverToBoxAdapter(
+                    child: _RoomStatusLine(service.statsFor(widget.room!)),
+                  ),
                 // Clima de la room (termómetro/higrómetro): header fijo arriba
                 // de todo, espejo del banner del tablet. Se auto-oculta sin
                 // sensores. Solo con RoomRef real: sin room el scope caería a
@@ -766,7 +788,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                     // compact anula el padding vertical interno de la card:
                     // este wrapper repone el ritmo, espejo del tablet
                     // (room_panel.dart usa fromLTRB(24, 4, 24, 4)).
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     sliver: SliverToBoxAdapter(
                       child: RoomTemperatureHeader(
                         service: service,
@@ -803,6 +825,58 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+/// Línea de estado del header compacto de la habitación: los dots de
+/// apertura / movimiento / luz encendida con su texto, en el mismo orden y
+/// con las mismas palabras que [RoomCard]. Sin nada activo no se dibuja: el
+/// sistema no dice "apagado" cuando los dots ya lo comunican, y el conteo de
+/// luces vive en el encabezado de la sección "Luces".
+class _RoomStatusLine extends StatelessWidget {
+  const _RoomStatusLine(this.stats);
+
+  final RoomStats stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[
+      if (stats.anyContactOpen) 'Puerta abierta',
+      if (stats.anyMotion) 'Movimiento detectado',
+      if (stats.anyOn) 'Luz encendida',
+    ];
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      // Alineada con el texto del título del AppBar: titleSpacing 16 + ícono
+      // 26 + gap 10.
+      padding: const EdgeInsets.fromLTRB(52, 0, 16, 4),
+      child: Row(
+        children: [
+          if (stats.anyContactOpen) ...[
+            const StatusDot(CceColors.contact,
+                pulse: true, semanticLabel: 'Puerta abierta'),
+            SizedBox(width: CceSpace.sm),
+          ],
+          if (stats.anyMotion) ...[
+            const StatusDot(CceColors.motion,
+                pulse: true, semanticLabel: 'Movimiento'),
+            SizedBox(width: CceSpace.sm),
+          ],
+          if (stats.anyOn) ...[
+            const StatusDot(CceColors.amberHi, semanticLabel: 'Luz encendida'),
+            SizedBox(width: CceSpace.sm),
+          ],
+          Flexible(
+            child: Text(
+              parts.join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: CceText.caption,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
