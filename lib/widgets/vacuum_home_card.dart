@@ -7,6 +7,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_neo_button.dart';
+import '../theme/components/featured_tile.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/vacuum_state.dart';
 import '../views/vacuum_screen.dart';
@@ -35,6 +36,9 @@ class VacuumHomeCard extends StatelessWidget {
   /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
   final Widget? trailing;
 
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
+
   const VacuumHomeCard({
     super.key,
     required this.service,
@@ -42,6 +46,7 @@ class VacuumHomeCard extends StatelessWidget {
     this.neo = false,
     this.onOpen,
     this.trailing,
+    this.tile = false,
   });
 
   @override
@@ -72,18 +77,52 @@ class VacuumHomeCard extends StatelessWidget {
         }
 
         final dotColor = online ? accent : CceColors.textTertiary;
+        final glyphColor =
+            online && active ? accent : CceColors.textTertiary;
+
+        void open() {
+          HapticFeedback.selectionClick();
+          if (onOpen != null) {
+            onOpen!();
+          } else {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => VacuumScreen(device: d, service: service),
+            ));
+          }
+        }
+
+        // Acción rápida contextual: pausar cuando limpia, REANUDAR cuando
+        // está pausada (no 'clean': arrancaría una limpieza nueva pisando
+        // p.ej. un cleanRooms en curso), limpiar cuando está quieta.
+        // Fuera de línea → chevron.
+        final String actionSvg = busy
+            ? CceIcons.pause
+            : (vacState == 'paused' ? CceIcons.stepForward : CceIcons.play);
+        final String actionTip = busy
+            ? 'Pausar'
+            : (vacState == 'paused' ? 'Reanudar' : 'Limpiar');
+        void act() => service.vacuumCommand(
+            d, busy ? 'pause' : (vacState == 'paused' ? 'resume' : 'clean'));
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: const CceIcon(CceIcons.robotVacuum, size: 24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            dotColor: dotColor,
+            dotPulse: online && active,
+            control: trailing ??
+                (online
+                    ? FeaturedTileAction(
+                        svg: actionSvg, tooltip: actionTip, onTap: act)
+                    : FeaturedTile.chevron()),
+            onTap: open,
+          );
+        }
 
         return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            if (onOpen != null) {
-              onOpen!();
-            } else {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => VacuumScreen(device: d, service: service),
-              ));
-            }
-          },
+          onTap: open,
           radius: neo ? CceRadii.hueCard : CceRadii.card,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           color: neo ? CceColors.neoBase : null,
@@ -96,9 +135,7 @@ class VacuumHomeCard extends StatelessWidget {
                 child: Center(
                   child: EmbossedGlyph(
                     size: neo ? 28 : 32,
-                    color: neo
-                        ? (online && active ? accent : CceColors.neoTextSub)
-                        : accent,
+                    color: neo ? glyphColor : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
                     child: const CceIcon(CceIcons.robotVacuum, size: 28),
@@ -154,31 +191,17 @@ class VacuumHomeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Acción rápida contextual: pausar cuando limpia, REANUDAR cuando
-              // está pausada (no 'clean': arrancaría una limpieza nueva pisando
-              // p.ej. un cleanRooms en curso), limpiar cuando está quieta.
-              // Fuera de línea → chevron.
               if (trailing != null)
                 trailing!
               else if (online)
                 CceNeoSvgIconButton(
-                  svg: busy
-                      ? CceIcons.pause
-                      : (vacState == 'paused'
-                          ? CceIcons.stepForward
-                          : CceIcons.play),
+                  svg: actionSvg,
                   size: 40,
-                  tooltip: busy
-                      ? 'Pausar'
-                      : (vacState == 'paused' ? 'Reanudar' : 'Limpiar'),
-                  onPressed: () => service.vacuumCommand(
-                      d,
-                      busy
-                          ? 'pause'
-                          : (vacState == 'paused' ? 'resume' : 'clean')),
+                  tooltip: actionTip,
+                  onPressed: act,
                 )
               else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+                FeaturedTile.chevron(),
             ],
           ),
         );

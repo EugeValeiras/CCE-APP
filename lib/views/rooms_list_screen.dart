@@ -16,6 +16,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
+import '../theme/components/section_header.dart';
 import '../utils/room_icon.dart';
 import '../utils/room_temperature.dart';
 import '../widgets/pulse_on_update.dart';
@@ -177,10 +178,16 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   List<FeaturedItem> _effectiveFeatured(Device? thermostat, Device? vacuum) =>
       _featured ?? _defaultFeatured(thermostat, vacuum);
 
-  /// Sección completa. Entrada a la edición: LONG-PRESS sobre cualquier card
-  /// (mismo gesto que el reorder de habitaciones). Sin cards (lista vacía o
-  /// todo stale) se muestra un placeholder con el mismo formato de card que
-  /// invita a editar — así la sección nunca es irrecuperable.
+  /// Sección completa: grilla 2 × 2 de [FeaturedTile]s (dos por fila; el
+  /// último queda solo a la izquierda si son impares). Entrada a la edición:
+  /// LONG-PRESS sobre cualquier tile (mismo gesto que el reorder de
+  /// habitaciones). Sin tiles (lista vacía o todo stale) se muestra un
+  /// placeholder con formato de card que invita a editar — así la sección
+  /// nunca es irrecuperable.
+  ///
+  /// Antes eran filas de 76 px a todo el ancho: cuatro destacados medían
+  /// 340 px y "Habitaciones" —lo que la app ES— arrancaba a 622 px del borde.
+  /// En grilla, esos cuatro ocupan 216.
   List<Widget> _featuredSection(Device? thermostat, Device? vacuum) {
     void openEditor() {
       HapticFeedback.mediumImpact();
@@ -188,23 +195,34 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     }
 
     final items = _effectiveFeatured(thermostat, vacuum);
-    final cards = <Widget>[];
+    final tiles = <Widget>[];
     for (final item in items) {
-      final card = _featuredCard(item);
+      final card = _featuredCard(item, tile: true);
       if (card == null) continue; // ítem stale (device/escena borrados)
-      if (cards.isNotEmpty) cards.add(const SizedBox(height: 12));
       // Long-press abre el editor; los taps siguen siendo de la card (su
       // CceNeoPress no registra long-press cuando no lo usa).
-      cards.add(GestureDetector(
+      tiles.add(GestureDetector(
         onLongPress: openEditor,
         child: RepaintBoundary(child: card),
       ));
     }
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      if (i > 0) rows.add(SizedBox(height: CceSpace.md));
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: tiles[i]),
+          SizedBox(width: CceSpace.md),
+          Expanded(
+            child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox(),
+          ),
+        ],
+      ));
+    }
     return [
-      const SizedBox(height: 20),
-      _sectionLabel('Destacados'),
-      const SizedBox(height: 10),
-      if (cards.isEmpty)
+      const SectionHeader(title: 'Destacados'),
+      if (tiles.isEmpty)
         CceCard(
           onTap: openEditor,
           onLongPress: openEditor,
@@ -241,36 +259,50 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           ),
         )
       else
-        ...cards,
+        ...rows,
     ];
   }
 
   /// Card para un ítem destacado; null si el ítem ya no resuelve (se saltea
   /// sin romper — el editor lo muestra igual para poder quitarlo). [trailing]
-  /// reemplaza el control derecho (modo edición: + / −).
-  Widget? _featuredCard(FeaturedItem item, {Widget? trailing}) {
+  /// reemplaza el control derecho (modo edición: + / −). [tile] elige el
+  /// molde de la grilla de la home; el editor usa filas.
+  Widget? _featuredCard(FeaturedItem item,
+      {Widget? trailing, bool tile = false}) {
     final service = widget.service;
     switch (item.kind) {
       case FeaturedKind.tv:
         final tv = widget.tv;
-        return tv == null ? null : TvHomeCard(service: tv, neo: true, trailing: trailing);
+        return tv == null
+            ? null
+            : TvHomeCard(
+                service: tv, neo: true, trailing: trailing, tile: tile);
       case FeaturedKind.jbl:
         final jbl = widget.jbl;
         return jbl == null
             ? null
-            : SoundbarHomeCard(service: jbl, neo: true, trailing: trailing);
+            : SoundbarHomeCard(
+                service: jbl, neo: true, trailing: trailing, tile: tile);
       case FeaturedKind.thermostat:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || !d.isThermostat)
             ? null
             : ThermostatHomeCard(
-                service: service, device: d, neo: true, trailing: trailing);
+                service: service,
+                device: d,
+                neo: true,
+                trailing: trailing,
+                tile: tile);
       case FeaturedKind.vacuum:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || !d.isVacuum)
             ? null
             : VacuumHomeCard(
-                service: service, device: d, neo: true, trailing: trailing);
+                service: service,
+                device: d,
+                neo: true,
+                trailing: trailing,
+                tile: tile);
       case FeaturedKind.phone:
         final tel = widget.telephony;
         final d = item.id != null ? service.byId(item.id!) : null;
@@ -281,37 +313,47 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 telephony: tel,
                 device: d,
                 neo: true,
-                trailing: trailing);
+                trailing: trailing,
+                tile: tile);
       case FeaturedKind.light:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden)
             ? null
-            : LightHomeCard(service: service, device: d, trailing: trailing);
+            : LightHomeCard(
+                service: service, device: d, trailing: trailing, tile: tile);
       case FeaturedKind.button:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden || !d.isSwitch)
             ? null
-            : ButtonHomeCard(service: service, device: d, trailing: trailing);
+            : ButtonHomeCard(
+                service: service, device: d, trailing: trailing, tile: tile);
       case FeaturedKind.lock:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden || !d.isLock)
             ? null
-            : LockHomeCard(service: service, device: d, trailing: trailing);
+            : LockHomeCard(
+                service: service, device: d, trailing: trailing, tile: tile);
       case FeaturedKind.sensor:
         final d = item.id != null ? service.byId(item.id!) : null;
         return (d == null || d.hidden)
             ? null
-            : SensorHomeCard(service: service, device: d, trailing: trailing);
+            : SensorHomeCard(
+                service: service, device: d, trailing: trailing, tile: tile);
       case FeaturedKind.scene:
         final s = service.scenes.firstWhereOrNull((x) => x.id == item.id);
         return s == null
             ? null
-            : SceneHomeCard(service: service, scene: s, trailing: trailing);
+            : SceneHomeCard(
+                service: service, scene: s, trailing: trailing, tile: tile);
       case FeaturedKind.hueScene:
         final s = service.hueScenes.firstWhereOrNull((x) => x.id == item.id);
         return s == null
             ? null
-            : SceneHomeCard(service: service, hueScene: s, trailing: trailing);
+            : SceneHomeCard(
+                service: service,
+                hueScene: s,
+                trailing: trailing,
+                tile: tile);
       case FeaturedKind.automation:
         final a =
             _automations.automations.firstWhereOrNull((x) => x.id == item.id);
@@ -321,7 +363,8 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 service: _automations,
                 devices: service,
                 automation: a,
-                trailing: trailing);
+                trailing: trailing,
+                tile: tile);
     }
   }
 
@@ -669,6 +712,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         // DevicesService, la card reresuelve por id).
         final vacuum =
             service.vacuums.isNotEmpty ? service.vacuums.first : null;
+        // Contador del encabezado de Habitaciones: mismo patrón que el
+        // detalle de habitación usa para las luces. Sale de statsFor, la única
+        // fuente de verdad de "esta sala está encendida".
+        final roomsOn =
+            ordered.where((r) => service.statsFor(r).anyOn).length;
         return Scaffold(
           // Fondo de la app (matte oscuro, #101014): MÁS oscuro que las cards
           // (neoBase) para que el relieve se vea y las cards "floten". Antes el
@@ -732,27 +780,24 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                     // ReorderableDelayedDragStartListener); sin handle a la
                     // derecha.
                     buildDefaultDragHandles: false,
-                    // Header NO arrastrable, jerarquizado por AIRE (gaps), no por
-                    // cajas: clima (hero) → [gap 20] → label DESTACADOS → TV y
-                    // JBL (gap 12 entre sí) → [gap 20] → label HABITACIONES →
-                    // grilla arrastrable. Gaps mayores ENTRE grupos (20) que
-                    // DENTRO de un grupo (12) crean la jerarquía sin bordes. Cada
-                    // lead card en su RepaintBoundary para aislar el repintado de
-                    // las sombras neumórficas. El TV va PRIMERO de los
-                    // dispositivos dedicados (antes del JBL).
+                    // Header NO arrastrable, jerarquizado por AIRE (los
+                    // SectionHeader respiran xl arriba y md abajo), no por
+                    // cajas: clima (hero de 72) → DESTACADOS (grilla 2 × 2) →
+                    // HABITACIONES → lista arrastrable. Cada lead card en su
+                    // RepaintBoundary para aislar el repintado de las sombras.
                     header: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // HERO único: resumen de clima de toda la casa. Tappable
-                        // → abre el selector de termómetros (si hay más de uno).
-                        // Header ÚNICO de clima: lectura del termómetro
-                        // elegido o el TERMOSTATO con +/−. El selector se abre
-                        // con LONG-PRESS. Persiste solo, con la misma key
+                        // HERO único de clima: lectura del termómetro elegido
+                        // o el TERMOSTATO con +/−, más cuántas luces hay
+                        // encendidas en toda la casa. El selector se abre con
+                        // LONG-PRESS. Persiste solo, con la misma key
                         // histórica ('home.tempSensorId').
                         RepaintBoundary(
                           child: RoomTemperatureHeader(
                             service: service,
                             neo: true,
+                            showLightsOn: true,
                           ),
                         ),
                         // Grupo "destacados" EDITABLE: lista persistida de
@@ -760,11 +805,13 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                         // automatizaciones). Sin edición previa reproduce el
                         // default histórico TV → JBL → Termostato → Robot.
                         ..._featuredSection(thermostat, vacuum),
-                        // Grupo "habitaciones": encabezado de la grilla
-                        // arrastrable.
-                        const SizedBox(height: 20),
-                        _sectionLabel('Habitaciones'),
-                        const SizedBox(height: 10),
+                        // Grupo "habitaciones": encabezado de la lista
+                        // arrastrable, con el conteo de salas encendidas.
+                        SectionHeader(
+                          title: 'Habitaciones',
+                          counter:
+                              '$roomsOn de ${ordered.length} encendidas',
+                        ),
                       ],
                     ),
                     onReorderStart: (_) => HapticFeedback.mediumImpact(),
@@ -829,16 +876,6 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 ),
         );
       },
-    );
-  }
-
-  /// Encabezado de sección (CceText.section, UPPERCASE): separa grupos del
-  /// header sin meter cajas. Padding-left chico para alinearlo ópticamente con
-  /// el contenido de las cards (que tienen su propio padding interno).
-  Widget _sectionLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Text(text.toUpperCase(), style: CceText.section),
     );
   }
 

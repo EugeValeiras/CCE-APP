@@ -6,6 +6,7 @@ import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
 import '../../theme/components/cce_switch.dart';
+import '../../theme/components/featured_tile.dart';
 import '../../theme/components/status_dot.dart';
 import 'soundbar_screen.dart';
 
@@ -26,6 +27,9 @@ class SoundbarHomeCard extends StatefulWidget {
   /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
   final Widget? trailing;
 
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
+
   /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
   /// solo escucha a su JblService). null ⇒ la pantalla sin header.
   const SoundbarHomeCard({
@@ -34,6 +38,7 @@ class SoundbarHomeCard extends StatefulWidget {
     this.neo = false,
     this.onOpen,
     this.trailing,
+    this.tile = false,
   });
 
   @override
@@ -48,6 +53,17 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.service.refresh();
     });
+  }
+
+  void _open() {
+    HapticFeedback.selectionClick();
+    if (widget.onOpen != null) {
+      widget.onOpen!();
+    } else {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SoundbarScreen(service: widget.service),
+      ));
+    }
   }
 
   @override
@@ -72,18 +88,33 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
         final dotColor =
             !online ? CceColors.textTertiary : (on ? CceColors.accent : CceColors.textTertiary);
+        final glyphColor =
+            online && on ? CceColors.accent : CceColors.textTertiary;
+
+        final Widget control = widget.trailing ??
+            (online
+                ? CceSwitch(
+                    value: on,
+                    accent: CceColors.accent,
+                    onChanged: (_) => jbl.togglePower(),
+                  )
+                : FeaturedTile.chevron());
+
+        if (widget.tile) {
+          return FeaturedTile(
+            glyph: const CceIcon(CceIcons.speaker, size: 24),
+            glyphColor: glyphColor,
+            title: jbl.displayName,
+            subtitle: sub,
+            dotColor: dotColor,
+            dotPulse: online && on,
+            control: control,
+            onTap: _open,
+          );
+        }
+
         final card = CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            if (widget.onOpen != null) {
-              widget.onOpen!();
-            } else {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    SoundbarScreen(service: jbl),
-              ));
-            }
-          },
+          onTap: _open,
           // En neo iguala el radio de las RoomCard (hueCard 24); en plano el
           // default histórico (28).
           radius: neo ? CceRadii.hueCard : CceRadii.card,
@@ -93,26 +124,15 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
           child: Row(
             children: [
               // Speaker GRANDE extruido, SIN círculo (coherente con el ícono de
-              // las RoomCard). El fondo de esta card es siempre oscuro (neoBase
-              // en neo / surface en plano): no hay fill pastel saturado, así que
-              // el relieve usa el par FIJO de CceEmboss (calibrado para oscuro),
-              // NO el emboss-de-color de la RoomCard ON. Reservamos el mismo
-              // ancho (48) con Center para no mover título/switch.
+              // las RoomCard). Reservamos el mismo ancho (48) con Center para
+              // no mover título/switch.
               SizedBox(
                 width: 48,
                 height: 48,
                 child: Center(
                   child: EmbossedGlyph(
-                    // Tile destacado compacto (fila TV|JBL): glyph 28 para
-                    // homogeneizar con la jerarquía del header (vs 32 full).
                     size: neo ? 28 : 32,
-                    // Color del glyph preservado: accent ON / neoTextSub en
-                    // espera-offline (neo); accent histórico en plano.
-                    color: neo
-                        ? (online && on
-                            ? CceColors.accent
-                            : CceColors.textTertiary)
-                        : accent,
+                    color: neo ? glyphColor : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
                     // Ícono del sistema en vez del logotipo de JBL (ver la
@@ -126,14 +146,11 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Título: en neo usa CceText.title (titleInk + emboss) para
-                    // grabarse en la goma; en plano conserva el estilo histórico.
                     Text(
                       jbl.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: neo
-                          // Tile compacto de la fila destacada: 15 (vs 17 full).
                           ? CceText.title.copyWith(fontSize: 15)
                           : const TextStyle(
                               fontSize: 17,
@@ -143,8 +160,6 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                             ),
                     ),
                     SizedBox(height: neo ? 4 : 2),
-                    // Estado: en neo, StatusDot (accent pulsante ON) + label;
-                    // en plano, el subtítulo tintado de siempre.
                     if (neo)
                       Row(
                         children: [
@@ -175,16 +190,7 @@ class _SoundbarHomeCardState extends State<SoundbarHomeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (widget.trailing != null)
-                widget.trailing!
-              else if (online)
-                CceSwitch(
-                  value: on,
-                  accent: CceColors.accent,
-                  onChanged: (_) => jbl.togglePower(),
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+              control,
             ],
           ),
         );

@@ -20,13 +20,17 @@ class RunAutomationButton extends StatefulWidget {
     required this.automation,
     required this.service,
     this.compact = false,
+    this.size = 44,
   });
 
   final Automation automation;
   final AutomationsService service;
 
-  /// true = ▶ 44×44 de la card; false = "Probar" del editor.
+  /// true = ▶ circular de [size] (cards); false = "Probar" del editor.
   final bool compact;
+
+  /// Diámetro del ▶ compacto (44 en las filas; 32 en los tiles de la home).
+  final double size;
 
   @override
   State<RunAutomationButton> createState() => _RunAutomationButtonState();
@@ -92,19 +96,21 @@ class _RunAutomationButtonState extends State<RunAutomationButton> {
   }
 
   Widget _icon(Color color) {
+    // Glyph proporcional al botón: 18 en el ▶ de 44, 16 en el de 32.
+    final double s = widget.compact && widget.size < 44 ? 16 : 18;
     switch (_state) {
       case _RunState.running:
         return SizedBox(
-          width: 16,
-          height: 16,
+          width: s - 2,
+          height: s - 2,
           child: CircularProgressIndicator(strokeWidth: 2, color: color),
         );
       case _RunState.done:
-        return const CceIcon(CceIcons.check, size: 18, color: CceColors.ok);
+        return CceIcon(CceIcons.check, size: s, color: CceColors.ok);
       case _RunState.failed:
-        return const Icon(Icons.close, size: 18, color: CceColors.danger);
+        return CceIcon(CceIcons.close, size: s, color: CceColors.danger);
       case _RunState.idle:
-        return CceIcon(CceIcons.play, size: 18, color: color);
+        return CceIcon(CceIcons.play, size: s, color: color);
     }
   }
 
@@ -117,12 +123,14 @@ class _RunAutomationButtonState extends State<RunAutomationButton> {
           onTap: _run,
           borderRadius: BorderRadius.circular(CceRadii.pill),
           child: Container(
-            width: 44,
-            height: 44,
+            width: widget.size,
+            height: widget.size,
             alignment: Alignment.center,
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: CceColors.surfaceHigh,
               shape: BoxShape.circle,
+              // Hairline: un control apagado tiene que verse (system.md).
+              border: Border.all(color: CceColors.stroke),
             ),
             child: _icon(CceColors.textSecondary),
           ),
