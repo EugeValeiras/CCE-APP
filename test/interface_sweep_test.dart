@@ -17,7 +17,9 @@ import 'package:cce_app/theme/cce_tokens.dart';
 import 'package:cce_app/theme/components/cce_switch.dart';
 import 'package:cce_app/theme/components/featured_tile.dart';
 import 'package:cce_app/theme/components/light_card.dart';
+import 'package:cce_app/theme/components/room_card.dart';
 import 'package:cce_app/theme/components/section_header.dart';
+import 'package:cce_app/theme/components/status_dot.dart';
 import 'package:cce_app/utils/time_format.dart';
 import 'package:cce_app/views/alarm_view.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
@@ -331,7 +333,7 @@ void main() {
       expect(tester.getSize(find.byType(FeaturedTile)).height, 102);
     });
 
-    testWidgets('el tile compacto de luz mide 78 y muestra el nombre entero',
+    testWidgets('el tile compacto de luz mide 86 y muestra el nombre entero',
         (tester) async {
       await pump(
         tester,
@@ -345,10 +347,85 @@ void main() {
       );
       expect(tester.getSize(find.byType(LightCard)).height,
           LightCard.kCompactHeight);
-      expect(LightCard.kCompactHeight, 78);
+      // 14 + 30 + 6 + 22 + 14: el dueño pidió el aire (feedback del PR #22).
+      expect(LightCard.kCompactHeight, 86);
       expect(find.text('Front 3 DOWN'), findsOneWidget);
       // Sin "Apagada": el switch ya lo dice.
       expect(find.text('Apagada'), findsNothing);
+    });
+
+    testWidgets('RoomCard sin luces: sin switch, pero con su ancho reservado',
+        (tester) async {
+      Future<void> pumpRoom({required int lightsTotal, bool enabled = true}) =>
+          tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 360,
+                  child: RoomCard(
+                    title: 'Cocina',
+                    icon: const Icon(Icons.light),
+                    lightsOn: 0,
+                    lightsTotal: lightsTotal,
+                    anyOn: false,
+                    temperature: 20.7,
+                    toggleEnabled: enabled,
+                    onTap: () {},
+                    onToggle: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ));
+
+      await pumpRoom(lightsTotal: 3);
+      expect(find.byType(CceSwitch), findsOneWidget);
+      final withSwitch = tester.getRect(find.text('20.7°'));
+
+      await pumpRoom(lightsTotal: 0);
+      expect(find.byType(CceSwitch), findsNothing);
+      // El badge no se corre: la columna de temperaturas sigue alineada.
+      expect(tester.getRect(find.text('20.7°')).right, withSwitch.right);
+
+      // Bloqueado momentáneamente ≠ sin luces: ahí el control sigue.
+      await pumpRoom(lightsTotal: 3, enabled: false);
+      expect(find.byType(CceSwitch), findsOneWidget);
+    });
+
+    testWidgets('RoomCard sin estado centra el nombre; con dots no',
+        (tester) async {
+      Future<void> pumpRoom({required bool anyOn, bool motion = false}) =>
+          tester.pumpWidget(MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 360,
+                  child: RoomCard(
+                    title: 'Living',
+                    icon: const Icon(Icons.light),
+                    lightsOn: anyOn ? 1 : 0,
+                    lightsTotal: 3,
+                    anyOn: anyOn,
+                    motion: motion,
+                    onTap: () {},
+                    onToggle: (_) {},
+                  ),
+                ),
+              ),
+            ),
+          ));
+
+      await pumpRoom(anyOn: false);
+      final card = tester.getRect(find.byType(RoomCard));
+      final title = tester.getRect(find.text('Living'));
+      expect(title.center.dy, closeTo(card.center.dy, 1.0));
+      expect(find.byType(StatusDot), findsNothing);
+
+      // Dos dots: el texto es '' pero la fila con los dots se dibuja.
+      await pumpRoom(anyOn: true, motion: true);
+      expect(find.byType(StatusDot), findsNWidgets(2));
+      expect(tester.getRect(find.text('Living')).center.dy,
+          lessThan(card.center.dy));
     });
 
     testWidgets('la fila del historial mide 52', (tester) async {
