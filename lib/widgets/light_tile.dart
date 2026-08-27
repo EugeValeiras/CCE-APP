@@ -30,6 +30,7 @@ class LightTile extends StatefulWidget {
     this.size = TileSize.medium,
     this.neo = false,
     this.automations,
+    this.compact = false,
   });
 
   /// Opcional: si se provee, el tile indica cuántas automatizaciones activas
@@ -39,7 +40,11 @@ class LightTile extends StatefulWidget {
   /// OPT-IN: relieve neumórfico de la card (default false).
   final bool neo;
 
-  double get height => size.tileHeight;
+  /// Fila de [LightCard.kCompactHeight] para la grilla de dos columnas del
+  /// detalle de habitación (phone). Ver [LightCard.compact].
+  final bool compact;
+
+  double get height => compact ? LightCard.kCompactHeight : size.tileHeight;
 
   @override
   State<LightTile> createState() => _LightTileState();
@@ -241,15 +246,10 @@ class _LightTileState extends State<LightTile> {
     final reachable = d.state.reachable;
     final color = _activeColor();
 
-    // El brillo se comunica por el relleno de la card, no como texto %.
-    final String? stateLabel;
-    if (!reachable) {
-      stateLabel = 'Sin conexión';
-    } else if (on) {
-      stateLabel = null;
-    } else {
-      stateLabel = 'Apagada';
-    }
+    // El brillo se comunica por el relleno de la card, no como texto %, y el
+    // apagado lo dice el switch: sin "Apagada" (system.md: no decir lo mismo
+    // dos veces). Sólo queda lo que el switch NO puede decir: sin conexión.
+    final String? stateLabel = reachable ? null : 'Sin conexión';
 
     // SIN PulseOnUpdate.
     //
@@ -283,6 +283,7 @@ class _LightTileState extends State<LightTile> {
           stateLabel: stateLabel,
           height: widget.height,
           neo: widget.neo,
+          compact: widget.compact,
           automationCount:
               widget.automations?.activeCountForDevice(d) ?? 0,
           // El switch de la franja prende/apaga directo.

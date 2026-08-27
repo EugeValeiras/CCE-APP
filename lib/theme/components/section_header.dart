@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../cce_tokens.dart';
 
-/// Encabezado de sección: título en mayúsculas con tracking ancho y un
-/// trailing opcional a la derecha.
+/// Encabezado de sección: título en mayúsculas con tracking ancho y, a la
+/// derecha, un [counter] opcional en el mismo estilo ("3 de 8 encendidas")
+/// o un [trailing] arbitrario.
 ///
 /// El espaciado es asimétrico A PROPÓSITO y es la única asimetría permitida
 /// del sistema: un encabezado pertenece a lo que viene DEBAJO, así que respira
@@ -13,6 +14,7 @@ class SectionHeader extends StatelessWidget {
   const SectionHeader({
     super.key,
     required this.title,
+    this.counter,
     this.trailing,
     // = (CceSpace.xs, CceSpace.xl, CceSpace.xs, CceSpace.md). Literal para
     // que el constructor siga siendo const en sus call sites.
@@ -20,6 +22,13 @@ class SectionHeader extends StatelessWidget {
   });
 
   final String title;
+
+  /// Contador o estado de la sección ("1 de 15 encendidas", "1 abierta"),
+  /// alineado a la derecha en [CceText.section]. Es el mismo patrón en la
+  /// home, el detalle de habitación y la alarma, así que vive acá y no en
+  /// cada pantalla.
+  final String? counter;
+
   final Widget? trailing;
   final EdgeInsetsGeometry padding;
 
@@ -36,7 +45,16 @@ class SectionHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (trailing != null) trailing!,
+          if (counter != null) ...[
+            SizedBox(width: CceSpace.md),
+            Text(
+              counter!.toUpperCase(),
+              style: CceText.section,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          ?trailing,
         ],
       ),
     );

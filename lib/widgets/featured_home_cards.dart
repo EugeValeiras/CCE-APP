@@ -11,6 +11,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_switch.dart';
+import '../theme/components/featured_tile.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/icon_resolver.dart';
 import '../views/automations/automation_card.dart' show automationIcon, triggerColor;
@@ -23,9 +24,84 @@ import '../views/light_color_screen.dart';
 import '../views/single_button_screen.dart';
 import '../views/switch_detail_screen.dart';
 
-/// Row-cards para la sección "Destacados" editable de la home. Todas espejan
-/// la anatomía de [ThermostatHomeCard]: CceCard neo > glyph 48 + título/estado
-/// + control rápido a la derecha.
+/// Cards para la sección "Destacados" editable de la home. En la grilla de la
+/// home (`tile: true`) todas se renderizan con el molde [FeaturedTile]; como
+/// fila (`tile: false`, editor de Destacados) espejan la anatomía de
+/// [ThermostatHomeCard]: CceCard neo > glyph 48 + título/estado + control.
+
+/// Fila a todo el ancho compartida por las cards de este archivo.
+Widget _row({
+  required Widget glyph,
+  required Color glyphColor,
+  required String title,
+  required Widget status,
+  required Widget control,
+  required VoidCallback? onTap,
+  bool neo = true,
+}) {
+  return CceCard(
+    onTap: onTap,
+    radius: neo ? CceRadii.hueCard : CceRadii.card,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    color: neo ? CceColors.neoBase : null,
+    neo: neo,
+    child: Row(
+      children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: EmbossedGlyph(
+              size: 28,
+              color: glyphColor,
+              highlight: CceEmboss.highlight.color,
+              shadow: CceEmboss.shadow.color,
+              child: glyph,
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: CceText.title.copyWith(fontSize: 15),
+              ),
+              const SizedBox(height: 4),
+              status,
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        control,
+      ],
+    ),
+  );
+}
+
+/// Línea de estado de la fila: dot opcional + texto.
+Widget _status(String text, {Color? dot, bool pulse = false}) {
+  return Row(
+    children: [
+      if (dot != null) ...[
+        StatusDot(dot, pulse: pulse, semanticLabel: text),
+        const SizedBox(width: 8),
+      ],
+      Flexible(
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: CceText.caption,
+        ),
+      ),
+    ],
+  );
+}
 
 // ── Luz destacada: ícono configurado + switch rápido ───────────────────────
 
@@ -40,10 +116,14 @@ class LightHomeCard extends StatelessWidget {
     required this.device,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   });
 
   /// Override del control derecho (editor de Destacados): reemplaza el switch.
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   @override
   Widget build(BuildContext context) {
@@ -65,85 +145,53 @@ class LightHomeCard extends StatelessWidget {
         } else {
           sub = on ? 'Encendida' : 'Apagada';
         }
+        final glyphColor = online && on ? accent : CceColors.textTertiary;
+        final dotColor = online && on ? accent : CceColors.textTertiary;
 
-        return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => LightColorScreen(device: d, service: service),
-            ));
-          },
-          radius: neo ? CceRadii.hueCard : CceRadii.card,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: neo ? CceColors.neoBase : null,
+        Widget glyph(double size) => IconResolver.widget(
+              d,
+              configuredIcon: service.iconFor(d.id),
+              customIcons: service.customIcons,
+              displayName: service.displayName(d),
+              size: size,
+              color: glyphColor,
+            );
+
+        void open() {
+          HapticFeedback.selectionClick();
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => LightColorScreen(device: d, service: service),
+          ));
+        }
+
+        final Widget control = trailing ??
+            (online
+                ? CceSwitch(
+                    value: on,
+                    accent: CceColors.warm,
+                    onChanged: (_) => service.toggleLight(d),
+                  )
+                : FeaturedTile.chevron());
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: glyph(24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            dotColor: dotColor,
+            control: control,
+            onTap: open,
+          );
+        }
+        return _row(
+          glyph: glyph(26),
+          glyphColor: glyphColor,
+          title: service.displayName(d),
+          status: _status(sub, dot: dotColor),
+          control: control,
+          onTap: open,
           neo: neo,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: EmbossedGlyph(
-                    size: 28,
-                    color: online && on ? accent : CceColors.neoTextSub,
-                    highlight: CceEmboss.highlight.color,
-                    shadow: CceEmboss.shadow.color,
-                    child: IconResolver.widget(
-                      d,
-                      configuredIcon: service.iconFor(d.id),
-                      customIcons: service.customIcons,
-                      displayName: service.displayName(d),
-                      size: 26,
-                      color: online && on ? accent : CceColors.neoTextSub,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.displayName(d),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.title.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        StatusDot(
-                          online && on ? accent : CceColors.textTertiary,
-                          semanticLabel: sub,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            sub,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: CceText.caption,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (trailing != null)
-                trailing!
-              else if (online)
-                CceSwitch(
-                  value: on,
-                  accent: CceColors.warm,
-                  onChanged: (_) => service.toggleLight(d),
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
-            ],
-          ),
         );
       },
     );
@@ -163,10 +211,14 @@ class ButtonHomeCard extends StatefulWidget {
     required this.device,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   });
 
   /// Override del control derecho (editor de Destacados).
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   @override
   State<ButtonHomeCard> createState() => _ButtonHomeCardState();
@@ -219,95 +271,83 @@ class _ButtonHomeCardState extends State<ButtonHomeCard> {
         } else {
           sub = pressButton ? 'Botón' : 'Switch';
         }
+        final glyphColor =
+            online ? CceColors.textSecondary : CceColors.textTertiary;
 
-        return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => _screenFor(d, service),
-            ));
-          },
-          radius: widget.neo ? CceRadii.hueCard : CceRadii.card,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: widget.neo ? CceColors.neoBase : null,
-          neo: widget.neo,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: EmbossedGlyph(
-                    size: 28,
-                    color: online
-                        ? CceColors.textSecondary
-                        : CceColors.neoTextSub,
-                    highlight: CceEmboss.highlight.color,
-                    shadow: CceEmboss.shadow.color,
-                    child: IconResolver.widget(
-                      d,
-                      configuredIcon: service.iconFor(d.id),
-                      customIcons: service.customIcons,
-                      displayName: service.displayName(d),
-                      size: 26,
-                      color: online
-                          ? CceColors.textSecondary
-                          : CceColors.neoTextSub,
+        Widget glyph(double size) => IconResolver.widget(
+              d,
+              configuredIcon: service.iconFor(d.id),
+              customIcons: service.customIcons,
+              displayName: service.displayName(d),
+              size: size,
+              color: glyphColor,
+            );
+
+        void open() {
+          HapticFeedback.selectionClick();
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => _screenFor(d, service),
+          ));
+        }
+
+        // Botón simple online → ▶ dispara el click configurado. Dial/
+        // switch → chevron (elegir la tecla es de su pantalla).
+        final canFire = online && pressButton && !d.isMultiButton;
+
+        if (widget.tile) {
+          return FeaturedTile(
+            glyph: glyph(24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            control: widget.trailing ??
+                (canFire
+                    ? FeaturedTileAction(
+                        svg: CceIcons.play,
+                        tooltip: 'Disparar click',
+                        busy: _busy,
+                        onTap: () => _simulateClick(d),
+                      )
+                    : FeaturedTile.chevron()),
+            onTap: open,
+          );
+        }
+
+        final Widget control;
+        if (widget.trailing != null) {
+          control = widget.trailing!;
+        } else if (canFire) {
+          control = SizedBox(
+            width: 44,
+            height: 44,
+            child: _busy
+                ? const Center(
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: CceColors.textSecondary),
                     ),
+                  )
+                : IconButton(
+                    onPressed: () => _simulateClick(d),
+                    icon: CceIcon(CceIcons.play,
+                        size: 20, color: CceColors.textSecondary),
+                    tooltip: 'Disparar click',
                   ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.displayName(d),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.title.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      sub,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.caption,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Botón simple online → ▶ dispara el click configurado. Dial/
-              // switch → chevron (elegir la tecla es de su pantalla).
-              if (widget.trailing != null)
-                widget.trailing!
-              else if (online && pressButton && !d.isMultiButton)
-                SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: _busy
-                      ? const Center(
-                          child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: CceColors.textSecondary),
-                          ),
-                        )
-                      : IconButton(
-                          onPressed: () => _simulateClick(d),
-                          icon: CceIcon(CceIcons.play,
-                              size: 20, color: CceColors.textSecondary),
-                          tooltip: 'Disparar click',
-                        ),
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
-            ],
-          ),
+          );
+        } else {
+          control = FeaturedTile.chevron();
+        }
+
+        return _row(
+          glyph: glyph(26),
+          glyphColor: glyphColor,
+          title: service.displayName(d),
+          status: _status(sub),
+          control: control,
+          onTap: open,
+          neo: widget.neo,
         );
       },
     );
@@ -327,10 +367,14 @@ class LockHomeCard extends StatelessWidget {
     required this.device,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   });
 
   /// Override del control derecho (editor de Destacados: − / +).
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   @override
   Widget build(BuildContext context) {
@@ -341,83 +385,51 @@ class LockHomeCard extends StatelessWidget {
         final online = d.state.reachable;
         // Convención del provider: state.on = trabada.
         final locked = d.state.on;
+        // Destrabada = apertura: el semántico de "puerta abierta", no un
+        // naranja propio.
         final accent = !online
             ? CceColors.textTertiary
-            : (locked ? CceColors.ok : const Color(0xFFFF9F0A));
+            : (locked ? CceColors.ok : CceColors.contact);
         final sub = !online
             ? 'Fuera de línea'
             : (locked ? 'Trabada' : 'Destrabada');
+        final glyphColor = online ? accent : CceColors.textTertiary;
+        final svg = locked ? CceIcons.lockLocked : CceIcons.lockUnlocked;
 
-        return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => LockScreen(device: d, service: service),
-            ));
-          },
-          radius: neo ? CceRadii.hueCard : CceRadii.card,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: neo ? CceColors.neoBase : null,
+        void open() {
+          HapticFeedback.selectionClick();
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => LockScreen(device: d, service: service),
+          ));
+        }
+
+        // Sin acción rápida: destrabar es sensible y vive en su pantalla
+        // (con hold-to-confirm).
+        final control = trailing ?? FeaturedTile.chevron();
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: CceIcon(svg, size: 24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            dotColor: online ? accent : CceColors.textTertiary,
+            // Destrabada pulsa: es el estado que pide atención.
+            dotPulse: online && !locked,
+            control: control,
+            onTap: open,
+          );
+        }
+        return _row(
+          glyph: CceIcon(svg, size: 26),
+          glyphColor: glyphColor,
+          title: service.displayName(d),
+          status: _status(sub,
+              dot: online ? accent : CceColors.textTertiary,
+              pulse: online && !locked),
+          control: control,
+          onTap: open,
           neo: neo,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: EmbossedGlyph(
-                    size: 28,
-                    color: online ? accent : CceColors.neoTextSub,
-                    highlight: CceEmboss.highlight.color,
-                    shadow: CceEmboss.shadow.color,
-                    child: CceIcon(
-                      locked ? CceIcons.lockLocked : CceIcons.lockUnlocked,
-                      size: 26,
-                      color: online ? accent : CceColors.neoTextSub,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.displayName(d),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.title.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        StatusDot(
-                          online ? accent : CceColors.textTertiary,
-                          // Destrabada pulsa: es el estado que pide atención.
-                          pulse: online && !locked,
-                          semanticLabel: sub,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(sub,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: CceText.caption),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Sin acción rápida: destrabar es sensible y vive en su pantalla
-              // (con hold-to-confirm).
-              trailing ??
-                  const Icon(Icons.chevron_right,
-                      color: CceColors.textTertiary),
-            ],
-          ),
         );
       },
     );
@@ -437,10 +449,14 @@ class SensorHomeCard extends StatelessWidget {
     required this.device,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   });
 
   /// Override del control derecho (editor de Destacados: − / +).
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   /// Estado legible + acento por tipo de sensor.
   ({String label, Color color, String glyph, bool alert}) _read(Device d) {
@@ -492,77 +508,43 @@ class SensorHomeCard extends StatelessWidget {
         final online = d.state.reachable;
         final r = _read(d);
         final accent = online ? r.color : CceColors.textTertiary;
+        final glyphColor =
+            online && r.alert ? accent : CceColors.textTertiary;
+        final label = online ? r.label : 'Fuera de línea';
 
-        return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => _isThermometer(d)
-                  ? ThermometerScreen(device: d, service: service)
-                  : SensorDetailScreen(device: d, service: service),
-            ));
-          },
-          radius: neo ? CceRadii.hueCard : CceRadii.card,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: neo ? CceColors.neoBase : null,
+        void open() {
+          HapticFeedback.selectionClick();
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => _isThermometer(d)
+                ? ThermometerScreen(device: d, service: service)
+                : SensorDetailScreen(device: d, service: service),
+          ));
+        }
+
+        final control = trailing ?? FeaturedTile.chevron();
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: CceIcon(r.glyph, size: 24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: label,
+            dotColor: online ? accent : CceColors.textTertiary,
+            dotPulse: online && r.alert,
+            control: control,
+            onTap: open,
+          );
+        }
+        return _row(
+          glyph: CceIcon(r.glyph, size: 26),
+          glyphColor: glyphColor,
+          title: service.displayName(d),
+          status: _status(label,
+              dot: online ? accent : CceColors.textTertiary,
+              pulse: online && r.alert),
+          control: control,
+          onTap: open,
           neo: neo,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: EmbossedGlyph(
-                    size: 28,
-                    color: online && r.alert ? accent : CceColors.neoTextSub,
-                    highlight: CceEmboss.highlight.color,
-                    shadow: CceEmboss.shadow.color,
-                    child: CceIcon(r.glyph,
-                        size: 26,
-                        color:
-                            online && r.alert ? accent : CceColors.neoTextSub),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      service.displayName(d),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.title.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        StatusDot(
-                          online ? accent : CceColors.textTertiary,
-                          pulse: online && r.alert,
-                          semanticLabel: r.label,
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            online ? r.label : 'Fuera de línea',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: CceText.caption,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              trailing ??
-                  const Icon(Icons.chevron_right,
-                      color: CceColors.textTertiary),
-            ],
-          ),
         );
       },
     );
@@ -586,11 +568,15 @@ class SceneHomeCard extends StatefulWidget {
     this.hueScene,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   }) : assert((scene != null) ^ (hueScene != null),
             'SceneHomeCard: pasar scene O hueScene');
 
   /// Override del control derecho (editor de Destacados): reemplaza el ▶.
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   @override
   State<SceneHomeCard> createState() => _SceneHomeCardState();
@@ -626,74 +612,52 @@ class _SceneHomeCardState extends State<SceneHomeCard> {
         ? widget.hueScene!.swatch.first
         : CceColors.accent;
 
-    return CceCard(
-      onTap: _apply,
-      radius: widget.neo ? CceRadii.hueCard : CceRadii.card,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      color: widget.neo ? CceColors.neoBase : null,
-      neo: widget.neo,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: Center(
-              child: EmbossedGlyph(
-                size: 28,
-                color: accent,
-                highlight: CceEmboss.highlight.color,
-                shadow: CceEmboss.shadow.color,
-                child: CceIcon(CceIcons.scenes, size: 26, color: accent),
-              ),
+    if (widget.tile) {
+      return FeaturedTile(
+        glyph: const CceIcon(CceIcons.scenes, size: 24),
+        glyphColor: accent,
+        title: name,
+        subtitle: sub,
+        control: widget.trailing ??
+            FeaturedTileAction(
+              svg: CceIcons.play,
+              tooltip: 'Aplicar escena',
+              busy: _busy,
+              onTap: _apply,
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: CceText.title.copyWith(fontSize: 15),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  sub,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: CceText.caption,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Aplicar: mismo look que el ▶ compacto de automatizaciones.
-          if (widget.trailing != null)
-            widget.trailing!
-          else
-          SizedBox(
-            width: 44,
-            height: 44,
-            child: _busy
-                ? const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: CceColors.textSecondary),
-                    ),
-                  )
-                : IconButton(
-                    onPressed: _apply,
-                    icon: CceIcon(CceIcons.play,
-                        size: 20, color: CceColors.textSecondary),
-                    tooltip: 'Aplicar escena',
+        onTap: _apply,
+      );
+    }
+
+    // Aplicar: mismo look que el ▶ compacto de automatizaciones.
+    final Widget control = widget.trailing ??
+        SizedBox(
+          width: 44,
+          height: 44,
+          child: _busy
+              ? const Center(
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: CceColors.textSecondary),
                   ),
-          ),
-        ],
-      ),
+                )
+              : IconButton(
+                  onPressed: _apply,
+                  icon: CceIcon(CceIcons.play,
+                      size: 20, color: CceColors.textSecondary),
+                  tooltip: 'Aplicar escena',
+                ),
+        );
+    return _row(
+      glyph: const CceIcon(CceIcons.scenes, size: 26),
+      glyphColor: accent,
+      title: name,
+      status: _status(sub),
+      control: control,
+      onTap: _apply,
+      neo: widget.neo,
     );
   }
 }
@@ -713,10 +677,14 @@ class AutomationHomeCard extends StatelessWidget {
     required this.automation,
     this.neo = true,
     this.trailing,
+    this.tile = false,
   });
 
   /// Override del control derecho (editor de Destacados): reemplaza el ▶.
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   @override
   Widget build(BuildContext context) {
@@ -734,69 +702,36 @@ class AutomationHomeCard extends StatelessWidget {
           'sensor' => 'Automatización · sensor',
           _ => 'Automatización manual',
         };
+        final label = a.enabled ? sub : '$sub · desactivada';
+        final glyphColor = a.enabled ? color : CceColors.textTertiary;
+        final dotColor = a.enabled ? color : CceColors.textTertiary;
 
-        return CceCard(
-          radius: neo ? CceRadii.hueCard : CceRadii.card,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          color: neo ? CceColors.neoBase : null,
-          neo: neo,
-          child: Row(
-            children: [
-              SizedBox(
-                width: 48,
-                height: 48,
-                child: Center(
-                  child: EmbossedGlyph(
-                    size: 28,
-                    color: a.enabled ? color : CceColors.neoTextSub,
-                    highlight: CceEmboss.highlight.color,
-                    shadow: CceEmboss.shadow.color,
-                    child: automationIcon(a.icon,
-                        size: 26,
-                        color: a.enabled ? color : CceColors.neoTextSub),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      a.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: CceText.title.copyWith(fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        StatusDot(
-                          a.enabled ? color : CceColors.textTertiary,
-                          semanticLabel: a.enabled ? 'Activa' : 'Desactivada',
-                        ),
-                        const SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            a.enabled ? sub : '$sub · desactivada',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: CceText.caption,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (trailing != null)
-                trailing!
-              else
+        if (tile) {
+          return FeaturedTile(
+            glyph: automationIcon(a.icon, size: 24),
+            glyphColor: glyphColor,
+            title: a.name,
+            subtitle: label,
+            dotColor: dotColor,
+            control: trailing ??
                 RunAutomationButton(
-                    automation: a, service: service, compact: true),
-            ],
-          ),
+                  automation: a,
+                  service: service,
+                  compact: true,
+                  size: FeaturedTileAction.size,
+                ),
+          );
+        }
+        return _row(
+          glyph: automationIcon(a.icon, size: 26),
+          glyphColor: glyphColor,
+          title: a.name,
+          status: _status(label, dot: dotColor),
+          control: trailing ??
+              RunAutomationButton(
+                  automation: a, service: service, compact: true),
+          onTap: null,
+          neo: neo,
         );
       },
     );

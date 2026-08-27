@@ -6,6 +6,7 @@ import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_card.dart';
 import '../../theme/components/cce_switch.dart';
+import '../../theme/components/featured_tile.dart';
 import '../../theme/components/status_dot.dart';
 import 'tv_screen.dart';
 
@@ -28,6 +29,10 @@ class TvHomeCard extends StatefulWidget {
   /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
   final Widget? trailing;
 
+  /// true ⇒ se renderiza como [FeaturedTile] (grilla 2 × 2 de la home);
+  /// false ⇒ fila a todo el ancho (tablet, editor de Destacados).
+  final bool tile;
+
   /// Se REENVÍA a la pantalla pusheada para su header de clima (esta card
   /// solo escucha a su TvService). null ⇒ la pantalla sin header.
   const TvHomeCard({
@@ -36,6 +41,7 @@ class TvHomeCard extends StatefulWidget {
     this.neo = false,
     this.onOpen,
     this.trailing,
+    this.tile = false,
   });
 
   @override
@@ -56,6 +62,17 @@ class _TvHomeCardState extends State<TvHomeCard> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) widget.service.refresh();
     });
+  }
+
+  void _open() {
+    HapticFeedback.selectionClick();
+    if (widget.onOpen != null) {
+      widget.onOpen!();
+    } else {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => TvScreen(service: widget.service),
+      ));
+    }
   }
 
   @override
@@ -81,17 +98,35 @@ class _TvHomeCardState extends State<TvHomeCard> {
         final dotColor = !online
             ? CceColors.textTertiary
             : (on ? _tvAccent : CceColors.textTertiary);
+        final glyphColor = online && on ? _tvAccent : CceColors.textTertiary;
+
+        // Mandamos el estado EXPLÍCITO del switch (PUT /tv/power {on:v}):
+        // desde la home el isOn cacheado puede estar stale/"unknown", así
+        // que setPower garantiza la dirección correcta.
+        final Widget control = widget.trailing ??
+            (online
+                ? CceSwitch(
+                    value: on,
+                    accent: _tvAccent,
+                    onChanged: (v) => tv.setPower(v),
+                  )
+                : FeaturedTile.chevron());
+
+        if (widget.tile) {
+          return FeaturedTile(
+            glyph: const CceIcon(CceIcons.tv, size: 24),
+            glyphColor: glyphColor,
+            title: tv.displayName,
+            subtitle: sub,
+            dotColor: dotColor,
+            dotPulse: online && on,
+            control: control,
+            onTap: _open,
+          );
+        }
+
         final card = CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            if (widget.onOpen != null) {
-              widget.onOpen!();
-            } else {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TvScreen(service: tv),
-              ));
-            }
-          },
+          onTap: _open,
           // En neo iguala el radio de las RoomCard (hueCard 24); en plano el
           // default histórico (28).
           radius: neo ? CceRadii.hueCard : CceRadii.card,
@@ -101,23 +136,15 @@ class _TvHomeCardState extends State<TvHomeCard> {
           child: Row(
             children: [
               // TV GRANDE extruido, SIN círculo (coherente con el ícono de las
-              // RoomCard y la card del soundbar). El fondo de la card es siempre
-              // oscuro (neoBase en neo / surface en plano): el relieve usa el par
-              // FIJO de CceEmboss. Reservamos el mismo ancho (48) con Center para
-              // no mover título/switch.
+              // RoomCard y la card del soundbar). Reservamos el mismo ancho
+              // (48) con Center para no mover título/switch.
               SizedBox(
                 width: 48,
                 height: 48,
                 child: Center(
                   child: EmbossedGlyph(
-                    // Tile destacado compacto (fila TV|JBL): glyph 28 para
-                    // homogeneizar con la jerarquía del header (vs 32 full).
                     size: neo ? 28 : 32,
-                    // Color del glyph: accent ON / neoTextSub en espera-offline
-                    // (neo); accent histórico en plano.
-                    color: neo
-                        ? (online && on ? _tvAccent : CceColors.textTertiary)
-                        : accent,
+                    color: neo ? glyphColor : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
                     // Ícono del sistema, no el logotipo de Samsung: en una
@@ -132,14 +159,11 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Título: en neo usa CceText.title (titleInk + emboss) para
-                    // grabarse en la goma; en plano conserva el estilo histórico.
                     Text(
                       tv.displayName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: neo
-                          // Tile compacto de la fila destacada: 15 (vs 17 full).
                           ? CceText.title.copyWith(fontSize: 15)
                           : const TextStyle(
                               fontSize: 17,
@@ -149,8 +173,6 @@ class _TvHomeCardState extends State<TvHomeCard> {
                             ),
                     ),
                     SizedBox(height: neo ? 4 : 2),
-                    // Estado: en neo, StatusDot (accent pulsante ON) + label;
-                    // en plano, el subtítulo tintado de siempre.
                     if (neo)
                       Row(
                         children: [
@@ -181,21 +203,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 ),
               ),
               const SizedBox(width: 8),
-              if (widget.trailing != null)
-                widget.trailing!
-              else if (online)
-                // Mandamos el estado EXPLÍCITO del switch (PUT /tv/power {on:v}):
-                // desde la home el isOn cacheado puede estar stale/"unknown",
-                // así que setPower garantiza la dirección correcta.
-                CceSwitch(
-                  value: on,
-                  // El switch ON prende con el azul del TV (mismo acento que el
-                  // ícono y el dot del Samsung), en vez del blanco neutro.
-                  accent: _tvAccent,
-                  onChanged: (v) => tv.setPower(v),
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+              control,
             ],
           ),
         );

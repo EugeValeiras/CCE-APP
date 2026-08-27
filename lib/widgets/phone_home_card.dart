@@ -7,6 +7,7 @@ import '../services/telephony_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
+import '../theme/components/featured_tile.dart';
 import '../theme/components/status_dot.dart';
 import '../views/telephony/line_status_chip.dart';
 import '../views/telephony_screen.dart';
@@ -37,8 +38,11 @@ class PhoneHomeCard extends StatelessWidget {
   /// Si se provee, al tocar la card se llama esto EN VEZ de pushear la pantalla.
   final VoidCallback? onOpen;
 
-  /// Override del control derecho (modo edición del editor de Destacados).
+  /// Override del control derecho (editor de Destacados).
   final Widget? trailing;
+
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
 
   const PhoneHomeCard({
     super.key,
@@ -48,6 +52,7 @@ class PhoneHomeCard extends StatelessWidget {
     this.neo = false,
     this.onOpen,
     this.trailing,
+    this.tile = false,
   });
 
   @override
@@ -108,22 +113,53 @@ class PhoneHomeCard extends StatelessWidget {
         // El glifo va con el color del estado sólo cuando hay algo que atender
         // (entrante, llamada): un glifo verde permanente en la home sería
         // decoración.
-        final glyphColor = neo
-            ? (online && (ringing || inCall) ? accent : CceColors.neoTextSub)
+        final glyphColor = neo || tile
+            ? (online && (ringing || inCall) ? accent : CceColors.textTertiary)
             : (ringing || inCall ? accent : CceColors.textSecondary);
+        final String glyphSvg = ringing
+            ? CceIcons.phoneIncoming
+            : missed > 0
+                ? CceIcons.phoneMissed
+                : pending > 0
+                    ? CceIcons.sms
+                    : CceIcons.phone;
+
+        void open() {
+          HapticFeedback.selectionClick();
+          if (onOpen != null) {
+            onOpen!();
+          } else {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => TelephonyScreen(
+                  device: d, service: service, telephony: telephony),
+            ));
+          }
+        }
+
+        final Widget control = trailing ??
+            (pending > 0
+                ? _MissedBadge(
+                    count: pending,
+                    color: missed > 0 ? CceColors.danger : CceColors.accent,
+                  )
+                : FeaturedTile.chevron());
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: CceIcon(glyphSvg, size: 24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            dotColor: online ? accent : CceColors.textTertiary,
+            // El pulso es para la entrante: es lo que hay que atender ahora.
+            dotPulse: online && ringing,
+            control: control,
+            onTap: open,
+          );
+        }
 
         return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            if (onOpen != null) {
-              onOpen!();
-            } else {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    TelephonyScreen(device: d, service: service, telephony: telephony),
-              ));
-            }
-          },
+          onTap: open,
           radius: neo ? CceRadii.hueCard : CceRadii.card,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           color: neo ? CceColors.neoBase : null,
@@ -139,16 +175,7 @@ class PhoneHomeCard extends StatelessWidget {
                     color: glyphColor,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
-                    child: CceIcon(
-                      ringing
-                          ? CceIcons.phoneIncoming
-                          : missed > 0
-                              ? CceIcons.phoneMissed
-                              : pending > 0
-                                  ? CceIcons.sms
-                                  : CceIcons.phone,
-                      size: 28,
-                    ),
+                    child: CceIcon(glyphSvg, size: 28),
                   ),
                 ),
               ),
@@ -206,15 +233,7 @@ class PhoneHomeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              if (trailing != null)
-                trailing!
-              else if (pending > 0)
-                _MissedBadge(
-                  count: pending,
-                  color: missed > 0 ? CceColors.danger : CceColors.accent,
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+              control,
             ],
           ),
         );

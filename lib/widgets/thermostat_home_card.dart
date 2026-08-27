@@ -7,6 +7,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_card.dart';
 import '../theme/components/cce_switch.dart';
+import '../theme/components/featured_tile.dart';
 import '../theme/components/status_dot.dart';
 import '../views/thermostat_screen.dart';
 
@@ -39,6 +40,9 @@ class ThermostatHomeCard extends StatelessWidget {
   /// reemplaza el switch/acción por el widget dado (p.ej. un + o un −).
   final Widget? trailing;
 
+  /// true ⇒ [FeaturedTile] (grilla 2 × 2 de la home); false ⇒ fila.
+  final bool tile;
+
   const ThermostatHomeCard({
     super.key,
     required this.service,
@@ -46,6 +50,7 @@ class ThermostatHomeCard extends StatelessWidget {
     this.neo = false,
     this.onOpen,
     this.trailing,
+    this.tile = false,
   });
 
   /// Formatea temperaturas: 0.5 con decimal, enteros sin decimal (igual que
@@ -82,9 +87,14 @@ class ThermostatHomeCard extends StatelessWidget {
         } else if (!on) {
           sub = 'Apagado';
         } else if (target != null) {
-          final cur =
-              current != null ? ' · actual ${_fmt(current)}°' : '';
-          sub = 'Objetivo ${_fmt(target)}°$cur';
+          // En el tile: "20.7° → 20°" (actual → objetivo) entra en una línea
+          // de 179 px; "Objetivo 20° · actual 20.7°" no.
+          sub = tile
+              ? (current != null
+                  ? '${_fmt(current)}° → ${_fmt(target)}°'
+                  : 'Objetivo ${_fmt(target)}°')
+              : 'Objetivo ${_fmt(target)}°'
+                  '${current != null ? ' · actual ${_fmt(current)}°' : ''}';
         } else {
           sub = 'Encendido';
         }
@@ -93,18 +103,45 @@ class ThermostatHomeCard extends StatelessWidget {
         final dotColor = !online
             ? CceColors.textTertiary
             : (on ? accent : CceColors.textTertiary);
+        final glyphColor = online && on ? accent : CceColors.textTertiary;
+
+        void open() {
+          HapticFeedback.selectionClick();
+          if (onOpen != null) {
+            onOpen!();
+          } else {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ThermostatScreen(device: d, service: service),
+            ));
+          }
+        }
+
+        // Power rápido: mandamos el estado EXPLÍCITO (setThermostatPower)
+        // con revert optimista en el service. Fuera de línea → chevron.
+        final Widget control = trailing ??
+            (online
+                ? CceSwitch(
+                    value: on,
+                    accent: CceColors.accent,
+                    onChanged: (v) => service.setThermostatPower(d, v),
+                  )
+                : FeaturedTile.chevron());
+
+        if (tile) {
+          return FeaturedTile(
+            glyph: const CceIcon(CceIcons.thermometer, size: 24),
+            glyphColor: glyphColor,
+            title: service.displayName(d),
+            subtitle: sub,
+            dotColor: dotColor,
+            dotPulse: online && on,
+            control: control,
+            onTap: open,
+          );
+        }
 
         return CceCard(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            if (onOpen != null) {
-              onOpen!();
-            } else {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ThermostatScreen(device: d, service: service),
-              ));
-            }
-          },
+          onTap: open,
           // En neo iguala el radio de las RoomCard (hueCard 24); en plano el
           // default histórico (28).
           radius: neo ? CceRadii.hueCard : CceRadii.card,
@@ -124,9 +161,7 @@ class ThermostatHomeCard extends StatelessWidget {
                     // Tile destacado compacto: glyph 28 en neo (vs 32 plano),
                     // homogéneo con la fila TV|JBL.
                     size: neo ? 28 : 32,
-                    color: neo
-                        ? (online && on ? accent : CceColors.neoTextSub)
-                        : accent,
+                    color: neo ? glyphColor : accent,
                     highlight: CceEmboss.highlight.color,
                     shadow: CceEmboss.shadow.color,
                     child: const CceIcon(CceIcons.thermometer, size: 28),
@@ -185,18 +220,7 @@ class ThermostatHomeCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Power rápido: mandamos el estado EXPLÍCITO (setThermostatPower)
-              // con revert optimista en el service. Fuera de línea → chevron.
-              if (trailing != null)
-                trailing!
-              else if (online)
-                CceSwitch(
-                  value: on,
-                  accent: CceColors.accent,
-                  onChanged: (v) => service.setThermostatPower(d, v),
-                )
-              else
-                const Icon(Icons.chevron_right, color: CceColors.textTertiary),
+              control,
             ],
           ),
         );

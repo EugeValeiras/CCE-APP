@@ -145,7 +145,8 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
         builder: (_) => ChatScreen(config: widget.config),
       )),
       onOpenAlarm: (ctx) => Navigator.of(ctx).push(MaterialPageRoute(
-        builder: (_) => AlarmView(initialConfig: widget.config, neo: true),
+        builder: (_) => AlarmView(
+            initialConfig: widget.config, neo: true, devices: _devices),
       )),
       // Automatizaciones en el TELÉFONO: la misma AutomationsView de la
       // tablet (lista + editor + crear). Trae su propio Scaffold; volver =

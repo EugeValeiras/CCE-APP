@@ -148,6 +148,29 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
   }
 }
 
+/// Próxima ejecución de un trigger programado de hora fija ("19:04", días
+/// 0=dom..6=sáb; vacío = todos). null para intervalos, sin hora válida o si
+/// no hay día habilitado. Pura, para la card ("Próxima hoy 19:04") y el test.
+DateTime? nextScheduleRun(AutomationTrigger t, {DateTime? now}) {
+  if (t.type != 'schedule' || t.scheduleMode == 'interval') return null;
+  final time = t.time;
+  if (time == null) return null;
+  final m = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(time.trim());
+  if (m == null) return null;
+  final hh = int.parse(m.group(1)!);
+  final mm = int.parse(m.group(2)!);
+  if (hh > 23 || mm > 59) return null;
+  final n = now ?? DateTime.now();
+  final days = t.days.where((d) => d >= 0 && d <= 6).toSet();
+  for (var i = 0; i < 8; i++) {
+    final day = DateTime(n.year, n.month, n.day + i);
+    final candidate = DateTime(day.year, day.month, day.day, hh, mm);
+    if (!candidate.isAfter(n)) continue;
+    if (days.isEmpty || days.contains(candidate.weekday % 7)) return candidate;
+  }
+  return null;
+}
+
 /// "Doble click en el botón 2 de Dial", "Movimiento (2 sensores)", "19:30 · L–V",
 /// "Cada 15 min · 08–22 h", "Manual".
 String triggerPhrase(Automation a, DevicesService devices) {

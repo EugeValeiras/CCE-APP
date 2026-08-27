@@ -7,6 +7,7 @@ import '../services/devices_service.dart';
 import '../services/socket_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/section_header.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/time_format.dart';
 import 'history/event_grouping.dart';
@@ -74,12 +75,16 @@ class _Entry {
   final EventGroup? group;
 }
 
+/// Historial de la casa: filas de [EventRow.kHeight] con riel de hora en
+/// cifras tabulares, ícono coloreado por semántica, frase y un metadato a la
+/// derecha, separadas por hairline. Sin card por evento: en una pantalla
+/// entran 13 eventos en vez de 8.
 class HistoryScreen extends StatefulWidget {
   final ServerConfig config;
   final DevicesService devices;
 
-  /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ el
-  /// historial del tablet queda idéntico.
+  /// Conservado por compatibilidad con los call-sites (phone/tablet); el
+  /// render es el mismo en ambos.
   final bool neo;
   const HistoryScreen({
     super.key,
@@ -113,7 +118,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _api = ApiService(widget.config);
     _scroll.addListener(_onScroll);
-    // Ticker de 30 s: re-renderiza los tiempos relativos ("hace 5 min").
+    // Ticker de 30 s: re-renderiza los headers de día al cruzar medianoche.
     _ticker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted && _items.isNotEmpty) setState(() {});
     });
@@ -230,18 +235,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  /// Pipeline: items → sin el log del teléfono → filtro → grupos adyacentes
-  /// → headers de día.
+  /// Pipeline: items → sin el log del teléfono → sin la telemetría repetida
+  /// del robot → filtro → grupos adyacentes → headers de día.
   ///
   /// UNA llamada = UNA entrada (CCE#24): de los cinco o seis eventos que deja
   /// una llamada sobrevive sólo el `phone:call-state` de fin, que es el que
   /// trae el veredicto; el resto lo saca [isCallLogNoise] ANTES del filtro,
-  /// para que "Todos" y "Teléfono" cuenten la misma historia.
+  /// para que "Todos" y "Teléfono" cuenten la misma historia. Lo mismo con el
+  /// latido del robot ([stripRepeatedTelemetry]): queda el cambio, no el eco.
   List<_Entry> _buildEntries() {
-    final filtered = _items
-        .where((e) => !isCallLogNoise(e))
-        .where(_filter.accepts)
-        .toList();
+    final filtered = stripRepeatedTelemetry(
+      _items.where((e) => !isCallLogNoise(e)).toList(),
+      widget.devices,
+    ).where(_filter.accepts).toList();
     final groups = groupEvents(filtered, widget.devices);
     final out = <_Entry>[];
     String? currentDay;
@@ -265,39 +271,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildFilters() {
-    // Diseño glass: chips scrolleables SIEMPRE (phone y tablet), con glow en
-    // el chip activo. La lista de filtros (incl. 'Alarma') no se altera.
+    // Chips scrolleables (phone y tablet). Los bordes se DESVANECEN en vez de
+    // cortar el chip que queda a medias contra el margen.
     return SizedBox(
-      height: 54,
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        children: HistoryFilter.values.map((f) {
-          final selected = f == _filter;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            // Filtro seleccionado = fill de acento + borde de acento. Antes el
-            // fondo era el MISMO color en ambos estados y la diferencia la
-            // llevaba una sombra: el estado activo de un filtro tiene que
-            // leerse de un vistazo, no adivinarse por el relieve.
-            child: ChoiceChip(
-              label: Text(f.label),
-              selected: selected,
-              showCheckmark: false,
-              onSelected: (_) => setState(() => _filter = f),
-              shape: const StadiumBorder(),
-              backgroundColor: CceColors.surface,
-              selectedColor: CceColors.accentWash,
-              labelStyle: CceText.label.copyWith(
-                color: selected ? CceColors.accent : CceColors.textSecondary,
+      height: 56,
+      child: _FadeEdges(
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.symmetric(
+              horizontal: CceSpace.lg, vertical: CceSpace.md),
+          children: HistoryFilter.values.map((f) {
+            final selected = f == _filter;
+            return Padding(
+              padding: EdgeInsets.only(right: CceSpace.sm),
+              // Filtro seleccionado = fill de acento + borde de acento: el
+              // estado activo de un filtro tiene que leerse de un vistazo.
+              child: ChoiceChip(
+                label: Text(f.label),
+                selected: selected,
+                showCheckmark: false,
+                onSelected: (_) => setState(() => _filter = f),
+                shape: const StadiumBorder(),
+                backgroundColor: CceColors.surface,
+                selectedColor: CceColors.accentWash,
+                labelStyle: CceText.label.copyWith(
+                  color: selected ? CceColors.accent : CceColors.textSecondary,
+                ),
+                side: BorderSide(
+                  color: selected ? CceColors.accent : CceColors.stroke,
+                  width: 1,
+                ),
               ),
-              side: BorderSide(
-                color: selected ? CceColors.accent : CceColors.stroke,
-                width: 1,
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -311,24 +318,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
             width: 22,
             height: 22,
             child: CircularProgressIndicator(
-                strokeWidth: 2, color: _Glass.accentBright),
+                strokeWidth: 2, color: CceColors.textTertiary),
           ),
         ),
       );
     }
     if (!_eventsEnabled && _items.isEmpty) {
-      return _EmptyState(
-        icon: CceIcon(CceIcons.history,
-            size: 48, color: _Glass.accent.withValues(alpha: 0.5)),
+      return const _EmptyState(
         title: 'El historial está desactivado en el servidor',
         caption: 'Activá la página de eventos en la configuración del '
             'servidor para ver la actividad de la casa.',
       );
     }
     if (_items.isEmpty) {
-      return _EmptyState(
-        icon: CceIcon(CceIcons.history,
-            size: 48, color: _Glass.accent.withValues(alpha: 0.5)),
+      return const _EmptyState(
         title: 'Sin actividad todavía',
         caption: 'Los eventos de luces, sensores, automatizaciones, alarma y '
             'llamadas van a aparecer acá.',
@@ -336,11 +339,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
     // Hay eventos pero el filtro no matchea ninguno.
     return _EmptyState(
-      icon: CceIcon(CceIcons.history,
-          size: 48, color: _Glass.accent.withValues(alpha: 0.5)),
       title: 'Sin eventos de ${_filter.label.toLowerCase()} hoy',
       action: TextButton(
-        style: TextButton.styleFrom(foregroundColor: _Glass.accentBright),
+        style: TextButton.styleFrom(foregroundColor: CceColors.accent),
         onPressed: () => setState(() => _filter = HistoryFilter.all),
         child: const Text('Ver todos'),
       ),
@@ -350,155 +351,94 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final entries = _buildEntries();
-    final neo = widget.neo;
     return Scaffold(
-      backgroundColor: _Glass.bgBase,
+      backgroundColor: CceColors.bg,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        centerTitle: false,
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            const Text(
-              'Historial',
-              style: TextStyle(
-                color: CceText.titleInk,
-                fontSize: 22,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.2,
-                shadows: CceText.embossShadows,
-              ),
-            ),
-            if (_liveMode) ...[
-              const SizedBox(width: 10),
-              const _LivePulse(),
-            ],
-          ],
-        ),
+        titleSpacing: CceSpace.lg,
+        title: const Text('Historial', style: CceText.title),
         actions: [
-          _LiveToggleButton(enabled: _liveMode, onTap: _toggleLive),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: _GlassIconButton(
-              icon: Icons.delete_sweep_outlined,
-              tooltip: 'Limpiar',
+          _LivePill(enabled: _liveMode, onTap: _toggleLive),
+          SizedBox(width: CceSpace.xs),
+          IconButton(
+            tooltip: 'Limpiar',
+            onPressed: _items.isEmpty ? null : _clearItems,
+            icon: CceIcon(
+              CceIcons.trash,
+              size: 20,
               color: _items.isEmpty
-                  ? Colors.white.withValues(alpha: 0.20)
-                  : _Glass.iconBtn,
-              onPressed: _items.isEmpty ? null : _clearItems,
+                  ? CceColors.textMuted
+                  : CceColors.textSecondary,
+              emboss: false,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(left: 2, right: 8),
-            child: _GlassIconButton(
-              icon: Icons.refresh,
-              tooltip: 'Recargar',
-              color: _Glass.iconBtn,
-              onPressed: _refresh,
-            ),
+          IconButton(
+            tooltip: 'Recargar',
+            onPressed: _refresh,
+            icon: const CceIcon(CceIcons.refreshCw,
+                size: 20, color: CceColors.textSecondary, emboss: false),
           ),
+          SizedBox(width: CceSpace.sm),
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0.35, -1.1),
-                  radius: 1.25,
-                  colors: [
-                    _Glass.glowColor.withValues(alpha: 0.35),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.6],
-                ),
-              ),
+          _buildFilters(),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refresh,
+              color: CceColors.textSecondary,
+              backgroundColor: CceColors.surfaceHigh,
+              child: entries.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [_buildEmpty()],
+                    )
+                  : ListView.builder(
+                      controller: _scroll,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                          CceSpace.lg, 0, CceSpace.lg, CceSpace.xl),
+                      itemCount: entries.length + (_hasMore ? 1 : 0),
+                      itemBuilder: (context, i) {
+                        if (i >= entries.length) {
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: CceSpace.lg),
+                            child: const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: CceColors.textTertiary),
+                              ),
+                            ),
+                          );
+                        }
+                        final entry = entries[i];
+                        final header = entry.headerLabel;
+                        if (header != null) {
+                          // El primer header pega arriba (los chips ya
+                          // respiran); los siguientes separan el día.
+                          return SectionHeader(
+                            title: header,
+                            padding: i == 0
+                                ? EdgeInsets.fromLTRB(
+                                    CceSpace.xs, 0, CceSpace.xs, CceSpace.xs)
+                                : EdgeInsets.fromLTRB(CceSpace.xs, CceSpace.xl,
+                                    CceSpace.xs, CceSpace.xs),
+                          );
+                        }
+                        final g = entry.group!;
+                        return EventRow(
+                          group: g,
+                          devices: widget.devices,
+                          expanded: _expanded.contains(g.latest.id),
+                          onToggleExpand: () => _toggleExpanded(g),
+                        );
+                      },
+                    ),
             ),
-          ),
-          Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(-0.9, 1.0),
-                  radius: 1.0,
-                  colors: [
-                    _Glass.glowColor2.withValues(alpha: 0.20),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-          ),
-          Column(
-            children: [
-              _buildFilters(),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refresh,
-                  color: _Glass.accentBright,
-                  backgroundColor: const Color(0xFF12161F),
-                  child: entries.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [_buildEmpty()],
-                        )
-                      : ListView.separated(
-                          controller: _scroll,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-                          itemCount: entries.length + (_hasMore ? 1 : 0),
-                          separatorBuilder: (_, idx) =>
-                              const SizedBox(height: 8),
-                          itemBuilder: (context, i) {
-                            if (i >= entries.length) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 18),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: _Glass.accentBright),
-                                  ),
-                                ),
-                              );
-                            }
-                            final entry = entries[i];
-                            final header = entry.headerLabel;
-                            if (header != null) {
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(4, 16, 4, 4),
-                                child: Text(
-                                  header.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: _Glass.textMuted,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 1.0,
-                                  ),
-                                ),
-                              );
-                            }
-                            final g = entry.group!;
-                            return _GroupRow(
-                              group: g,
-                              devices: widget.devices,
-                              expanded: _expanded.contains(g.latest.id),
-                              onToggleExpand: () => _toggleExpanded(g),
-                              neo: neo,
-                            );
-                          },
-                        ),
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -506,22 +446,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-/// Fila de grupo: presentación humanizada + pill ×N + chevron expandible.
-class _GroupRow extends StatelessWidget {
+/// Fila de un grupo de eventos: riel de hora + ícono semántico + frase +
+/// metadato, con pill ×N y chevron cuando el grupo colapsa varios eventos.
+/// Pública para poder testear el layout (una fila = [kHeight]).
+class EventRow extends StatelessWidget {
   final EventGroup group;
   final DevicesService devices;
   final bool expanded;
   final VoidCallback onToggleExpand;
 
-  final bool neo;
-
-  const _GroupRow({
+  const EventRow({
+    super.key,
     required this.group,
     required this.devices,
     required this.expanded,
     required this.onToggleExpand,
-    this.neo = false,
   });
+
+  /// Alto de la fila (sin expandir): antes ~82 con card; ahora 52.
+  static const double kHeight = 52;
+
+  /// Ancho del riel de hora ("12:06" en cifras tabulares) + su separación.
+  static const double _rail = 44;
+  static const double _icon = 20;
 
   @override
   Widget build(BuildContext context) {
@@ -529,149 +476,116 @@ class _GroupRow extends StatelessWidget {
     final isLive = group.latest.id.startsWith('live-');
     final grouped = group.count > 1;
 
-    // Color del badge/pill: respeta el color semántico del presenter (danger,
-    // ok, warm, info, motion, contact, …) y sólo cae a azul glass cuando el
-    // presenter usó un tono neutro/genérico (sin semántica de estado).
-    final bool semantic =
-        r.color != CceColors.textTertiary && r.color != CceColors.textSecondary;
-    final Color c = semantic ? r.color : _Glass.accent;
-
-    // Fila = "elemento del home apagado": neoBase + relieve neumórfico suave
-    // (CceShadows.neo, FUERA del clip), hairline sutil y padding fino.
-    final card = DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(_Glass.cardRadius),
-        boxShadow: CceShadows.neo(blur: 10, offset: 4),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(_Glass.cardRadius),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(
-            onTap: grouped ? onToggleExpand : null,
-            child: Container(
-              decoration: BoxDecoration(
-                color: _Glass.cardFill,
-                border: Border.all(color: _Glass.cardBorder, width: 1.0),
-                borderRadius: BorderRadius.circular(_Glass.cardRadius),
-              ),
-              padding: const EdgeInsets.fromLTRB(14, 11, 12, 11),
-              child: _buildBody(c, r, isLive, grouped),
-            ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: grouped ? onToggleExpand : null,
+        child: Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: CceColors.strokeSoft)),
           ),
-        ),
-      ),
-    );
-    return card;
-  }
-
-  Widget _buildBody(
-    Color c,
-    EventPresentation r,
-    bool isLive,
-    bool grouped,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            // El relieve neumorfico ya lo aplican el IconTheme global (Icon de
-            // Material/Mdi) y el ghost interno de CceIcon -> sin wrapper para
-            // evitar doble emboss. r.icon no fija color propio: el tinte
-            // semantico `c` se inyecta via IconTheme para Material y CceIcon.
-            IconTheme.merge(
-              data: IconThemeData(color: c),
-              child: r.icon,
-            ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: kHeight,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            r.title,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 2,
-                          ),
-                        ),
-                        if (grouped) ...[
-                          const SizedBox(width: 6),
-                          _CountPill(count: group.count, color: c),
-                        ],
-                      ],
+                    SizedBox(
+                      width: _rail,
+                      child: Text(
+                        TimeFormat.hm(group.latest.timestamp),
+                        style: CceText.dataCaption,
+                      ),
                     ),
-                    if (r.subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        r.subtitle!,
-                        style: const TextStyle(
-                            color: _Glass.textMuted, fontSize: 12),
+                    // r.icon no fija color propio: el tinte semántico se
+                    // inyecta vía IconTheme.
+                    IconTheme.merge(
+                      data: IconThemeData(color: r.color, size: _icon),
+                      child: r.icon,
+                    ),
+                    SizedBox(width: CceSpace.md),
+                    Expanded(
+                      child: Text(
+                        r.title,
+                        style: CceText.body,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                    ),
+                    if (r.subtitle != null) ...[
+                      SizedBox(width: CceSpace.sm),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 140),
+                        child: Text(
+                          r.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.right,
+                          style: CceText.caption
+                              .copyWith(color: CceColors.textTertiary),
+                        ),
+                      ),
+                    ],
+                    if (grouped) ...[
+                      SizedBox(width: CceSpace.sm),
+                      _CountPill(count: group.count),
+                      SizedBox(width: CceSpace.xs),
+                      AnimatedRotation(
+                        turns: expanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOutCubic,
+                        child: const CceIcon(CceIcons.chevronDown,
+                            size: 16,
+                            color: CceColors.textTertiary,
+                            emboss: false),
+                      ),
+                    ],
+                    if (isLive) ...[
+                      SizedBox(width: CceSpace.sm),
+                      const StatusDot(CceColors.ok,
+                          size: 6, pulse: true, semanticLabel: 'En vivo'),
                     ],
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              if (isLive) ...[
-                const StatusDot(_Glass.live,
-                    size: 6, pulse: true, semanticLabel: 'En vivo'),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                TimeFormat.relative(group.latest.timestamp),
-                style: const TextStyle(
-                    color: _Glass.accentBright,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600),
-              ),
-              if (grouped) ...[
-                const SizedBox(width: 6),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: const CceIcon(CceIcons.chevronDown,
-                      size: 16, color: _Glass.textMuted),
+              if (grouped && expanded)
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: _rail + _icon + CceSpace.md,
+                    bottom: CceSpace.sm,
+                  ),
+                  child: Column(
+                    children: [
+                      for (final e in group.events)
+                        Padding(
+                          padding: EdgeInsets.only(bottom: CceSpace.xs),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  presentEvent(e, devices).title,
+                                  style: CceText.caption,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              SizedBox(width: CceSpace.sm),
+                              Text(
+                                TimeFormat.hms(e.timestamp),
+                                style: CceText.dataCaption,
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ],
             ],
           ),
-          if (grouped && expanded) ...[
-            const SizedBox(height: 8),
-            for (final e in group.events)
-              Padding(
-                padding: const EdgeInsets.only(left: 38, top: 4),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        presentEvent(e, devices).title,
-                        style: const TextStyle(
-                            color: _Glass.textMuted, fontSize: 13),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      TimeFormat.hms(e.timestamp),
-                      style: const TextStyle(
-                          color: _Glass.textMuted, fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ],
-      );
+        ),
+      ),
+    );
   }
 }
 
@@ -683,8 +597,7 @@ class _GroupRow extends StatelessWidget {
 /// ícono de la fila ya dice de qué se trata; esto sólo dice cuántas veces.
 class _CountPill extends StatelessWidget {
   final int count;
-  final Color color;
-  const _CountPill({required this.count, required this.color});
+  const _CountPill({required this.count});
 
   @override
   Widget build(BuildContext context) {
@@ -708,14 +621,41 @@ class _CountPill extends StatelessWidget {
   }
 }
 
+/// Desvanece el contenido contra los bordes laterales (chips que quedan a
+/// medias contra el margen), en vez de cortarlos.
+class _FadeEdges extends StatelessWidget {
+  const _FadeEdges({required this.child});
+
+  final Widget child;
+  static const double _fade = 24;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (rect) {
+        final f = (_fade / rect.width).clamp(0.0, 0.5);
+        return LinearGradient(
+          colors: const [
+            Color(0x00000000),
+            Color(0xFF000000),
+            Color(0xFF000000),
+            Color(0x00000000),
+          ],
+          stops: [0, f, 1 - f, 1],
+        ).createShader(rect);
+      },
+      blendMode: BlendMode.dstIn,
+      child: child,
+    );
+  }
+}
+
 class _EmptyState extends StatelessWidget {
-  final Widget icon;
   final String title;
   final String? caption;
   final Widget? action;
 
   const _EmptyState({
-    required this.icon,
     required this.title,
     this.caption,
     this.action,
@@ -729,31 +669,27 @@ class _EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            icon,
-            const SizedBox(height: 16),
+            const CceIcon(CceIcons.history,
+                size: 48, color: CceColors.textMuted, emboss: false),
+            SizedBox(height: CceSpace.lg),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.90),
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+              style: CceText.body.copyWith(fontWeight: FontWeight.w600),
             ),
             if (caption != null) ...[
-              const SizedBox(height: 6),
+              SizedBox(height: CceSpace.sm),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
+                padding: EdgeInsets.symmetric(horizontal: CceSpace.xxl),
                 child: Text(
                   caption!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: _Glass.textMuted, fontSize: 13),
+                  style: CceText.caption.copyWith(color: CceColors.textTertiary),
                 ),
               ),
             ],
             if (action != null) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: CceSpace.sm),
               action!,
             ],
           ],
@@ -763,176 +699,53 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-class _LiveToggleButton extends StatelessWidget {
+/// Toggle "EN VIVO": pill de acento (dot pulsante) cuando escucha el socket;
+/// pill neutra con ▶ cuando no. Un solo control, un solo estado visible.
+class _LivePill extends StatelessWidget {
   final bool enabled;
   final VoidCallback onTap;
-  const _LiveToggleButton({required this.enabled, required this.onTap});
+  const _LivePill({required this.enabled, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 4),
-      child: Tooltip(
-        message: enabled ? 'Pausar vivo' : 'Ver en vivo',
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(CceRadii.pill),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              // Neumórfico: activo = hundido (neoInset) + verde "live";
-              // inactivo = elevado (neo) + gris.
-              decoration: BoxDecoration(
-                color: CceColors.neoBase,
-                borderRadius: BorderRadius.circular(CceRadii.pill),
-                boxShadow: enabled
-                    ? CceShadows.neoInset(blur: 6, offset: 2)
-                    : CceShadows.neo(blur: 8, offset: 3),
+    return Tooltip(
+      message: enabled ? 'Pausar vivo' : 'Ver en vivo',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            height: 32,
+            padding: EdgeInsets.symmetric(horizontal: CceSpace.md),
+            decoration: BoxDecoration(
+              color: enabled ? CceColors.accentWash : CceColors.surface,
+              borderRadius: BorderRadius.circular(CceRadii.pill),
+              border: Border.all(
+                color: enabled ? CceColors.accent : CceColors.stroke,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    enabled
-                        ? Icons.fiber_manual_record
-                        : Icons.play_circle_outline,
-                    color: enabled ? _Glass.live : _Glass.textMuted,
-                    size: 14,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (enabled)
+                  const StatusDot(CceColors.accent, size: 6, pulse: true)
+                else
+                  const CceIcon(CceIcons.play,
+                      size: 12, color: CceColors.textTertiary, emboss: false),
+                SizedBox(width: CceSpace.sm),
+                Text(
+                  'EN VIVO',
+                  style: CceText.section.copyWith(
+                    color: enabled ? CceColors.accent : CceColors.textTertiary,
                   ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'LIVE',
-                    style: TextStyle(
-                      color: enabled ? CceColors.neoText : _Glass.textMuted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _LivePulse extends StatefulWidget {
-  const _LivePulse();
-  @override
-  State<_LivePulse> createState() => _LivePulseState();
-}
-
-class _LivePulseState extends State<_LivePulse> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))
-      ..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) {
-        final v = _ctrl.value;
-        return Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: _Glass.live,
-            boxShadow: [
-              BoxShadow(
-                color: _Glass.live.withValues(alpha: 0.4 + v * 0.4),
-                blurRadius: 8 + v * 6,
-                spreadRadius: 1 + v * 1.5,
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-/// Tokens de la estética "elemento del home APAGADO": neumórfico oscuro, fino,
-/// monocromo (sin glass-azul). Autocontenidos en history_screen.dart; no tocan
-/// cce_tokens ni afectan otras vistas. (Se conservan los nombres de campo para
-/// no reescribir todos los call-sites; cambian sólo los valores.)
-class _Glass {
-  _Glass._();
-
-  // FONDO = home: neoBase plano. Los "glow" se igualan a neoBase → al
-  // mezclarse con el fondo quedan imperceptibles (sin viñeta oscura).
-  static const Color bgBase = CceColors.neoBase;
-  static const Color glowColor = CceColors.neoBase;
-  static const Color glowColor2 = CceColors.neoBase;
-
-  // ACENTOS NEUTROS (como una card apagada del home).
-  static const Color accent = CceColors.neoText;
-  static const Color accentBright = CceColors.neoTextSub; // time / spinner
-  static const Color live = CceColors.ok; // único acento: estado "en vivo"
-
-  // TEXTO
-  static const Color textMuted = CceColors.neoTextSub;
-  static const Color iconBtn = CceColors.neoTextSub;
-
-  // CARD off-home: fill = fondo + relieve neo (CceShadows.neo en la fila);
-  // radio un poco más fino.
-  // Tokens del sistema, no valores propios: esta pantalla tenía su radio (18)
-  // y su hairline (0x12FFFFFF) paralelos a los globales, con la desviación
-  // justa para notarse al navegar entre pantallas.
-  static const double cardRadius = CceRadii.card;
-  static const Color cardFill = CceColors.surface;
-  static const Color cardBorder = CceColors.stroke;
-}
-
-/// Botón circular neumórfico (raised) para los actions del AppBar
-/// (limpiar / refresh), al tono de un elemento del home apagado.
-class _GlassIconButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final Color color;
-  final VoidCallback? onPressed;
-
-  const _GlassIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.color,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onPressed != null;
-    return Container(
-      width: 40,
-      height: 40,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: CceColors.neoBase,
-        boxShadow: enabled ? CceShadows.neo(blur: 8, offset: 3) : null,
-      ),
-      child: IconButton(
-        iconSize: 20,
-        padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
-        icon: Icon(icon, color: color),
-        tooltip: tooltip,
-        onPressed: onPressed,
       ),
     );
   }

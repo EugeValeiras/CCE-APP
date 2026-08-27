@@ -324,9 +324,10 @@ class _AutomationsViewState extends State<AutomationsView> {
     return SliverGrid(
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 420,
-        mainAxisExtent: 116,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
+        mainAxisExtent: AutomationCard.kHeight,
+        // = CceSpace.md (literal: el delegate es const).
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
       delegate: SliverChildBuilderDelegate(
         (context, i) {

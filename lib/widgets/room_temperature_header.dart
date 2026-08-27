@@ -33,12 +33,17 @@ class RoomTemperatureHeader extends StatefulWidget {
   final bool compact;
   final bool neo;
 
+  /// Tercera columna con las luces encendidas de toda la casa (hero de la
+  /// home). Sólo aplica cuando el header cae a [TemperatureSummaryCard].
+  final bool showLightsOn;
+
   const RoomTemperatureHeader({
     super.key,
     required this.service,
     this.room,
     this.compact = false,
     this.neo = false,
+    this.showLightsOn = false,
   });
 
   @override
@@ -105,6 +110,7 @@ class _RoomTemperatureHeaderState extends State<RoomTemperatureHeader> {
           compact: widget.compact,
           neo: widget.neo,
           selectedSensorId: selectedId,
+          showLightsOn: widget.showLightsOn,
           onLongPress: _openPicker,
         );
       },

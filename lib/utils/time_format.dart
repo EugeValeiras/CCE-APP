@@ -63,6 +63,47 @@ abstract final class TimeFormat {
     return '${_two(local.day)}/${_two(local.month)}';
   }
 
+  /// Momento FUTURO en escala: "hoy 19:04", "mañana 02:00", "lun 07:30" (<7
+  /// días), "12/06 07:30". Para "Próxima …" de una automatización programada.
+  static String upcoming(DateTime ts, {DateTime? now}) {
+    final n = now ?? DateTime.now();
+    final local = ts.toLocal();
+    if (_sameDay(local, n)) return 'hoy ${hm(local)}';
+    if (_sameDay(local, n.add(const Duration(days: 1)))) {
+      return 'mañana ${hm(local)}';
+    }
+    if (local.difference(n).inDays < 7) {
+      return '${_daysAbbr[local.weekday % 7]} ${hm(local)}';
+    }
+    return '${_two(local.day)}/${_two(local.month)} ${hm(local)}';
+  }
+
+  /// "desde cuándo" un estado se mantiene: "desde las 08:02" (hoy), "desde
+  /// ayer 22:14", "desde el lun 07:30" (<7 días), "desde el 12/06".
+  static String since(DateTime ts, {DateTime? now}) {
+    final n = now ?? DateTime.now();
+    final local = ts.toLocal();
+    if (_sameDay(local, n)) return 'desde las ${hm(local)}';
+    if (_sameDay(local, n.subtract(const Duration(days: 1)))) {
+      return 'desde ayer ${hm(local)}';
+    }
+    if (n.difference(local).inDays < 7) {
+      return 'desde el ${_daysAbbr[local.weekday % 7]} ${hm(local)}';
+    }
+    return 'desde el ${_two(local.day)}/${_two(local.month)}';
+  }
+
+  /// [relative] convertido en complemento de una oración: "ahora", "hace 5
+  /// min", "a las 14:32", "ayer 23:10", "el mar 14:32", "el 12/06". Para
+  /// "Se ejecutó …".
+  static String relativeInSentence(DateTime ts, {DateTime? now}) {
+    final r = relative(ts, now: now);
+    if (r == 'ahora' || r.startsWith('hace') || r.startsWith('ayer')) return r;
+    if (r.contains('/')) return 'el $r';
+    if (RegExp(r'^\d').hasMatch(r)) return 'a las $r';
+    return 'el $r';
+  }
+
   /// "14:32"
   static String hm(DateTime ts) {
     final local = ts.toLocal();

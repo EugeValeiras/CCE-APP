@@ -10,7 +10,6 @@ import '../../theme/components/cce_switch.dart';
 import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
 import 'automation_phrases.dart';
-import 'run_automation.dart';
 
 /// Color por tipo de trigger.
 Color triggerColor(Automation a) {
@@ -122,8 +121,13 @@ IconData? _mdiFromString(String name) {
 }
 
 /// Card de automatización: ícono 44 en círculo color-de-trigger, nombre,
-/// frase trigger → acciones, pill de condición, "Última vez", switch de
-/// enabled y botón ▶ de prueba. Glow del color del trigger al ejecutarse.
+/// frase "trigger → acción" en una línea (con pill de condición), y abajo el
+/// metadato temporal en cifras tabulares ("Próxima hoy 19:04", "Se ejecutó
+/// hace 12 min"). UN solo control: el switch de enabled. Ejecutar ahora vive
+/// en el menú de long-press, junto con editar/duplicar/eliminar.
+///
+/// Desactivada se ATENÚA además de mudarse de sección: antes se veía idéntica
+/// a una activa, sólo que en otra lista.
 class AutomationCard extends StatefulWidget {
   const AutomationCard({
     super.key,
@@ -138,6 +142,10 @@ class AutomationCard extends StatefulWidget {
     required this.onConfirmDelete,
     required this.onCancelDelete,
   });
+
+  /// Alto de la card: 12 + fila de 44 + 8 + metadato 17 + 12, con aire.
+  /// Medida de componente (como `RoomCard.kHeight`).
+  static const double kHeight = 96;
 
   final Automation automation;
   final AutomationsService service;
@@ -188,15 +196,24 @@ class _AutomationCardState extends State<AutomationCard>
     super.dispose();
   }
 
-  String _line2() {
+  /// Metadato temporal: la próxima ejecución si está programada a hora fija;
+  /// si no, cuándo se ejecutó por última vez. Vacío si no hay nada que decir
+  /// (la línea igual reserva su alto: todas las cards miden lo mismo).
+  String _meta() {
     final a = widget.automation;
     final last = widget.lastExecuted;
-    if (last != null && DateTime.now().difference(last).inSeconds < 60) {
-      final s = DateTime.now().difference(last).inSeconds;
-      return 'Ejecutada hace $s s';
+    final now = DateTime.now();
+    if (last != null && now.difference(last).inSeconds < 60) {
+      return 'Se ejecutó ahora';
     }
-    return '${triggerPhrase(a, widget.devices)} → '
-        '${actionsPhrase(a, widget.devices)}';
+    if (a.enabled) {
+      final next = nextScheduleRun(a.trigger, now: now);
+      if (next != null) return 'Próxima ${TimeFormat.upcoming(next, now: now)}';
+    }
+    if (last != null) {
+      return 'Se ejecutó ${TimeFormat.relativeInSentence(last, now: now)}';
+    }
+    return '';
   }
 
   @override
@@ -209,7 +226,7 @@ class _AutomationCardState extends State<AutomationCard>
         : 0.0;
 
     final cond = conditionsPhrase(a, widget.devices);
-    final last = widget.lastExecuted;
+    final enabled = a.enabled;
 
     Widget body;
     if (widget.confirmingDelete) {
@@ -220,11 +237,7 @@ class _AutomationCardState extends State<AutomationCard>
               '¿Eliminar "${a.name}"?',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: CceColors.textPrimary,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
+              style: CceText.body.copyWith(fontWeight: FontWeight.w600),
             ),
           ),
           TextButton(
@@ -232,12 +245,12 @@ class _AutomationCardState extends State<AutomationCard>
             child: const Text('Cancelar',
                 style: TextStyle(color: CceColors.textSecondary)),
           ),
-          const SizedBox(width: 4),
+          SizedBox(width: CceSpace.xs),
           FilledButton(
             onPressed: widget.onConfirmDelete,
             style: FilledButton.styleFrom(
               backgroundColor: CceColors.danger,
-              foregroundColor: Colors.white,
+              foregroundColor: CceColors.textPrimary,
             ),
             child: const Text('Eliminar'),
           ),
@@ -252,93 +265,85 @@ class _AutomationCardState extends State<AutomationCard>
             a.name.isEmpty ? 'Sin nombre' : a.name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: CceColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
+            style: CceText.headline.copyWith(
+              color: enabled ? CceColors.textPrimary : CceColors.textSecondary,
             ),
           ),
-          const SizedBox(height: 3),
+          SizedBox(height: CceSpace.xs),
           Row(
             children: [
               Flexible(
                 child: Text(
-                  _line2(),
+                  '${triggerPhrase(a, widget.devices)} → '
+                  '${actionsPhrase(a, widget.devices)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(color: CceColors.textSecondary, fontSize: 13),
+                  style: CceText.caption.copyWith(
+                    color: enabled
+                        ? CceColors.textSecondary
+                        : CceColors.textTertiary,
+                  ),
                 ),
               ),
               if (cond.isNotEmpty) ...[
-                const SizedBox(width: 6),
+                SizedBox(width: CceSpace.sm),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: CceSpace.sm, vertical: 2),
                   decoration: BoxDecoration(
                     color: CceColors.surfaceHigh,
                     borderRadius: BorderRadius.circular(CceRadii.pill),
                   ),
                   child: Text(
                     cond,
-                    style: const TextStyle(
-                        color: CceColors.textTertiary,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600),
+                    style: CceText.section.copyWith(letterSpacing: 0),
                   ),
                 ),
               ],
             ],
           ),
-          if (last != null) ...[
-            const SizedBox(height: 3),
-            Text(
-              'Última vez: ${TimeFormat.relative(last)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  const TextStyle(color: CceColors.textTertiary, fontSize: 11),
-            ),
-          ],
         ],
       );
 
-      body = Row(
+      body = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Opacity(
-            opacity: a.enabled ? 1 : 0.45,
-            child: Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color.withValues(alpha: 0.18),
+          Row(
+            children: [
+              // Desactivada: el círculo pierde el color del trigger y el
+              // glyph cae a terciario.
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: enabled
+                      ? color.withValues(alpha: 0.18)
+                      : CceColors.surfaceHigh,
+                ),
+                child: automationIcon(a.icon,
+                    size: 22,
+                    color: enabled ? color : CceColors.textTertiary),
               ),
-              child: automationIcon(a.icon, size: 22, color: color),
-            ),
+              SizedBox(width: CceSpace.md),
+              Expanded(child: texts),
+              SizedBox(width: CceSpace.sm),
+              // CceSwitch, no Switch.adaptive: en iOS `adaptive` cae al
+              // CupertinoSwitch verde e ignora el switchTheme, así que este
+              // era el único control de la app fuera de la paleta.
+              CceSwitch(
+                value: a.enabled,
+                onChanged: widget.onToggleEnabled,
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Opacity(opacity: a.enabled ? 1 : 0.45, child: texts),
-          ),
-          const SizedBox(width: 4),
-          Opacity(
-            opacity: a.enabled ? 1 : 0.45,
-            child: RunAutomationButton(
-              automation: a,
-              service: widget.service,
-              compact: true,
-            ),
-          ),
-          const SizedBox(width: 4),
-          // CceSwitch, no Switch.adaptive: en iOS `adaptive` cae al
-          // CupertinoSwitch verde e ignora el switchTheme, así que este era el
-          // único control de la app fuera de la paleta.
-          CceSwitch(
-            value: a.enabled,
-            onChanged: widget.onToggleEnabled,
+          Text(
+            _meta(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: CceText.dataCaption,
           ),
         ],
       );
@@ -368,7 +373,8 @@ class _AutomationCardState extends State<AutomationCard>
           CceCard(
             radius: CceRadii.tile,
             neo: true,
-            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            padding: EdgeInsets.fromLTRB(
+                CceSpace.lg, CceSpace.md, CceSpace.md, CceSpace.md),
             onTap: widget.confirmingDelete ? null : widget.onTap,
             onLongPress: widget.confirmingDelete ? null : widget.onLongPress,
             child: body,
