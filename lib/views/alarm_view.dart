@@ -11,6 +11,7 @@ import '../services/siren_service.dart';
 import '../services/notification_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../utils/time_format.dart';
 import 'active_alarm_view.dart';
 import 'settings_view.dart';
 import 'in_app_notification.dart';
@@ -41,6 +42,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   bool _isToggling = false;
   String? _error;
   AlarmEvent? _activeAlarm;
+
+  /// Desde cuándo la alarma está en su estado actual (último
+  /// `alarm:armed-changed` del event store; se pisa con cada cambio en vivo).
+  /// null = todavía no se sabe: la línea no se muestra.
+  DateTime? _armedSince;
 
   StreamSubscription? _alarmSub;
   StreamSubscription? _armedSub;
@@ -130,7 +136,10 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       _alarmSub = _socket.onAlarm.listen(_onAlarmTriggered);
       _armedSub = _socket.onArmedChanged.listen((armed) {
         if (!mounted) return;
-        setState(() => _isArmed = armed);
+        setState(() {
+          if (armed != _isArmed) _armedSince = DateTime.now();
+          _isArmed = armed;
+        });
         if (!armed && _activeAlarm != null) {
           _dismissAlarm();
         }
@@ -162,12 +171,37 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         _error = null;
         _isLoading = false;
       });
+      _fetchArmedSince();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _error = 'Sin conexion';
         _isLoading = false;
       });
+    }
+  }
+
+  /// "Desarmada desde las 08:02": el último cambio de armado que grabó el
+  /// event store. Best-effort: sin evento (o sin historial habilitado) la
+  /// línea simplemente no aparece.
+  Future<void> _fetchArmedSince() async {
+    final api = _api;
+    if (api == null) return;
+    try {
+      final page = await api.getEvents(
+        eventName: 'alarm:armed-changed',
+        channel: 'websocket',
+        limit: 1,
+      );
+      if (!mounted || page.items.isEmpty) return;
+      final last = page.items.first;
+      final ms = last.payload?['timestamp'];
+      final ts = ms is num
+          ? DateTime.fromMillisecondsSinceEpoch(ms.toInt())
+          : TimeFormat.parseEventTime(last.time);
+      setState(() => _armedSince = ts);
+    } catch (e) {
+      debugPrint('📱 [Flutter] Sin fecha de armado: $e');
     }
   }
 
@@ -184,6 +218,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _isArmed = result;
+        _armedSince = DateTime.now();
         _error = null;
       });
     } catch (e) {
@@ -327,10 +362,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             ),
             const SizedBox(width: 8),
             Text(
-              _config.isConfigured
-                  ? 'CCE Home'
-                  : 'Configurar servidor',
-              style: CceText.title.copyWith(fontSize: 18),
+              _config.isConfigured ? 'Alarma' : 'Configurar servidor',
+              style: CceText.title,
             ),
           ],
         ),
@@ -419,7 +452,6 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     final iconSize = isTablet ? 100.0 : 58.0;
     final labelSize = isTablet ? 26.0 : 17.0;
     final hintSize = isTablet ? 20.0 : 14.0;
-    final hostSize = isTablet ? 16.0 : 12.0;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -479,16 +511,26 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                   ),
                 ),
         ),
-        SizedBox(height: isTablet ? 48 : 32),
+        SizedBox(height: isTablet ? CceSpace.xxxl : CceSpace.xxl),
         Text(
-          'Toca para ${_isArmed ? 'desarmar' : 'armar'}',
-          style: TextStyle(color: CceColors.textTertiary, fontSize: hintSize),
+          'Tocá para ${_isArmed ? 'desarmar' : 'armar'}',
+          style: CceText.body.copyWith(
+            color: CceColors.textTertiary,
+            fontSize: hintSize,
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          _config.host,
-          style: TextStyle(color: Colors.white24, fontSize: hostSize),
-        ),
+        // Desde cuándo está así. El host del servidor que iba acá era
+        // diagnóstico: vive en Ajustes.
+        if (_armedSince != null) ...[
+          SizedBox(height: CceSpace.sm),
+          Text(
+            '${_isArmed ? 'Armada' : 'Desarmada'} '
+            '${TimeFormat.since(_armedSince!)}',
+            style: CceText.dataCaption.copyWith(
+              fontSize: isTablet ? 16 : 13,
+            ),
+          ),
+        ],
       ],
     );
   }
