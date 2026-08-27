@@ -5,14 +5,21 @@ import '../../models/phone_sms.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
-import '../../theme/mdi.dart';
 import '../../utils/time_format.dart';
+import '../../utils/vacuum_state.dart';
+import '../../utils/verb_labels.dart';
 import '../telephony/call_history_screen.dart' show formatCallDuration;
 import 'event_grouping.dart';
 import 'phone_events.dart';
 
 /// Presentación humanizada de un evento o grupo: ícono (sin color propio,
 /// lo tiñe la fila vía IconTheme), color de acento, título y subtítulo.
+///
+/// UN solo set de íconos (lucide, [CceIcons]) coloreado por semántica: el
+/// color dice qué clase de hecho es (ámbar = luz, azul = presencia, naranja
+/// = apertura, rojo = alarma/perdida, verde = ok), nunca decora. Y NUNCA se
+/// muestra un identificador crudo (`device:state-changed`): si no hay frase
+/// para un evento, se dice en castellano qué cambió.
 class EventPresentation {
   const EventPresentation({
     required this.icon,
@@ -27,13 +34,68 @@ class EventPresentation {
   final String? subtitle;
 }
 
-const Color _tempColor = Color(0xFFFF8A5C);
+/// Tamaño único de los glyphs del historial.
+const double _iconSize = 20;
+
+Widget _ic(String svg) => CceIcon(svg, size: _iconSize, emboss: false);
 
 String _deviceName(EventRecord e, DevicesService devices) {
   final device = resolveDevice(e, devices);
   if (device != null) return devices.displayName(device);
   final raw = rawDeviceId(e);
   return raw.isEmpty ? 'Dispositivo' : raw;
+}
+
+/// Claves de `state` que NO son un hecho de la casa: telemetría que el
+/// dispositivo re-emite entera con cada cambio (listas de opciones, resúmenes
+/// de limpieza, consumibles, id de correlación…). Se ignoran al describir un
+/// cambio genérico.
+const _telemetryKeys = {
+  'reachable',
+  'rooms',
+  'cleanSummary',
+  'consumables',
+  'fanSpeeds',
+  'cleanModes',
+  'timestamp',
+  'correlationId',
+};
+
+/// Etiqueta en castellano de una clave de estado. Reusa el catálogo de verbos
+/// (`fanSpeed` ↔ `setFanSpeed` = "Potencia") y completa con las claves que
+/// no son verbos.
+String _stateKeyLabel(String key) {
+  const own = {
+    'on': 'encendido',
+    'bri': 'brillo',
+    'hue': 'color',
+    'sat': 'color',
+    'ct': 'temperatura de color',
+    'battery': 'batería',
+    'volume': 'volumen',
+    'muted': 'silencio',
+    'input': 'entrada',
+    'channel': 'canal',
+    'app': 'app',
+    'mediaState': 'reproducción',
+    'vacuumActivity': 'actividad',
+    'vacuumState': 'estado',
+    'cleanMode': 'modo',
+    'fanSpeed': 'potencia',
+    'targetTemp': 'objetivo',
+    'currentTemp': 'temperatura',
+    'systemMode': 'modo',
+    'callState': 'llamada',
+    'signalBars': 'señal',
+    'lineActive': 'línea',
+  };
+  final o = own[key];
+  if (o != null) return o;
+  // 'fanSpeed' → 'setFanSpeed' → "Potencia".
+  final verb = 'set${key[0].toUpperCase()}${key.substring(1)}';
+  final v = kVerbLabels[verb];
+  if (v != null) return v.toLowerCase();
+  return key;
 }
 
 /// Humaniza un evento individual (copy sujeto → hecho, sin mayúsculas
@@ -45,7 +107,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     final name = (p['automationName'] ?? 'Alarma').toString();
     final msg = (p['message'] ?? '').toString();
     return EventPresentation(
-      icon: Icon(Mdi.alarmLight, size: 22),
+      icon: _ic(CceIcons.siren),
       color: CceColors.danger,
       title: 'Alarma: $name',
       subtitle: msg.isEmpty ? null : msg,
@@ -55,9 +117,9 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   if (e.eventName == 'alarm:armed-changed') {
     final armed = p['armed'] == true;
     return EventPresentation(
-      icon: Icon(armed ? Mdi.shield : Mdi.shieldOutline, size: 22),
-      color: armed ? CceColors.danger : CceColors.ok,
-      title: armed ? 'Alarma activada' : 'Alarma desactivada',
+      icon: _ic(armed ? CceIcons.alarmShield : CceIcons.shield),
+      color: armed ? CceColors.danger : CceColors.textTertiary,
+      title: armed ? 'Alarma armada' : 'Alarma desarmada',
     );
   }
 
@@ -70,22 +132,22 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     String subtitle;
     switch (trigger) {
       case 'schedule':
-        subtitle = 'Automatización · programada';
+        subtitle = 'programada';
       case 'manual':
-        subtitle = 'Automatización · manual';
+        subtitle = 'manual';
       case 'sensor':
         final sensorId = (p['sensorId'] ?? '').toString();
         final sensorDev = resolveDeviceId(sensorId, devices);
         subtitle = sensorDev != null
-            ? 'Automatización · ${devices.displayName(sensorDev)}'
-            : 'Automatización · por sensor';
+            ? 'por ${devices.displayName(sensorDev)}'
+            : 'por sensor';
       case '':
-        subtitle = 'Automatización';
+        subtitle = 'automatización';
       default:
-        subtitle = 'Automatización · $trigger';
+        subtitle = trigger;
     }
     return EventPresentation(
-      icon: const CceIcon(CceIcons.automations, size: 20),
+      icon: _ic(CceIcons.automations),
       color: CceColors.warm,
       title: name,
       subtitle: subtitle,
@@ -93,10 +155,26 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   }
 
   if (e.eventName == 'config:changed') {
-    return const EventPresentation(
-      icon: Icon(Icons.info_outline, size: 22),
+    return EventPresentation(
+      icon: _ic(CceIcons.settings),
       color: CceColors.info,
       title: 'Configuración actualizada',
+    );
+  }
+
+  if (e.eventName == 'device:command-result') {
+    // Acuse del backend a un comando de la app. Sólo el fallo es un hecho:
+    // el éxito ya se ve en el cambio de estado que sigue.
+    final name = _deviceName(e, devices);
+    final status = (p['status'] ?? '').toString();
+    final failed = status.isNotEmpty && status != 'confirmed';
+    return EventPresentation(
+      icon: _ic(failed ? CceIcons.wifiOff : CceIcons.check),
+      color: failed ? CceColors.danger : CceColors.textTertiary,
+      title: failed ? '$name no respondió' : '$name confirmó la orden',
+      subtitle: failed
+          ? (status == 'timeout' ? 'sin respuesta' : status)
+          : null,
     );
   }
 
@@ -112,12 +190,10 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       final open = sensor['contact'] == true;
       final estado = open ? 'abierta' : 'cerrada';
       final title = name.toLowerCase().contains('puerta')
-          ? '$name: $estado'
+          ? '$name $estado'
           : 'Puerta de $name $estado';
       return EventPresentation(
-        icon: open
-            ? const CceIcon(CceIcons.doorOpen, size: 20)
-            : Icon(Mdi.doorClosed, size: 22),
+        icon: _ic(open ? CceIcons.doorOpen : CceIcons.doorClosed),
         color: open ? CceColors.contact : CceColors.textSecondary,
         title: title,
       );
@@ -125,10 +201,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     if (sensor['motion'] != null) {
       final motion = sensor['motion'] == true;
       return EventPresentation(
-        icon: Icon(
-          motion ? Mdi.motionSensor : Mdi.motionSensorOff,
-          size: 22,
-        ),
+        icon: _ic(motion ? CceIcons.personStanding : CceIcons.footprints),
         color: motion ? CceColors.motion : CceColors.textSecondary,
         title: motion ? 'Movimiento en $name' : 'Sin movimiento en $name',
       );
@@ -137,7 +210,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       final key = sensor['lastKey'];
       final outlet = sensor['outlet'];
       return EventPresentation(
-        icon: const CceIcon(CceIcons.handTap, size: 20),
+        icon: _ic(CceIcons.handTap),
         color: CceColors.accent,
         title: '$name: botón $key',
         subtitle: outlet != null ? 'outlet $outlet' : null,
@@ -146,17 +219,19 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     if (sensor['temperature'] is num) {
       final t = (sensor['temperature'] as num).toDouble();
       return EventPresentation(
-        icon: Icon(Mdi.thermometer, size: 22),
-        color: _tempColor,
-        title: '$name: ${t.toStringAsFixed(1)}°',
+        icon: _ic(CceIcons.thermometer),
+        color: CceColors.contact,
+        title: name,
+        subtitle: '${t.toStringAsFixed(1)}°',
       );
     }
     if (sensor['humidity'] is num) {
       final h = (sensor['humidity'] as num).toDouble();
       return EventPresentation(
-        icon: Icon(Mdi.waterPercent, size: 22),
+        icon: _ic(CceIcons.droplet),
         color: CceColors.info,
-        title: '$name: ${h.toStringAsFixed(0)}%',
+        title: name,
+        subtitle: '${h.toStringAsFixed(0)}%',
       );
     }
   }
@@ -164,18 +239,55 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   if (state is Map) {
     final on = state['on'];
     final bri = state['bri'];
+    final device = resolveDevice(e, devices);
+
+    // Robot aspiradora: la actividad del sidecar (o el estado de Matter) en
+    // castellano. Antes caía al fallback genérico y 6 de cada 10 filas del
+    // historial decían "Evento de Roborock Qrevo / device:state-changed".
+    // Se reconoce por las claves del estado, no sólo por el device: un
+    // evento de un robot que ya no está en el inventario también se lee.
+    if ((device != null && device.isVacuum) ||
+        state.containsKey('vacuumActivity') ||
+        state.containsKey('vacuumState')) {
+      final act = state['vacuumActivity']?.toString();
+      final vs = state['vacuumState']?.toString();
+      final label = (act != null ? vacuumActivityLabel[act] : null) ??
+          switch (vs) {
+            'cleaning' => 'Limpiando',
+            'docked' => 'En la base',
+            'paused' => 'En pausa',
+            'returning' => 'Volviendo a la base',
+            'error' => 'Con error',
+            'stopped' => 'Detenido',
+            _ => null,
+          };
+      final working = act != null
+          ? vacuumWorkingActivities.contains(act)
+          : (vs == 'cleaning' || vs == 'returning');
+      final battery = state['battery'];
+      if (label != null) {
+        return EventPresentation(
+          icon: _ic(CceIcons.robotVacuum),
+          color: act == 'error' || act == 'charging_error' || vs == 'error'
+              ? CceColors.danger
+              : (working ? CceColors.ok : CceColors.textTertiary),
+          title: '$name: ${label.toLowerCase()}',
+          subtitle: battery is num ? '${battery.round()}%' : null,
+        );
+      }
+    }
+
     // Media (dev_tv/dev_jbl vía /merged): rama PROPIA antes de la de luces —
     // sin esto "Samsung TV: encendido" salía con lamparita y los eventos de
     // volumen/mediaState caían al fallback genérico ("todos son dispositivos":
     // el historial también les debe ícono y copy correctos).
-    final device = resolveDevice(e, devices);
     if (device != null && device.isMediaDevice) {
       // TV vs parlante por capability (media_playback/app_launcher son del
       // TV) con fallback por type; el resto de los media son audio.
       final tvLike = device.hasCapability('media_playback') ||
           device.hasCapability('app_launcher') ||
           device.type.toLowerCase().contains('tv');
-      final icon = Icon(tvLike ? Mdi.television : Mdi.speaker, size: 22);
+      final icon = _ic(tvLike ? CceIcons.tv : CceIcons.speaker);
       if (on != null) {
         return EventPresentation(
           icon: icon,
@@ -189,7 +301,8 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
         return EventPresentation(
           icon: icon,
           color: CceColors.info,
-          title: '$name: volumen al ${volume.round()}%',
+          title: '$name: volumen',
+          subtitle: 'al ${volume.round()}%',
         );
       }
       if (state['muted'] is bool) {
@@ -213,55 +326,71 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
           title: '$name: ${copy[mediaState] ?? mediaState}',
         );
       }
-      // Cualquier otro cambio de estado media (input, app, canal…): genérico
-      // pero con SU ícono, nunca la lamparita ni el fallback "Evento de".
-      return EventPresentation(
-        icon: icon,
-        color: CceColors.textTertiary,
-        title: 'Evento de $name',
-        subtitle: e.eventName,
-      );
+      // Cualquier otro cambio de estado media (input, app, canal…): con SU
+      // ícono y en castellano, nunca el eventName.
+      return _genericChange(name, state, icon);
     }
     if (on != null) {
       if (on == true) {
         final pct = bri is num ? (bri / 254 * 100).round() : null;
         return EventPresentation(
-          icon: Icon(Mdi.lightbulbOn, size: 22),
+          icon: _ic(CceIcons.lights),
           color: CceColors.warm,
-          title: pct != null
-              ? '$name: encendido al $pct%'
-              : '$name: encendido',
+          title: '$name se encendió',
+          subtitle: pct != null ? 'al $pct%' : null,
         );
       }
       return EventPresentation(
-        icon: Icon(Mdi.lightbulbOutline, size: 22),
+        icon: _ic(CceIcons.lightbulbOff),
         color: CceColors.textTertiary,
-        title: '$name: apagado',
+        title: '$name se apagó',
       );
     }
     if (bri is num) {
       return EventPresentation(
-        icon: Icon(Mdi.brightness6, size: 22),
+        icon: _ic(CceIcons.sunMedium),
         color: CceColors.warm,
-        title: '$name → ${(bri / 254 * 100).round()}%',
+        title: '$name: brillo',
+        subtitle: 'al ${(bri / 254 * 100).round()}%',
       );
     }
+    // Sólo cambió la conexión.
+    final keys = state.keys.map((k) => k.toString()).toSet();
+    if (keys.contains('reachable') &&
+        keys.difference(_telemetryKeys).isEmpty) {
+      final reachable = state['reachable'] == true;
+      return EventPresentation(
+        icon: _ic(reachable ? CceIcons.wifi : CceIcons.wifiOff),
+        color: reachable ? CceColors.ok : CceColors.danger,
+        title: reachable ? '$name volvió a estar en línea' : '$name sin conexión',
+      );
+    }
+    return _genericChange(name, state, _ic(CceIcons.activity));
   }
 
-  // Fallback genérico (config desconocida, payloads raros).
+  // Fallback (payloads raros): en castellano, nunca el identificador.
   final raw = rawDeviceId(e);
-  if (raw.isEmpty) {
-    return EventPresentation(
-      icon: Icon(Mdi.information, size: 22),
-      color: CceColors.textTertiary,
-      title: e.eventName,
-    );
-  }
   return EventPresentation(
-    icon: Icon(Mdi.information, size: 22),
+    icon: _ic(CceIcons.activity),
     color: CceColors.textTertiary,
-    title: 'Evento de $name',
-    subtitle: e.eventName,
+    title: raw.isEmpty ? 'Actividad de la casa' : '$name cambió de estado',
+  );
+}
+
+/// Cambio de estado sin frase propia: "X cambió de estado" con las claves que
+/// cambiaron, en castellano, como subtítulo.
+EventPresentation _genericChange(String name, Map state, Widget icon) {
+  final changed = state.keys
+      .map((k) => k.toString())
+      .where((k) => !_telemetryKeys.contains(k))
+      .map(_stateKeyLabel)
+      .toSet()
+      .toList();
+  return EventPresentation(
+    icon: icon,
+    color: CceColors.textTertiary,
+    title: '$name cambió de estado',
+    subtitle: changed.isEmpty ? null : changed.take(3).join(' · '),
   );
 }
 
@@ -274,7 +403,7 @@ EventPresentation _presentPhone(EventRecord e) {
       final sms = smsFromEvent(e);
       if (sms != null) return _presentSms(sms);
       return EventPresentation(
-        icon: const CceIcon(CceIcons.sms, size: 20),
+        icon: _ic(CceIcons.sms),
         color: CceColors.textTertiary,
         title: 'SMS',
         subtitle: null,
@@ -285,19 +414,18 @@ EventPresentation _presentPhone(EventRecord e) {
       // `incoming` (o una forma nueva del canal): [isCallLogNoise] lo saca
       // antes de llegar acá, pero si llega igual no se muestra crudo.
       return EventPresentation(
-        icon: const CceIcon(CceIcons.phoneIncoming, size: 20),
+        icon: _ic(CceIcons.phoneIncoming),
         color: CceColors.textTertiary,
         title: 'Está sonando el teléfono',
         subtitle: _callPeerFromPayload(e.payload),
       );
     default:
       // Canal `phone:*` sin presentación propia todavía: con el ícono del
-      // teléfono y el nombre del canal como pista, nunca el ⓘ genérico.
+      // teléfono y en castellano, nunca el nombre del canal.
       return EventPresentation(
-        icon: const CceIcon(CceIcons.phone, size: 20),
+        icon: _ic(CceIcons.phone),
         color: CceColors.textTertiary,
-        title: 'Teléfono',
-        subtitle: e.eventName,
+        title: 'Actividad del teléfono',
       );
   }
 }
@@ -309,7 +437,7 @@ EventPresentation _presentSms(PhoneSms s) {
       ? 'remitente desconocido'
       : s.displayName;
   return EventPresentation(
-    icon: const CceIcon(CceIcons.sms, size: 20),
+    icon: _ic(CceIcons.sms),
     color: CceColors.accent,
     title: 'SMS de $who',
     subtitle: s.text.replaceAll(RegExp(r'\s+'), ' ').trim(),
@@ -328,7 +456,7 @@ EventPresentation _presentCall(PhoneCall c) {
   final who = _callPeer(c);
   if (c.isMissed) {
     return EventPresentation(
-      icon: const CceIcon(CceIcons.phoneMissed, size: 20),
+      icon: _ic(CceIcons.phoneMissed),
       color: CceColors.danger,
       title: 'Perdida de $who',
       subtitle: 'Nadie atendió',
@@ -349,10 +477,7 @@ EventPresentation _presentCall(PhoneCall c) {
       ? ' · ${formatCallDuration(c.duration)}'
       : '';
   return EventPresentation(
-    icon: CceIcon(
-      c.incoming ? CceIcons.phoneIncoming : CceIcons.phoneOutgoing,
-      size: 20,
-    ),
+    icon: _ic(c.incoming ? CceIcons.phoneIncoming : CceIcons.phoneOutgoing),
     color: color,
     title: c.incoming ? 'Llamada de $who' : 'Llamaste a $who',
     subtitle: '${c.resultLabel}$duration',
@@ -378,9 +503,9 @@ String? _callPeerFromPayload(Map<String, dynamic>? p) {
   return number.isEmpty ? null : number;
 }
 
-/// Humaniza un grupo: usa el evento más reciente como base y agrega
-/// rango horario / valor anterior. El conteo ×N lo dibuja la fila como
-/// pill aparte (no se duplica en el título).
+/// Humaniza un grupo: usa el evento más reciente como base y, en el
+/// subtítulo, desde cuándo viene repitiéndose ("desde 11:31"). El conteo ×N
+/// lo dibuja la fila como pill aparte (no se duplica en el título).
 EventPresentation presentGroup(EventGroup g, DevicesService devices) {
   if (g.count == 1) return presentEvent(g.latest, devices);
 
@@ -389,7 +514,10 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
   final sensor = p['sensor'];
   final state = p['state'];
   final name = _deviceName(g.latest, devices);
-  final range = '${TimeFormat.hm(g.from)} – ${TimeFormat.hm(g.to)}';
+  // La fila ya muestra la hora del más reciente en su riel: el rango se
+  // reduce a desde cuándo (null si todo cayó en el mismo minuto).
+  final from = TimeFormat.hm(g.from);
+  final String? since = from == TimeFormat.hm(g.to) ? null : 'desde $from';
 
   if (sensor is Map) {
     if (sensor['motion'] != null) {
@@ -397,7 +525,7 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
         icon: base.icon,
         color: base.color,
         title: 'Movimiento en $name',
-        subtitle: range,
+        subtitle: since,
       );
     }
     if (sensor['lastKey'] != null) {
@@ -405,7 +533,7 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
         icon: base.icon,
         color: base.color,
         title: '$name: botón ${sensor['lastKey']}',
-        subtitle: range,
+        subtitle: since,
       );
     }
     if (sensor['temperature'] is num) {
@@ -414,14 +542,13 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
       final prev = oldSensor is Map
           ? (oldSensor['temperature'] as num?)?.toDouble()
           : null;
-      final title = prev != null
-          ? '$name: ${t.toStringAsFixed(1)}° (antes ${prev.toStringAsFixed(1)}°)'
-          : '$name: ${t.toStringAsFixed(1)}°';
       return EventPresentation(
         icon: base.icon,
         color: base.color,
-        title: title,
-        subtitle: range,
+        title: name,
+        subtitle: prev != null
+            ? '${prev.toStringAsFixed(1)}° → ${t.toStringAsFixed(1)}°'
+            : '${t.toStringAsFixed(1)}°',
       );
     }
     if (sensor['humidity'] is num) {
@@ -430,14 +557,13 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
       final prev = oldSensor is Map
           ? (oldSensor['humidity'] as num?)?.toDouble()
           : null;
-      final title = prev != null
-          ? '$name: ${h.toStringAsFixed(0)}% (antes ${prev.toStringAsFixed(0)}%)'
-          : '$name: ${h.toStringAsFixed(0)}%';
       return EventPresentation(
         icon: base.icon,
         color: base.color,
-        title: title,
-        subtitle: range,
+        title: name,
+        subtitle: prev != null
+            ? '${prev.toStringAsFixed(0)}% → ${h.toStringAsFixed(0)}%'
+            : '${h.toStringAsFixed(0)}%',
       );
     }
   }
@@ -448,8 +574,8 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
     return EventPresentation(
       icon: base.icon,
       color: base.color,
-      title: '$name → $pct%',
-      subtitle: range,
+      title: '$name: brillo',
+      subtitle: 'al $pct%',
     );
   }
 
@@ -457,6 +583,6 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
     icon: base.icon,
     color: base.color,
     title: base.title,
-    subtitle: range,
+    subtitle: since ?? base.subtitle,
   );
 }
