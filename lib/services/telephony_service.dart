@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/device.dart';
 import '../models/phone_call.dart';
+import '../models/phone_sms.dart';
 import '../models/server_config.dart';
 import 'api_service.dart';
 import 'phone_audio_service.dart';
@@ -80,6 +81,15 @@ class TelephonyService extends ChangeNotifier {
   /// badge de la card: una perdida es el aviso de último recurso de la casa.
   int _unseenMissed = 0;
 
+  /// SMS recibidos (CCE#23), del más nuevo al más viejo. Seed por `GET
+  /// /phone/sms` y de ahí en más entran por el socket `phone:sms`.
+  List<PhoneSms> _sms = const [];
+
+  /// SMS nuevos desde la última vez que se abrió [SmsScreen]. Mismo criterio
+  /// que [_unseenMissed]: es un contador de la app, no un estado del servidor
+  /// — el issue lo pide "como el contador de perdidas no vistas".
+  int _unseenSms = 0;
+
   /// Libreta del backend. Se carga bajo demanda (nadie la necesita hasta que se
   /// abre la pantalla del teléfono) y se cachea: el ABM es del dashboard, así
   /// que no cambia sola mientras la app está abierta.
@@ -105,6 +115,7 @@ class TelephonyService extends ChangeNotifier {
   bool _busy = false;
 
   StreamSubscription<PhoneCallStateEvent>? _callSub;
+  StreamSubscription<PhoneSmsEvent>? _smsSub;
   StreamSubscription<DeviceStateEvent>? _deviceSub;
   StreamSubscription<bool>? _connSub;
 
@@ -121,6 +132,12 @@ class TelephonyService extends ChangeNotifier {
   String? get error => _error;
   Map<String, dynamic>? get incoming => _incoming;
   int get unseenMissed => _unseenMissed;
+  List<PhoneSms> get sms => _sms;
+  int get unseenSms => _unseenSms;
+
+  /// Todo lo que hay para ver sin entrar: perdidas y SMS. Es lo que muestra
+  /// la card de la home.
+  int get unseenTotal => _unseenMissed + _unseenSms;
   List<PhoneContact> get contacts => _contacts;
   String? get actionError => _actionError;
   String? get dialingNumber => _dialingNumber;
@@ -140,6 +157,7 @@ class TelephonyService extends ChangeNotifier {
   /// card está bien aunque nunca se abra el teléfono.
   void start() {
     _callSub?.cancel();
+    _smsSub?.cancel();
     _deviceSub?.cancel();
     _connSub?.cancel();
     refresh();
@@ -190,6 +208,17 @@ class TelephonyService extends ChangeNotifier {
       _safeNotify();
     });
 
+    // Un SMS entra al historial en el acto y suma al contador. Se deduplica
+    // por id: tras una reconexión el `refresh()` vuelve a pedir la lista y el
+    // mismo mensaje puede llegar por las dos vías.
+    _smsSub = _socket.onSms.listen((event) {
+      final sms = PhoneSms.fromJson(event.payload);
+      if (sms.id.isEmpty || _sms.any((s) => s.id == sms.id)) return;
+      _sms = [sms, ..._sms].take(200).toList();
+      _unseenSms++;
+      _safeNotify();
+    });
+
     // Tras una RE-conexión pudimos perder eventos: re-sincronizar. En la
     // conexión inicial no hace falta (el seed de arriba ya corrió). Si el
     // socket ya estaba conectado al arrancar, su primer `true` ya pasó y el
@@ -205,6 +234,8 @@ class TelephonyService extends ChangeNotifier {
   void stop() {
     _callSub?.cancel();
     _callSub = null;
+    _smsSub?.cancel();
+    _smsSub = null;
     _deviceSub?.cancel();
     _deviceSub = null;
     _connSub?.cancel();
@@ -241,12 +272,37 @@ class TelephonyService extends ChangeNotifier {
       _loading = false;
       _safeNotify();
     }
+    await _refreshSms();
+  }
+
+  /// Los SMS se piden aparte del estado y las llamadas: un `GET /phone/sms`
+  /// que falle (backend viejo sin el endpoint, store apagado) no puede dejar
+  /// el teléfono entero "sin conexión".
+  Future<void> _refreshSms() async {
+    try {
+      final fresh = await _api.getPhoneSms();
+      // Lo que entró por el socket mientras el GET viajaba es más nuevo que
+      // la respuesta: se conserva adelante, sin repetir.
+      final ids = fresh.map((s) => s.id).toSet();
+      final newer = _sms.where((s) => !ids.contains(s.id)).toList();
+      _sms = [...newer, ...fresh].take(200).toList();
+      _safeNotify();
+    } catch (_) {
+      // El seed de SMS es una comodidad: sin él el resto del teléfono sigue.
+    }
   }
 
   /// Marca las perdidas como vistas (al abrir la pantalla del teléfono).
   void markMissedSeen() {
     if (_unseenMissed == 0) return;
     _unseenMissed = 0;
+    _safeNotify();
+  }
+
+  /// Marca los SMS como vistos (al abrir la pantalla de mensajes).
+  void markSmsSeen() {
+    if (_unseenSms == 0) return;
+    _unseenSms = 0;
     _safeNotify();
   }
 

@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/server_config.dart';
 import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
+import '../services/push_channel.dart';
 import '../services/tv_service.dart';
 import '../services/telephony_service.dart';
 import '../services/socket_service.dart';
+import '../theme/cce_tokens.dart';
 import 'agent/chat_screen.dart';
 import 'alarm_view.dart';
 import 'automations/automations_view.dart';
 import 'history_screen.dart';
+import 'in_app_notification.dart';
 import 'rooms_list_screen.dart';
+import 'telephony/sms_screen.dart';
 
 /// iPhone root: "Casa" (RoomsListScreen) como única pantalla raíz. Historial,
 /// Agente y Alarma se abren desde el header de la home, pusheados al Navigator
@@ -38,6 +44,9 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
   late final TvService _tv;
   late final TelephonyService _telephony;
 
+  StreamSubscription<Map<String, dynamic>>? _pushTapSub;
+  StreamSubscription<Map<String, dynamic>>? _pushReceivedSub;
+
   @override
   void initState() {
     super.initState();
@@ -63,16 +72,59 @@ class _PhoneHomeViewState extends State<PhoneHomeView> {
     // perdidas de la card tiene que estar bien aunque nunca se entre, y una
     // llamada entrante mientras mirás las luces igual tiene que llegar.
     _telephony.start();
+
+    // La push de un SMS (CCE#23): tocarla abre el mensaje, y si llega con la
+    // app abierta se muestra como aviso in-app (iOS suprime el banner del
+    // sistema en primer plano). Vive en el shell y no en AlarmView porque
+    // el shell es lo único que está siempre montado.
+    final push = PushChannel.instance;
+    _pushTapSub = push.onPushTapped.listen(_onPushTapped);
+    _pushReceivedSub = push.onPushReceived.listen(_onPushReceived);
+    // Arranque en frío desde una push: el toque llegó antes que esta pantalla.
+    final pending = push.takePendingTap();
+    if (pending != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _onPushTapped(pending));
+    }
   }
 
   @override
   void dispose() {
+    _pushTapSub?.cancel();
+    _pushReceivedSub?.cancel();
     _jbl.dispose();
     _tv.dispose();
     _telephony.dispose();
     _devices.dispose();
     _socket.dispose();
     super.dispose();
+  }
+
+  bool _isSmsPush(Map<String, dynamic> data) => data['kind'] == 'phone-sms';
+
+  void _onPushTapped(Map<String, dynamic> data) {
+    if (!mounted || !_isSmsPush(data)) return;
+    _openSms(focusId: data['smsId']?.toString());
+  }
+
+  void _onPushReceived(Map<String, dynamic> data) {
+    if (!mounted || !_isSmsPush(data)) return;
+    final smsId = data['smsId']?.toString();
+    InAppNotification.show(
+      context,
+      title: (data['title'] ?? 'SMS').toString(),
+      body: (data['body'] ?? '').toString(),
+      icon: Icons.sms_outlined,
+      iconColor: CceColors.accent,
+      duration: const Duration(seconds: 6),
+      onTap: () => _openSms(focusId: smsId),
+    );
+  }
+
+  void _openSms({String? focusId}) {
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SmsScreen(telephony: _telephony, focusId: focusId),
+    ));
   }
 
   @override

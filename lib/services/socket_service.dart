@@ -26,6 +26,14 @@ class PhoneCallStateEvent {
   bool get isIncoming => event == 'incoming';
 }
 
+/// Evento del canal `phone:sms` (CCE#23): entró un SMS a la línea de la
+/// casa. Una sola forma, `event: 'received'`, con el mensaje ya decodificado
+/// por el backend (mismo shape que `GET /phone/sms`).
+class PhoneSmsEvent {
+  final Map<String, dynamic> payload;
+  PhoneSmsEvent({required this.payload});
+}
+
 class LiveEvent {
   final String eventName;
   final Map<String, dynamic> payload;
@@ -42,6 +50,8 @@ class SocketService {
   StreamController<LiveEvent> _liveController = StreamController<LiveEvent>.broadcast();
   StreamController<PhoneCallStateEvent> _callController =
       StreamController<PhoneCallStateEvent>.broadcast();
+  StreamController<PhoneSmsEvent> _smsController =
+      StreamController<PhoneSmsEvent>.broadcast();
   bool _isConnected = false;
 
   Stream<AlarmEvent> get onAlarm => _alarmController.stream;
@@ -51,6 +61,8 @@ class SocketService {
   Stream<LiveEvent> get onLiveEvent => _liveController.stream;
   /// Telefonía 4G: entrante sonando y llamada terminada.
   Stream<PhoneCallStateEvent> get onCallState => _callController.stream;
+  /// Telefonía 4G: SMS recibido.
+  Stream<PhoneSmsEvent> get onSms => _smsController.stream;
   bool get isConnected => _isConnected;
 
   void _emitLive(String name, dynamic data) {
@@ -82,6 +94,9 @@ class SocketService {
     }
     if (_callController.isClosed) {
       _callController = StreamController<PhoneCallStateEvent>.broadcast();
+    }
+    if (_smsController.isClosed) {
+      _smsController = StreamController<PhoneSmsEvent>.broadcast();
     }
 
     final options = io.OptionBuilder()
@@ -157,6 +172,13 @@ class SocketService {
       );
     });
 
+    _socket!.on('phone:sms', (data) {
+      _emitLive('phone:sms', data);
+      if (_smsController.isClosed) return;
+      if (data is! Map) return;
+      _smsController.add(PhoneSmsEvent(payload: Map<String, dynamic>.from(data)));
+    });
+
     _socket!.on('automation:executed', (d) => _emitLive('automation:executed', d));
     _socket!.on('config:changed', (d) => _emitLive('config:changed', d));
 
@@ -178,5 +200,6 @@ class SocketService {
     _deviceController.close();
     _liveController.close();
     _callController.close();
+    _smsController.close();
   }
 }

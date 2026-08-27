@@ -21,6 +21,7 @@ import 'telephony/dial_display.dart';
 import 'telephony/dial_pad.dart';
 import 'telephony/line_status_chip.dart';
 import 'telephony/phone_surface.dart';
+import 'telephony/sms_screen.dart';
 
 /// El primer texto con contenido, o null. Un '' que viene del backend no es
 /// un dato y no tiene que ganarle a un valor real de otra fuente.
@@ -382,6 +383,14 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
     if (number != null && number.isNotEmpty) _setNumber(number);
   }
 
+  Future<void> _openSms() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SmsScreen(telephony: widget.telephony),
+      ),
+    );
+  }
+
   Future<void> _openContacts() async {
     final pick = await showContactsSheet(context, widget.telephony);
     if (pick == null || !mounted) return;
@@ -421,29 +430,47 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
               ],
             ),
           ),
-          _historyButton(t.unseenMissed),
+          // Mensajes (CCE#23) e historial, cada uno con su contador de no
+          // vistos: un SMS suele ser un código que hay que leer YA, y una
+          // perdida es el aviso de último recurso de la casa.
+          _badgedButton(
+            icon: CceIcons.sms,
+            count: t.unseenSms,
+            badgeColor: CceColors.accent,
+            tooltip: 'Mensajes',
+            onPressed: _openSms,
+          ),
+          _badgedButton(
+            icon: CceIcons.history,
+            count: t.unseenMissed,
+            badgeColor: CceColors.danger,
+            tooltip: 'Historial de llamadas',
+            onPressed: _openHistory,
+          ),
         ],
       ),
     );
   }
 
-  /// El historial detrás de un botón, con el contador de perdidas no vistas
-  /// encima: dejó de ser el cuerpo de la pantalla, pero una perdida sigue
-  /// siendo el aviso de último recurso de la casa y tiene que verse sin entrar.
-  Widget _historyButton(int missed) {
+  /// Un botón del header con un contador encima. Es lo que dejó de ser el
+  /// cuerpo de la pantalla (historial, mensajes) pero tiene que verse sin
+  /// entrar.
+  Widget _badgedButton({
+    required String icon,
+    required int count,
+    required Color badgeColor,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
     return Stack(
       clipBehavior: Clip.none,
       children: [
         IconButton(
-          onPressed: _openHistory,
-          icon: const CceIcon(
-            CceIcons.history,
-            size: 20,
-            color: CceColors.textSecondary,
-          ),
-          tooltip: 'Historial de llamadas',
+          onPressed: onPressed,
+          icon: CceIcon(icon, size: 20, color: CceColors.textSecondary),
+          tooltip: tooltip,
         ),
-        if (missed > 0)
+        if (count > 0)
           Positioned(
             right: 2,
             top: 2,
@@ -452,11 +479,11 @@ class _TelephonyScreenState extends State<TelephonyScreen> {
                 constraints: const BoxConstraints(minWidth: 18),
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
-                  color: CceColors.danger,
+                  color: badgeColor,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  missed > 99 ? '99+' : '$missed',
+                  count > 99 ? '99+' : '$count',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 10,

@@ -18,22 +18,25 @@
 /// adyacencia (`event_grouping.dart`): entre el `ringing` y el `ended` pasan
 /// eventos de otros dispositivos y un run adyacente no los juntaría.
 ///
-/// Los SMS (#23) van a llegar por otro `phone:*`: [isPhoneEvent] ya los toma
-/// para el filtro, y su presentación entra como un `case` más en
-/// `event_presenter.dart` sin tocar esto.
+/// Los SMS (#23) llegan por `phone:sms`: [isPhoneEvent] los toma para el
+/// filtro y [smsFromEvent] los lee con el mismo modelo que la pantalla de
+/// mensajes; su presentación es un `case` más en `event_presenter.dart`.
 library;
 
 import '../../models/event_record.dart';
 import '../../models/phone_call.dart';
+import '../../models/phone_sms.dart';
 import '../../services/telephony_service.dart' show kPhoneDeviceId;
 import 'event_grouping.dart' show rawDeviceId;
 
 /// Canal de las llamadas: `incoming` cuando suena, `ended` cuando terminó.
 const String kCallStateEvent = 'phone:call-state';
 
+/// Canal de los SMS recibidos (CCE#23): una sola forma, `received`.
+const String kSmsEvent = 'phone:sms';
+
 /// Evento del teléfono, para el filtro "Teléfono": el canal `phone:*`
-/// (llamadas hoy, SMS cuando entre el #23) o un cambio de estado de
-/// `dev_phone`.
+/// (llamadas y SMS) o un cambio de estado de `dev_phone`.
 bool isPhoneEvent(EventRecord e) =>
     e.eventName.startsWith('phone:') || isPhoneDeviceState(e);
 
@@ -71,4 +74,13 @@ PhoneCall? callFromEvent(EventRecord e) {
   final p = e.payload;
   if (p == null || p['event'] != 'ended') return null;
   return PhoneCall.fromJson(p);
+}
+
+/// El SMS que cuenta un `phone:sms`, con el mismo modelo que
+/// `GET /phone/sms`: el payload del socket ES la entrada del historial.
+PhoneSms? smsFromEvent(EventRecord e) {
+  if (e.eventName != kSmsEvent) return null;
+  final p = e.payload;
+  if (p == null) return null;
+  return PhoneSms.fromJson(p);
 }
