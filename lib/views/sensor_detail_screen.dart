@@ -7,6 +7,7 @@ import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../utils/alarm_triggers.dart';
 import '../utils/time_format.dart';
 import '../widgets/device_automations_sheet.dart';
 
@@ -96,17 +97,20 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   bool? _firesAlarm;
   bool _alarmSaving = false;
 
+  /// El mapa entero, no sólo el booleano: apagar necesita saber bajo QUÉ
+  /// clave está marcado este sensor (ver [writeFiresAlarm]).
+  Map<String, bool> _triggers = const {};
+
   Future<void> _loadAlarmTrigger() async {
     try {
       final all = await _api.getSensorAlarmTriggers();
       if (!mounted) return;
-      // El mapa está indexado por device; se prueba el canónico y los bindings
-      // porque las entradas viejas se guardaron con el id del provider.
-      final hit = [
-        _device.id,
-        ..._device.bindingIds,
-      ].any((k) => all[k] == true);
-      setState(() => _firesAlarm = hit);
+      // Canónico + bindings, resuelto por el helper que comparten esta
+      // pantalla y la lista "qué protege" de la alarma.
+      setState(() {
+        _triggers = all;
+        _firesAlarm = firesAlarm(_device, all);
+      });
     } catch (_) {
       // Sin dato el recuadro queda en '—' y el toggle deshabilitado: mejor eso
       // que ofrecer un switch que no sabe de qué estado parte.
@@ -116,15 +120,21 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   Future<void> _toggleAlarmTrigger() async {
     final actual = _firesAlarm;
     if (actual == null || _alarmSaving) return;
+    final previous = _triggers;
     setState(() {
       _firesAlarm = !actual;
       _alarmSaving = true;
     });
     try {
-      await _api.setSensorAlarmTrigger(_device.id, !actual);
+      final saved =
+          await writeFiresAlarm(_api, _device, previous, fires: !actual);
+      if (mounted) setState(() => _triggers = saved);
     } catch (_) {
       if (mounted) {
-        setState(() => _firesAlarm = actual); // revert
+        setState(() {
+          _firesAlarm = actual; // revert
+          _triggers = previous;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No pude cambiar el disparo de alarma')),
         );
