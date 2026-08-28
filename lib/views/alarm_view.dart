@@ -857,7 +857,8 @@ class _AlarmRingPainter extends CustomPainter {
 /// recencia). Pura, para testear el criterio sin montar la pantalla.
 List<Device> protectedSensors(Iterable<Device> all) {
   final list = all
-      .where((d) => !d.hidden && (d.isContactSensor || d.isMotionSensor))
+      .where((d) =>
+          !d.hidden && !isPseudoSensor(d) && (d.isContactSensor || d.isMotionSensor))
       .toList();
   int rank(Device d) {
     if (d.isContactSensor) return d.sensor?.contact == true ? 0 : 1;
@@ -877,6 +878,24 @@ List<Device> protectedSensors(Iterable<Device> all) {
     return a.name.toLowerCase().compareTo(b.name.toLowerCase());
   });
   return list;
+}
+
+/// Pseudo-devices del backend que declaran `contact` pero no son un sensor de
+/// la casa: los ANUNCIADORES (`dev_announcer_*`, type `announcer`), que existen
+/// para que el backend avise cosas —"Portón abriendo", "Portón abierto"— y la
+/// propia ALARMA (`dev_alarm`, binding `alarm_alarm`, hoy `hidden`).
+///
+/// No tienen nada que hacer en una lista que promete qué protege la casa ni en
+/// la que ofrece marcar qué la dispara: marcar "la alarma" para que dispare la
+/// alarma no significa nada. Si aparece otro pseudo-device del mismo estilo, va
+/// acá — el criterio es el prefijo de su binding, que es lo que los distingue
+/// de un device de provider (`ewelink_`, `matter_`, `hue_`, `tuya_`…).
+bool isPseudoSensor(Device d) {
+  const pseudoTypes = {'announcer', 'alarm'};
+  final type = d.type.toLowerCase().trim();
+  if (pseudoTypes.contains(type)) return true;
+  return d.bindingIds.any((b) =>
+      pseudoTypes.any((p) => b.toLowerCase().startsWith('${p}_')));
 }
 
 /// Último disparo del sensor: el `trigTime` que reporta el propio sensor, o

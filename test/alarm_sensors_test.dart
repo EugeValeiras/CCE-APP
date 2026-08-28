@@ -153,6 +153,43 @@ void main() {
     });
   });
 
+  group('pseudo-sensores del backend', () {
+    Device pseudo(String id, String type, List<String> bindings) => Device(
+          id: id,
+          name: id,
+          type: type,
+          capabilities: const ['contact'],
+          bindingIds: bindings,
+          state: DeviceState(),
+          sensor: DeviceSensor(contact: false),
+        );
+
+    test('los anunciadores del portón y la alarma no son sensores', () {
+      expect(
+          isPseudoSensor(
+              pseudo('dev_announcer_porton', 'announcer', ['announcer_porton'])),
+          isTrue);
+      expect(isPseudoSensor(pseudo('dev_alarm', 'alarm', ['alarm_alarm'])),
+          isTrue);
+      // Un sensor de verdad no se filtra por parecerse de nombre.
+      expect(
+          isPseudoSensor(_contact('dev_a', bindings: ['ewelink_acc4'])), isFalse);
+    });
+
+    test('quedan fuera de las dos listas, no sólo de la vista', () {
+      final real = _contact('dev_real', name: 'Puerta real');
+      final lista = protectedSensors([
+        real,
+        pseudo('dev_announcer_porton', 'announcer', ['announcer_porton']),
+        pseudo('dev_announcer_porton_abierto', 'announcer',
+            ['announcer_porton_abierto']),
+        pseudo('dev_alarm', 'alarm', ['alarm_alarm']),
+      ]);
+      expect(lista.map((d) => d.id), ['dev_real'],
+          reason: 'marcar "la alarma" para que dispare la alarma no significa nada');
+    });
+  });
+
   group('"qué protege" muestra sólo lo que dispara', () {
     final marcada = _contact('dev_marcada', name: 'Puerta marcada');
     final legacy = _contact('dev_legacy',
