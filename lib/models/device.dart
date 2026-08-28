@@ -69,6 +69,10 @@ class DeviceState {
   final String? colormode; // 'hs' | 'xy' | 'ct' — solo provider hue
   final List<double>? xy; // [x, y] CIE — solo provider hue
 
+  /// Relé con capability `detach_relay` (SONOFF ZBMINIR2): true si la tecla de
+  /// la pared está desacoplada de la carga. null en todo lo demás.
+  final bool? detached;
+
   // ── Termostato (Tuya cat 'wk') — todos opcionales, viajan dentro de state ──
   final double? currentTemp; // °C, lectura del sensor (DP24)
   final double? targetTemp; // °C, setpoint editable (DP3)
@@ -160,6 +164,7 @@ class DeviceState {
     this.mode,
     this.colormode,
     this.xy,
+    this.detached,
     this.currentTemp,
     this.targetTemp,
     this.tempMode,
@@ -206,6 +211,7 @@ class DeviceState {
       reachable: json['reachable'] != false,
       mode: json['mode'] as String?,
       colormode: json['colormode'] as String?,
+      detached: json['detached'] is bool ? json['detached'] as bool : null,
       xy: (json['xy'] is List && (json['xy'] as List).length >= 2)
           ? [(json['xy'][0] as num).toDouble(), (json['xy'][1] as num).toDouble()]
           : null,
@@ -536,6 +542,11 @@ class Device {
   /// declaran `switch` sin `button`: ninguno matchea.
   bool get isButtonRelay =>
       capabilities.contains('switch') && capabilities.contains('button');
+
+  /// Relé cuya tecla física se puede desacoplar de la carga (CCE#39). Sólo lo
+  /// declaran los devices cuyo firmware expone el modo, así que alcanza para
+  /// decidir si mostrar el interruptor.
+  bool get supportsDetach => capabilities.contains('detach_relay');
 
   bool get isLight {
     // Heuristic: has bri field or type name suggests light

@@ -27,6 +27,7 @@ enum CapabilityRendererKind {
   button,
   dial,
   sensor,
+  detach,
 }
 
 class CapabilityRendererEntry {
@@ -58,6 +59,7 @@ const Map<String, CapabilityRendererKind> _kindByCapability = {
   'contact': CapabilityRendererKind.sensor,
   'button': CapabilityRendererKind.button,
   'dial': CapabilityRendererKind.dial,
+  'detach_relay': CapabilityRendererKind.detach,
 };
 
 /// Orden canónico de aparición: estado primario arriba, sensores al final.
@@ -80,6 +82,8 @@ const List<CapabilityRendererKind> _renderOrder = [
   CapabilityRendererKind.button,
   CapabilityRendererKind.dial,
   CapabilityRendererKind.sensor,
+  // Configuración del device, no un control de uso diario: va último.
+  CapabilityRendererKind.detach,
 ];
 
 /// GUARD del `on` polisémico: si el device es cerradura o alarma, el toggle

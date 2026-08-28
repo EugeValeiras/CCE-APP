@@ -10,6 +10,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/button_events.dart';
 import '../widgets/device_automations_sheet.dart';
+import '../widgets/detach_tile.dart';
 import '../widgets/device_state_panel.dart';
 import '../widgets/event_history_section.dart';
 
@@ -175,6 +176,14 @@ class _SingleButtonScreenState extends State<SingleButtonScreen> {
                       ),
                     ],
                   ),
+                  // Un relé en detach aterriza en ESTA pantalla (su `type` ya
+                  // dice botón), así que el interruptor tiene que estar acá
+                  // también: si no, se podría activar el detach y después no
+                  // habría desde dónde sacarlo (CCE#39).
+                  if (d.supportsDetach) ...[
+                    const SizedBox(height: 22),
+                    DetachTile(device: d, service: widget.service),
+                  ],
                   const SizedBox(height: 22),
                   EventHistorySection(
                     onLoaded: (at) {
