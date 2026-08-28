@@ -1068,6 +1068,11 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     // explicitamos el guard para que el orden de prioridad quede claro.
     final isThermostat = device.isThermostat;
     final isLock = device.isLock;
+    // Relé-pulsador en detach (switch + button): su `state.on` es real pero no
+    // controla ninguna luz. Corta ANTES de los branches genéricos para que no
+    // caiga en el dot de luz/sensor y se pinte NEUTRO (ver _circleDot: borde
+    // punteado + rótulo "Pulsador"), que no es lo mismo que apagado.
+    final isRelay = device.isButtonRelay;
     final isLight =
         device.isLight && !device.isSensorDevice && !isThermostat && !isLock;
     final isContact = device.isContactSensor;
@@ -1105,6 +1110,11 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
       accent = !lockOnline
           ? CceColors.textTertiary
           : (lockLocked ? CceColors.ok : CceColors.contact);
+    } else if (isRelay) {
+      // Nunca activo: el relé no reporta un estado que se vea en la casa. El
+      // acento sólo tiñe el borde punteado y el rótulo.
+      active = false;
+      accent = CceColors.textTertiary;
     } else if (isLight) {
       active = device.state.on && !offline;
       accent = active ? CceTint.normalize(_lightColor()) : CceColors.warm;
@@ -1166,7 +1176,8 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
         } else if (hasReading) {
           body = _readingBadge(accent, temp, hum, shadows);
         } else {
-          body = _circleDot(accent, active, isLight, shadows, offline);
+          body = _circleDot(accent, active, isLight, shadows, offline,
+              relay: isRelay);
         }
 
         // Item 5: el botón/switch sólo es tocable en el tablet (openOnTap); en
@@ -1277,8 +1288,9 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
   }
 
   Widget _circleDot(Color accent, bool active, bool isLight,
-      List<BoxShadow> shadows, bool offline) {
+      List<BoxShadow> shadows, bool offline, {bool relay = false}) {
     final size = widget.size;
+    if (relay) return _relayDot(accent, shadows, offline);
     if (active) {
       return Container(
         width: size,
@@ -1345,6 +1357,77 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  /// Marcador NEUTRO del relé-pulsador en detach: tercera lectura del plano,
+  /// aparte de encendido y apagado. El borde PUNTEADO dice "no reporta estado"
+  /// sin usar color (que se leería como encendido) ni el borde tenue del
+  /// apagado, y el rótulo "Pulsador" debajo lo termina de nombrar — el mismo
+  /// recurso que ya usa el robot con su estado. Paridad con `.marker-relay`
+  /// del Dashboard. Sigue siendo tocable igual que antes.
+  Widget _relayDot(Color accent, List<BoxShadow> shadows, bool offline) {
+    final size = widget.size;
+    final dot = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: CceColors.surfaceHigh.withValues(alpha: 0.80),
+        boxShadow: shadows,
+      ),
+      child: CustomPaint(
+        painter: _DashedCirclePainter(
+          color: offline ? CceColors.danger.withValues(alpha: 0.55) : accent,
+        ),
+        // Glifo MÁS presente que el del dot apagado (que va a 0.22/0.38):
+        // "sin estado" no puede leerse como "apagado".
+        child: Center(child: _iconWidget(size * 0.52, CceColors.textSecondary)),
+      ),
+    );
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        dot,
+        // Rótulo debajo del marcador, fuera del flujo para no correr el centro
+        // del dot (el plano lo posiciona por su centro).
+        Positioned(
+          left: -size,
+          right: -size,
+          bottom: -size * 0.34,
+          child: Text(
+            'Pulsador',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: size * 0.22,
+              fontWeight: FontWeight.w600,
+              color: CceColors.textSecondary,
+              height: 1.0,
+            ),
+          ),
+        ),
+        if (offline)
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Container(
+              width: size * 0.40,
+              height: size * 0.40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: CceColors.surface,
+                border: Border.all(color: CceColors.danger, width: 1.5),
+              ),
+              child: Icon(
+                Icons.wifi_off,
+                size: size * 0.22,
+                color: CceColors.danger,
+                shadows: const [],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1540,6 +1623,47 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
 /// ambas son píldoras verticales; la TV dibuja la pantalla mirando a la
 /// izquierda (línea de borde + triángulo), la JBL es una píldora lisa.
 enum _MarkerShape { tv, jbl }
+
+/// Circunferencia PUNTEADA para el marcador del relé-pulsador. Flutter no trae
+/// bordes discontinuos en BoxDecoration, así que se recorre el path del círculo
+/// con PathMetrics y se extraen los tramos. Espejo del `stroke-dasharray` que
+/// usa el mismo marcador en el Dashboard.
+class _DashedCirclePainter extends CustomPainter {
+  /// Mismos valores que el `stroke-dasharray: 5 4` / `stroke-width: 1.5` del
+  /// Dashboard, para que los dos clientes dibujen el mismo punteado.
+  static const double _dash = 5;
+  static const double _gap = 4;
+  static const double _strokeWidth = 1.5;
+
+  final Color color;
+
+  const _DashedCirclePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final circle = Path()
+      ..addOval(Rect.fromCircle(
+        center: Offset(size.width / 2, size.height / 2),
+        radius: (size.shortestSide - _strokeWidth) / 2,
+      ));
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _strokeWidth
+      ..strokeCap = StrokeCap.round;
+    for (final metric in circle.computeMetrics()) {
+      var start = 0.0;
+      while (start < metric.length) {
+        final end = (start + _dash).clamp(0.0, metric.length).toDouble();
+        canvas.drawPath(metric.extractPath(start, end), paint);
+        start = end + _gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedCirclePainter old) => old.color != color;
+}
 
 /// Marker de un dispositivo dedicado (TV / JBL) en el plano, espejando el
 /// dashboard web: una píldora vertical con el logo de marca centrado

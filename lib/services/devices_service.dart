@@ -235,6 +235,15 @@ class DevicesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// SOLO TESTS: siembra los planos y las posiciones para poder montar el
+  /// canvas del plano sin red. Complemento de [debugSeedDevices], que sólo
+  /// siembra el inventario.
+  @visibleForTesting
+  void debugSeedFloorPlans(FloorPlansData plans) {
+    _floorPlans = plans;
+    notifyListeners();
+  }
+
   Future<void> refresh() async {
     _loading = true;
     _error = null;
