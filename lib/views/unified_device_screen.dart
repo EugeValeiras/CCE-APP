@@ -8,6 +8,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_switch.dart';
 import '../utils/capability_renderers.dart';
+import '../widgets/detach_tile.dart';
 import '../utils/verb_labels.dart';
 
 /// Vista unificada por capabilities: renderiza los controles de CUALQUIER
@@ -128,6 +129,12 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
         return _card(_lock(d));
       case CapabilityRendererKind.sensor:
         return _card(_sensor(d));
+      case CapabilityRendererKind.detach:
+        // DetachTile trae su propia card y su propio estado optimista.
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DetachTile(device: d, service: widget.service),
+        );
       case CapabilityRendererKind.vacuum:
       case CapabilityRendererKind.vacuumRooms:
       case CapabilityRendererKind.soundMode:

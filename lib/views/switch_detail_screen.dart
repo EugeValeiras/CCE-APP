@@ -5,6 +5,7 @@ import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../utils/icon_resolver.dart';
+import '../widgets/detach_tile.dart';
 
 /// Pantalla de un device tipo switch: ícono, nombre, estado y un switch GRANDE
 /// para prender/apagar tocándolo.
@@ -88,6 +89,15 @@ class SwitchDetailScreen extends StatelessWidget {
                   d.type,
                   style: CceText.caption.copyWith(color: CceColors.textTertiary),
                 ),
+                // Sólo aparece en los relés que soportan el modo; en el resto
+                // DetachTile se dibuja vacío (CCE#39).
+                if (d.supportsDetach) ...[
+                  const SizedBox(height: 28),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: DetachTile(device: d, service: service),
+                  ),
+                ],
               ],
             ),
           );
