@@ -228,3 +228,126 @@ class TvInstalledApp {
     );
   }
 }
+
+/// Qué sabe hacer un Samsung, según lo que declara en SmartThings
+/// (← `features` de GET /tv/tvs, EugeValeiras/CCE#45).
+///
+/// Existe porque los dos aparatos de la casa NO son iguales: uno es el televisor
+/// `65" OLED` y el otro un MONITOR `49" Odyssey OLED G9`, que puede no tener
+/// sintonizador ni las mismas apps. Ofrecerle botones que no hacen nada es
+/// peor que no ofrecerlos.
+///
+/// Un backend viejo (o una ruta que todavía no existe) NO manda esto: en ese
+/// caso todo queda en `true`, que es como se comportaba la app antes.
+class TvFeatures {
+  final bool power;
+  final bool volume;
+  final bool mute;
+  final bool channel;
+  final bool input;
+  final bool playback;
+  final bool tracks;
+  final bool apps;
+  final bool remote;
+  final bool pictureMode;
+  final bool soundMode;
+  final bool ambient;
+
+  const TvFeatures({
+    this.power = true,
+    this.volume = true,
+    this.mute = true,
+    this.channel = true,
+    this.input = true,
+    this.playback = true,
+    this.tracks = true,
+    this.apps = true,
+    this.remote = true,
+    this.pictureMode = true,
+    this.soundMode = true,
+    this.ambient = true,
+  });
+
+  /// Todo soportado: lo que se asume mientras no sepamos qué declara el aparato.
+  static const TvFeatures all = TvFeatures();
+
+  factory TvFeatures.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return all;
+    bool f(String k) => json[k] is bool ? json[k] as bool : true;
+    return TvFeatures(
+      power: f('power'),
+      volume: f('volume'),
+      mute: f('mute'),
+      channel: f('channel'),
+      input: f('input'),
+      playback: f('playback'),
+      tracks: f('tracks'),
+      apps: f('apps'),
+      remote: f('remote'),
+      pictureMode: f('pictureMode'),
+      soundMode: f('soundMode'),
+      ambient: f('ambient'),
+    );
+  }
+}
+
+/// Un Samsung de la casa (← items de GET /tv/tvs).
+///
+/// `id` es el id ESTABLE del aparato: el mismo que va en `?tv=<id>` y el que
+/// forma su device canónico `dev_<id>` en el socket. El televisor que ya estaba
+/// configurado conserva `id: 'tv'` ⇒ `dev_tv`, así que nada de lo que ya
+/// apuntaba a él se mueve.
+class TvSummary {
+  final String id;
+  final String name;
+
+  /// 'tv' o 'monitor'.
+  final String kind;
+  final String deviceId;
+  final String? ip;
+  final String? model;
+
+  /// ¿Tiene token de pairing Tizen? Sin él no hay control local (teclas rápidas)
+  /// y recuperarlo obliga a ir hasta el aparato y aceptar un aviso en pantalla.
+  final bool paired;
+  final TvFeatures features;
+
+  /// ¿Es el que atiende el backend cuando no se manda `?tv=`?
+  final bool isDefault;
+
+  const TvSummary({
+    required this.id,
+    required this.name,
+    this.kind = 'tv',
+    this.deviceId = '',
+    this.ip,
+    this.model,
+    this.paired = false,
+    this.features = TvFeatures.all,
+    this.isDefault = false,
+  });
+
+  /// Device canónico en el socket (`dev_tv`, `dev_tv-ce588d39`, …).
+  String get canonicalDeviceId => 'dev_$id';
+
+  bool get isMonitor => kind == 'monitor';
+
+  factory TvSummary.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] ?? 'tv').toString();
+    return TvSummary(
+      id: id,
+      name: (json['name'] ?? id).toString(),
+      kind: (json['kind'] ?? 'tv').toString(),
+      deviceId: (json['deviceId'] ?? '').toString(),
+      ip: json['ip'] as String?,
+      model: json['model'] as String?,
+      paired: json['paired'] == true,
+      features: TvFeatures.fromJson(
+        json['features'] is Map
+            ? Map<String, dynamic>.from(json['features'] as Map)
+            : null,
+      ),
+      isDefault: json['isDefault'] == true,
+    );
+  }
+}

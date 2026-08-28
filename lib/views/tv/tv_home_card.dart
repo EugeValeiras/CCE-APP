@@ -60,7 +60,12 @@ class _TvHomeCardState extends State<TvHomeCard> {
     super.initState();
     // Refresco de cortesía al aparecer (el shell maneja el polling continuo).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.service.refresh();
+      if (!mounted) return;
+      // CCE#45: además del estado, la LISTA de Samsung — el título de la card
+      // es el nombre del aparato elegido, y sin la lista mostraría el histórico
+      // aunque el usuario esté controlando el otro.
+      widget.service.loadTvs();
+      widget.service.refresh();
     });
   }
 

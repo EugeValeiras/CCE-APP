@@ -1021,14 +1021,27 @@ class ApiService {
   // con online:false); el resto de los comandos SÍ fallan (502) ante TV
   // inalcanzable y devuelven un {error} semántico que parseamos como en
   // recallHueScene / los comandos JBL.
+  //
+  // VARIOS APARATOS (EugeValeiras/CCE#45): en la casa hay un televisor y un
+  // monitor. Cada operación acepta un `tvId` opcional que viaja como `?tv=<id>`;
+  // sin él, el backend atiende al aparato por defecto — que es exactamente lo
+  // que hacía antes, así que un build viejo en TestFlight sigue funcionando.
 
-  Future<TvStatus> getTvStatus() async {
+  /// URI de una ruta de `/tv`, con `?tv=<id>` cuando se apunta a un aparato
+  /// concreto. Los catálogos globales (teclas del remote, apps conocidas) no lo
+  /// usan: no dependen de qué aparato es.
+  Uri _tvUri(String path, [String? tvId]) {
+    final base = '${config.baseUrl}/tv/$path';
+    return Uri.parse(tvId == null || tvId.isEmpty ? base : '$base?tv=$tvId');
+  }
+
+  Future<TvStatus> getTvStatus({String? tvId}) async {
     // Timeout 8s: igual que getJblStatus, el server puede hacer discovery /
     // probing del transporte antes de responder offline; 5s daría timeouts
     // espurios.
     final resp = await http
         .get(
-          Uri.parse('${config.baseUrl}/tv/status'),
+          _tvUri('status', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 8));
@@ -1041,10 +1054,10 @@ class ApiService {
     );
   }
 
-  Future<String> setTvPower(bool on) async {
+  Future<String> setTvPower(bool on, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/power'),
+          _tvUri('power', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1056,20 +1069,20 @@ class ApiService {
     return (data['power'] ?? '').toString();
   }
 
-  Future<void> toggleTvPower() async {
+  Future<void> toggleTvPower({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/power/toggle'),
+          _tvUri('power/toggle', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 6));
     _tvOk(resp);
   }
 
-  Future<int> setTvVolume(int volume) async {
+  Future<int> setTvVolume(int volume, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/volume'),
+          _tvUri('volume', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1081,10 +1094,10 @@ class ApiService {
     return (data['volume'] as num?)?.toInt() ?? volume;
   }
 
-  Future<int?> tvVolumeUp() async {
+  Future<int?> tvVolumeUp({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/volume/up'),
+          _tvUri('volume/up', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1092,10 +1105,10 @@ class ApiService {
     return (data['volume'] as num?)?.toInt();
   }
 
-  Future<int?> tvVolumeDown() async {
+  Future<int?> tvVolumeDown({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/volume/down'),
+          _tvUri('volume/down', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1103,10 +1116,10 @@ class ApiService {
     return (data['volume'] as num?)?.toInt();
   }
 
-  Future<bool> setTvMute(bool muted) async {
+  Future<bool> setTvMute(bool muted, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/mute'),
+          _tvUri('mute', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1118,10 +1131,10 @@ class ApiService {
     return data['muted'] == true;
   }
 
-  Future<bool> toggleTvMute() async {
+  Future<bool> toggleTvMute({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/mute/toggle'),
+          _tvUri('mute/toggle', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1129,10 +1142,10 @@ class ApiService {
     return data['muted'] == true;
   }
 
-  Future<String?> setTvChannel(String channel) async {
+  Future<String?> setTvChannel(String channel, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/channel'),
+          _tvUri('channel', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1144,10 +1157,10 @@ class ApiService {
     return data['channel']?.toString();
   }
 
-  Future<String?> tvChannelUp() async {
+  Future<String?> tvChannelUp({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/channel/up'),
+          _tvUri('channel/up', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1155,10 +1168,10 @@ class ApiService {
     return data['channel']?.toString();
   }
 
-  Future<String?> tvChannelDown() async {
+  Future<String?> tvChannelDown({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/channel/down'),
+          _tvUri('channel/down', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1166,10 +1179,10 @@ class ApiService {
     return data['channel']?.toString();
   }
 
-  Future<String?> setTvInput(String source) async {
+  Future<String?> setTvInput(String source, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/input'),
+          _tvUri('input', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1181,10 +1194,10 @@ class ApiService {
     return data['input']?.toString();
   }
 
-  Future<List<TvInput>> getTvInputs() async {
+  Future<List<TvInput>> getTvInputs({String? tvId}) async {
     final resp = await http
         .get(
-          Uri.parse('${config.baseUrl}/tv/inputs'),
+          _tvUri('inputs', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1202,10 +1215,10 @@ class ApiService {
   /// hdmi/play/pause/stop/digit0..digit9). El backend responde con
   /// {ok,id,via?,error?} y decide el transporte (cloud vs Tizen local).
   /// Devuelve `ok == true` si el TV aceptó.
-  Future<bool> sendTvKey(String id) async {
+  Future<bool> sendTvKey(String id, {String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/remote'),
+          _tvUri('remote', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1234,10 +1247,10 @@ class ApiService {
   }
 
   /// Comando de reproducción (action: play|pause|stop|fastForward|rewind).
-  Future<String?> tvPlayback(String action) async {
+  Future<String?> tvPlayback(String action, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/playback'),
+          _tvUri('playback', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1249,30 +1262,30 @@ class ApiService {
     return data['playback']?.toString();
   }
 
-  Future<void> tvTrackNext() async {
+  Future<void> tvTrackNext({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/track/next'),
+          _tvUri('track/next', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
     _tvOk(resp);
   }
 
-  Future<void> tvTrackPrev() async {
+  Future<void> tvTrackPrev({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/track/prev'),
+          _tvUri('track/prev', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
     _tvOk(resp);
   }
 
-  Future<String?> setTvPictureMode(String mode) async {
+  Future<String?> setTvPictureMode(String mode, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/picture-mode'),
+          _tvUri('picture-mode', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1284,10 +1297,10 @@ class ApiService {
     return data['pictureMode']?.toString();
   }
 
-  Future<String?> setTvSoundMode(String mode) async {
+  Future<String?> setTvSoundMode(String mode, {String? tvId}) async {
     final resp = await http
         .put(
-          Uri.parse('${config.baseUrl}/tv/sound-mode'),
+          _tvUri('sound-mode', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1301,10 +1314,10 @@ class ApiService {
 
   /// Modos disponibles del TV (GET /tv/modes) → {picture:[...], sound:[...]}.
   /// Devuelve el Map crudo; el caller decide cómo consumirlo.
-  Future<Map<String, dynamic>> getTvModes() async {
+  Future<Map<String, dynamic>> getTvModes({String? tvId}) async {
     final resp = await http
         .get(
-          Uri.parse('${config.baseUrl}/tv/modes'),
+          _tvUri('modes', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 5));
@@ -1316,10 +1329,10 @@ class ApiService {
   }
 
   /// Lanza una app por su appId (POST /tv/app/launch {appId}).
-  Future<bool> launchTvApp(String appId) async {
+  Future<bool> launchTvApp(String appId, {String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/app/launch'),
+          _tvUri('app/launch', tvId),
           headers: {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
@@ -1356,11 +1369,11 @@ class ApiService {
   /// timeout/JSON inesperado) devolvemos [] para que la grilla muestre el
   /// estado "vacío" sin romper. Timeout 8s: el sondeo del TV puede tardar más
   /// que un comando simple (igual criterio que getTvStatus).
-  Future<List<TvInstalledApp>> getInstalledTvApps() async {
+  Future<List<TvInstalledApp>> getInstalledTvApps({String? tvId}) async {
     try {
       final resp = await http
           .get(
-            Uri.parse('${config.baseUrl}/tv/apps/installed'),
+            _tvUri('apps/installed', tvId),
             headers: ServerConfig.tokenHeaders,
           )
           .timeout(const Duration(seconds: 8));
@@ -1380,11 +1393,52 @@ class ApiService {
     }
   }
 
+  /// Los Samsung configurados (GET /tv/tvs → { tvs: [...] }).
+  ///
+  /// DEFENSIVO como getInstalledTvApps: contra un backend que todavía no tenga
+  /// la ruta (404) devuelve [] en vez de tirar, y la app cae al comportamiento
+  /// de un solo aparato — sin selector y sin `?tv=`, igual que antes de CCE#45.
+  Future<List<TvSummary>> getTvs() async {
+    try {
+      final resp = await http
+          .get(
+            Uri.parse('${config.baseUrl}/tv/tvs'),
+            headers: ServerConfig.tokenHeaders,
+          )
+          .timeout(const Duration(seconds: 6));
+      if (resp.statusCode != 200) return const [];
+      final data = jsonDecode(resp.body);
+      final raw = data is Map ? data['tvs'] : data;
+      if (raw is! List) return const [];
+      return raw
+          .whereType<Map>()
+          .map((e) => TvSummary.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    } catch (e) {
+      debugPrint('getTvs error: $e');
+      return const [];
+    }
+  }
+
+  /// Dispara el pairing Tizen de un aparato (POST /tv/pair).
+  ///
+  /// Timeout LARGO a propósito: del otro lado hay una persona caminando hasta
+  /// el televisor y aceptando un aviso en la pantalla. El backend espera hasta
+  /// un minuto; cortar antes sería mentirle al usuario que falló.
+  Future<bool> pairTv({String? tvId}) async {
+    final resp = await http
+        .post(_tvUri('pair', tvId), headers: ServerConfig.tokenHeaders)
+        .timeout(const Duration(seconds: 75));
+    if (resp.statusCode != 200) return false;
+    final data = jsonDecode(resp.body);
+    return data is Map && data['paired'] == true;
+  }
+
   /// Activa el modo ambiente del TV (POST /tv/ambient/on).
-  Future<void> tvAmbientOn() async {
+  Future<void> tvAmbientOn({String? tvId}) async {
     final resp = await http
         .post(
-          Uri.parse('${config.baseUrl}/tv/ambient/on'),
+          _tvUri('ambient/on', tvId),
           headers: ServerConfig.tokenHeaders,
         )
         .timeout(const Duration(seconds: 6));
