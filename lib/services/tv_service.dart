@@ -5,8 +5,13 @@ import '../models/server_config.dart';
 import 'api_service.dart';
 import 'socket_service.dart';
 
-/// Id canónico del TV en /merged (F8/F13): emite device:state-changed al socket
-/// con deltas parciales (on/volume/muted/mediaInput/mediaState/mediaApp/mediaChannel).
+/// Id canónico del televisor histórico en /merged (F8/F13): emite
+/// device:state-changed al socket con deltas parciales
+/// (on/volume/muted/mediaInput/mediaState/mediaApp/mediaChannel).
+///
+/// CCE#45 — ya NO es el único: cada Samsung emite bajo el suyo (`dev_tv-<...>`).
+/// Éste sigue siendo el del televisor de siempre y el fallback mientras la lista
+/// de aparatos no cargó.
 const String kTvDeviceId = 'dev_tv';
 
 /// Tope del control de volumen del TV: 0-100, escala nativa de SmartThings/
@@ -77,6 +82,41 @@ class TvService extends ChangeNotifier {
   bool _loading = false;
   String? _error;
 
+  // ── Varios Samsung (CCE#45) ────────────────────────────────────────────────
+  // `_status` es SIEMPRE el del aparato SELECCIONADO. La lista puede quedar
+  // vacía (backend viejo sin GET /tv/tvs): en ese caso no hay selector, los
+  // comandos van sin `?tv=` y el socket se filtra por `dev_tv` — exactamente el
+  // comportamiento anterior a esta feature.
+  List<TvSummary> _tvs = const [];
+  String? _selectedId;
+
+  List<TvSummary> get tvs => _tvs;
+  bool get hasMultipleTvs => _tvs.length > 1;
+
+  /// El aparato elegido, o null mientras la lista no cargó.
+  TvSummary? get selectedTv {
+    if (_tvs.isEmpty) return null;
+    for (final t in _tvs) {
+      if (t.id == _selectedId) return t;
+    }
+    for (final t in _tvs) {
+      if (t.isDefault) return t;
+    }
+    return _tvs.first;
+  }
+
+  /// Id para `?tv=` (null ⇒ el backend usa su aparato por defecto).
+  String? get selectedTvId => selectedTv?.id ?? _selectedId;
+
+  /// Device canónico del elegido: por dónde llegan SUS eventos del socket.
+  String get selectedDeviceId => selectedTv?.canonicalDeviceId ?? kTvDeviceId;
+
+  /// Qué soporta el elegido. Sin lista, todo (comportamiento histórico).
+  TvFeatures get features => selectedTv?.features ?? TvFeatures.all;
+
+  /// ¿Le falta el pairing Tizen? Hay que ir hasta el aparato a aceptarlo.
+  bool get needsPairing => selectedTv != null && !selectedTv!.paired;
+
   bool _disposed = false;
   bool _refreshing = false;
   StreamSubscription<DeviceStateEvent>? _sub;
@@ -108,8 +148,9 @@ class TvService extends ChangeNotifier {
       _status?.supportedSoundModes ?? const [];
   List<String> get disabled => _status?.disabled ?? const [];
 
-  /// Nombre fijo del equipo (no viene en /tv/status). "65\" OLED".
-  String get displayName => '65" OLED';
+  /// Nombre del aparato elegido (no viene en /tv/status, sale de GET /tv/tvs).
+  /// Sin lista cargada, el nombre histórico del televisor.
+  String get displayName => selectedTv?.name ?? '65" OLED';
 
   /// Gate de comandos optimistas: requiere un estado conocido y online.
   bool get canCommand => _status != null && online;
@@ -130,6 +171,7 @@ class TvService extends ChangeNotifier {
   void startPolling() {
     _sub?.cancel();
     _connSub?.cancel();
+    loadTvs();
     refresh();
     _sub = _socket.onDeviceChanged.listen(_onDeviceEvent);
     // Re-seed en reconexión: los device:state-changed emitidos durante el gap
@@ -156,7 +198,9 @@ class TvService extends ChangeNotifier {
   /// null; el backend OMITE del delta lo que no cambió → fallback correcto).
   /// Volumen 0-100 passthrough (el TV NO reescala, a diferencia del JBL).
   void _onDeviceEvent(DeviceStateEvent ev) {
-    if (ev.deviceId != kTvDeviceId) return;
+    // CCE#45: sólo los eventos del aparato ELEGIDO. Sin este filtro, el monitor
+    // apagándose pintaba al televisor como apagado.
+    if (ev.deviceId != selectedDeviceId) return;
     final s = _status;
     if (s == null) return; // el seed aún no llegó; refresh() reconciliará
     final st = ev.state;
@@ -191,6 +235,44 @@ class TvService extends ChangeNotifier {
 
   // ── Lectura ──────────────────────────────────────────────────────────────
 
+  /// Trae los Samsung configurados. NUNCA tira: contra un backend viejo (sin
+  /// GET /tv/tvs) la lista queda vacía y la app se comporta como cuando había
+  /// un solo televisor.
+  Future<void> loadTvs() async {
+    final list = await _api.getTvs();
+    _tvs = list;
+    // Un aparato elegido que ya no existe (lo quitaron) no puede dejar la app
+    // mandando comandos a la nada.
+    if (_selectedId != null && !list.any((t) => t.id == _selectedId)) {
+      _selectedId = null;
+    }
+    _safeNotify();
+  }
+
+  /// Cambia el aparato controlado y relee su estado. El estado del anterior se
+  /// descarta: mostrar el volumen del televisor mientras se comanda el monitor
+  /// sería peor que mostrar "cargando".
+  Future<void> selectTv(String id) async {
+    if (_selectedId == id) return;
+    _selectedId = id;
+    _status = null;
+    _safeNotify();
+    await refresh();
+  }
+
+  /// Dispara el pairing Tizen del aparato elegido. TRÁMITE FÍSICO: aparece un
+  /// aviso en SU pantalla y alguien tiene que aceptarlo ahí.
+  Future<bool> pair() async {
+    try {
+      final ok = await _api.pairTv(tvId: selectedTvId);
+      if (ok) await loadTvs();
+      return ok;
+    } catch (e) {
+      debugPrint('TvService pair error: $e');
+      return false;
+    }
+  }
+
   Future<void> refresh() async {
     if (_refreshing) return;
     _refreshing = true;
@@ -198,7 +280,7 @@ class TvService extends ChangeNotifier {
     _error = null;
     _safeNotify();
     try {
-      _status = await _api.getTvStatus();
+      _status = await _api.getTvStatus(tvId: selectedTvId);
     } catch (e) {
       _error = 'No se pudo conectar al servidor';
       debugPrint('TvService refresh error: $e');
@@ -217,7 +299,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(power: on ? 'on' : 'off');
     _safeNotify();
     try {
-      await _api.setTvPower(on);
+      await _api.setTvPower(on, tvId: selectedTvId);
       return true;
     } catch (e) {
       _status = _status!.copyWith(power: prev);
@@ -234,7 +316,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(power: next ? 'on' : 'off');
     _safeNotify();
     try {
-      await _api.toggleTvPower();
+      await _api.toggleTvPower(tvId: selectedTvId);
       return true;
     } catch (e) {
       _status = _status!.copyWith(power: prev);
@@ -255,7 +337,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(volume: clamped);
     _safeNotify();
     try {
-      await _api.setTvVolume(clamped);
+      await _api.setTvVolume(clamped, tvId: selectedTvId);
       return true;
     } catch (e) {
       debugPrint('TvService setVolume error: $e');
@@ -274,7 +356,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(volume: (current + 1).clamp(0, kTvVolMax));
     _safeNotify();
     try {
-      final returned = await _api.tvVolumeUp();
+      final returned = await _api.tvVolumeUp(tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(volume: returned.clamp(0, kTvVolMax));
         _safeNotify();
@@ -297,7 +379,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(volume: (current - 1).clamp(0, kTvVolMax));
     _safeNotify();
     try {
-      final returned = await _api.tvVolumeDown();
+      final returned = await _api.tvVolumeDown(tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(volume: returned.clamp(0, kTvVolMax));
         _safeNotify();
@@ -315,7 +397,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(muted: muted);
     _safeNotify();
     try {
-      await _api.setTvMute(muted);
+      await _api.setTvMute(muted, tvId: selectedTvId);
       return true;
     } catch (e) {
       _restoreMuted(prev);
@@ -331,7 +413,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(muted: !(prev ?? false));
     _safeNotify();
     try {
-      await _api.toggleTvMute();
+      await _api.toggleTvMute(tvId: selectedTvId);
       return true;
     } catch (e) {
       _restoreMuted(prev);
@@ -346,7 +428,7 @@ class TvService extends ChangeNotifier {
   Future<bool> setChannel(String channel) async {
     if (!canCommand) return false;
     try {
-      final returned = await _api.setTvChannel(channel);
+      final returned = await _api.setTvChannel(channel, tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(channel: returned);
         _safeNotify();
@@ -361,7 +443,7 @@ class TvService extends ChangeNotifier {
   Future<bool> channelUp() async {
     if (!canCommand) return false;
     try {
-      final returned = await _api.tvChannelUp();
+      final returned = await _api.tvChannelUp(tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(channel: returned);
         _safeNotify();
@@ -376,7 +458,7 @@ class TvService extends ChangeNotifier {
   Future<bool> channelDown() async {
     if (!canCommand) return false;
     try {
-      final returned = await _api.tvChannelDown();
+      final returned = await _api.tvChannelDown(tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(channel: returned);
         _safeNotify();
@@ -394,7 +476,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(input: id);
     _safeNotify();
     try {
-      final returned = await _api.setTvInput(id);
+      final returned = await _api.setTvInput(id, tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(input: returned);
         _safeNotify();
@@ -417,7 +499,7 @@ class TvService extends ChangeNotifier {
   Future<bool> sendKey(String id) async {
     if (_status == null) return false;
     try {
-      return await _api.sendTvKey(id);
+      return await _api.sendTvKey(id, tvId: selectedTvId);
     } catch (e) {
       debugPrint('TvService sendKey error: $e');
       return false;
@@ -431,7 +513,7 @@ class TvService extends ChangeNotifier {
   Future<bool> setPlayback(String action) async {
     if (_status == null) return false;
     try {
-      final returned = await _api.tvPlayback(action);
+      final returned = await _api.tvPlayback(action, tvId: selectedTvId);
       if (returned != null) {
         _status = _status!.copyWith(playback: returned);
         _safeNotify();
@@ -446,7 +528,7 @@ class TvService extends ChangeNotifier {
   Future<bool> trackNext() async {
     if (_status == null) return false;
     try {
-      await _api.tvTrackNext();
+      await _api.tvTrackNext(tvId: selectedTvId);
       return true;
     } catch (e) {
       debugPrint('TvService trackNext error: $e');
@@ -457,7 +539,7 @@ class TvService extends ChangeNotifier {
   Future<bool> trackPrev() async {
     if (_status == null) return false;
     try {
-      await _api.tvTrackPrev();
+      await _api.tvTrackPrev(tvId: selectedTvId);
       return true;
     } catch (e) {
       debugPrint('TvService trackPrev error: $e');
@@ -471,7 +553,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(pictureMode: mode);
     _safeNotify();
     try {
-      await _api.setTvPictureMode(mode);
+      await _api.setTvPictureMode(mode, tvId: selectedTvId);
       return true;
     } catch (e) {
       if (prev != null) {
@@ -489,7 +571,7 @@ class TvService extends ChangeNotifier {
     _status = _status!.copyWith(soundMode: mode);
     _safeNotify();
     try {
-      await _api.setTvSoundMode(mode);
+      await _api.setTvSoundMode(mode, tvId: selectedTvId);
       return true;
     } catch (e) {
       if (prev != null) {
@@ -507,7 +589,7 @@ class TvService extends ChangeNotifier {
   Future<bool> launchApp(String appId) async {
     if (_status == null) return false;
     try {
-      final ok = await _api.launchTvApp(appId);
+      final ok = await _api.launchTvApp(appId, tvId: selectedTvId);
       if (ok) await refresh();
       return ok;
     } catch (e) {
@@ -519,13 +601,14 @@ class TvService extends ChangeNotifier {
   /// Lista de apps INSTALADAS sondeadas en el TV (passthrough a
   /// [ApiService.getInstalledTvApps]). NUNCA tira (la api ya garantiza []
   /// ante error); no cachea ni notifica: el sheet la pide on-demand al abrir.
-  Future<List<TvInstalledApp>> installedApps() => _api.getInstalledTvApps();
+  Future<List<TvInstalledApp>> installedApps() =>
+      _api.getInstalledTvApps(tvId: selectedTvId);
 
   /// Activa el modo ambiente del TV (POST /tv/ambient/on).
   Future<bool> ambientOn() async {
     if (_status == null) return false;
     try {
-      await _api.tvAmbientOn();
+      await _api.tvAmbientOn(tvId: selectedTvId);
       await refresh();
       return true;
     } catch (e) {
@@ -533,6 +616,27 @@ class TvService extends ChangeNotifier {
       return false;
     }
   }
+
+  /// SOLO TESTS: siembra la lista de aparatos, el elegido y el estado, sin red
+  /// ni socket. Espeja lo que hacen [loadTvs] y [refresh] con la respuesta HTTP
+  /// (mismo patrón que DevicesService.debugSeedDevices).
+  @visibleForTesting
+  void debugSeed({
+    List<TvSummary>? tvs,
+    TvStatus? status,
+    String? selectedId,
+  }) {
+    if (tvs != null) _tvs = tvs;
+    if (status != null) _status = status;
+    if (selectedId != null) _selectedId = selectedId;
+    _safeNotify();
+  }
+
+  /// SOLO TESTS: aplica un `device:state-changed` como si viniera del socket,
+  /// para poder verificar que un evento de OTRO aparato no toca el estado del
+  /// elegido.
+  @visibleForTesting
+  void debugApplyDeviceEvent(DeviceStateEvent ev) => _onDeviceEvent(ev);
 
   /// Revert del campo `muted` que SÍ puede restaurar `null` (a diferencia de
   /// copyWith, cuyo patrón `?? this.muted` no puede setear null). Reconstruye

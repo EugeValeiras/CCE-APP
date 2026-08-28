@@ -94,8 +94,22 @@ class _TvScreenState extends State<TvScreen> {
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
       child: Column(
         children: [
+          // CCE#45: en la casa hay más de un Samsung. El selector va ARRIBA de
+          // todo: elegir cambia el aparato de TODOS los controles de abajo.
+          if (service.hasMultipleTvs) ...[
+            _TvPicker(service: service),
+            const SizedBox(height: 8),
+          ],
           if (!online) ...[
             const _OfflineBanner(),
+            const SizedBox(height: 8),
+          ],
+          // Sin token de pairing Tizen las teclas van por la nube: lentas y
+          // parciales. Recuperarlo NO se puede hacer desde acá — hay que ir
+          // hasta el aparato y aceptar un aviso en su pantalla —, así que se
+          // avisa en vez de dejar botones que responden a medias.
+          if (service.needsPairing) ...[
+            _PairBanner(service: service),
             const SizedBox(height: 8),
           ],
           Expanded(
@@ -109,7 +123,15 @@ class _TvScreenState extends State<TvScreen> {
                 // el teléfono), capeado a maxH=780 (en tablet estira un poco).
                 // Piso minH para no comprimir; si la pantalla es más baja,
                 // FittedBox(scaleDown) lo achica para que no desborde.
-                const double w = 360, minH = 600, maxH = 780;
+                //
+                // minH 600 → 640 (CCE#45): 600 quedaba POR DEBAJO de lo que el
+                // contenido natural del control necesita (~611), así que el
+                // Column interno desbordaba 11px en cuanto algo comía alto
+                // arriba — con el selector de aparato y el aviso de pairing
+                // juntos se veía la franja amarilla. El FittedBox sigue
+                // achicando el conjunto en pantallas bajas; lo que se corrige es
+                // el piso, que nunca debió ser menor que el contenido.
+                const double w = 360, minH = 640, maxH = 780;
                 final double target = c.maxHeight.clamp(minH, maxH);
                 return Center(
                   child: FittedBox(
@@ -278,6 +300,9 @@ class _RemoteBody extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // CCE#45: un monitor sin sintonizador no muestra el rocker
+                  // de canales — el VOL queda solo y centrado.
+                  if (service.features.channel) ...[
                   const SizedBox(width: 22),
                   // Píldora fina centrada en la columna derecha (CH).
                   Expanded(
@@ -304,6 +329,7 @@ class _RemoteBody extends StatelessWidget {
                       ),
                     ),
                   ),
+                  ],
                 ],
               ),
 
@@ -311,9 +337,10 @@ class _RemoteBody extends StatelessWidget {
               //    Reemplaza al viejo botón redondo del anillo de utilidades.
               //    NO gatea por online: lanzar una app despierta el TV desde
               //    standby (mismo comportamiento que tenía el redondo).
-              _AppsWideButton(
-                onTap: () => _openAppsSheet(context, service),
-              ),
+              if (service.features.apps)
+                _AppsWideButton(
+                  onTap: () => _openAppsSheet(context, service),
+                ),
 
               // ── Wordmark SAMSUNG ──────────────────────────────────────────
               Text(
@@ -745,6 +772,182 @@ class _AppsWideButton extends StatelessWidget {
 // ════════════════════════════════════════════════════════════════════════════
 
 /// Cartel "Sin conexión": el TV respondió pero está apagado/inalcanzable. El
+/// Selector del Samsung que se controla (EugeValeiras/CCE#45).
+///
+/// Sólo aparece cuando hay más de uno: con un único aparato la pantalla queda
+/// exactamente como estaba. Cada chip muestra el ícono según sea televisor o
+/// monitor, porque no son lo mismo y conviene que se note.
+class _TvPicker extends StatelessWidget {
+  const _TvPicker({required this.service});
+
+  final TvService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedId = service.selectedTv?.id;
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: service.tvs.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final tv = service.tvs[i];
+          final active = tv.id == selectedId;
+          return Semantics(
+            button: true,
+            selected: active,
+            label: tv.name,
+            child: GestureDetector(
+              onTap: () {
+                if (active) return;
+                HapticFeedback.selectionClick();
+                service.selectTv(tv.id);
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  // El elegido se ve HUNDIDO (superficie sunken, sin sombra) y
+                  // el resto apoyado: la misma gramática que el resto de la app.
+                  color: active ? CceColors.surfaceSunken : CceColors.neoBase,
+                  borderRadius: BorderRadius.circular(999),
+                  boxShadow: active ? const [] : CceShadows.raised,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      tv.isMonitor
+                          ? Icons.desktop_windows_rounded
+                          : Icons.tv_rounded,
+                      size: 16,
+                      color: active ? CceColors.info : CceColors.textTertiary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      tv.name,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: active ? CceColors.info : CceColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Aviso de pairing pendiente. El botón dispara el popup en la PANTALLA del
+/// aparato y espera a que alguien lo acepte allá (hasta ~1 minuto), así que
+/// muestra su propio estado de espera.
+class _PairBanner extends StatefulWidget {
+  const _PairBanner({required this.service});
+
+  final TvService service;
+
+  @override
+  State<_PairBanner> createState() => _PairBannerState();
+}
+
+class _PairBannerState extends State<_PairBanner> {
+  bool _pairing = false;
+  String? _error;
+
+  Future<void> _pair() async {
+    if (_pairing) return;
+    setState(() {
+      _pairing = true;
+      _error = null;
+    });
+    final ok = await widget.service.pair();
+    if (!mounted) return;
+    setState(() {
+      _pairing = false;
+      _error = ok
+          ? null
+          : 'No se completó. ¿Está encendido, en la misma red y alguien aceptó el aviso?';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: CceColors.neoBase,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        boxShadow: CceShadows.neoInset(blur: 8, offset: 3),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Falta emparejar',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: CceColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _error ??
+                      'Prendé el aparato y aceptá el aviso que aparece en su '
+                          'pantalla. Sin eso, las teclas van por la nube.',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.25,
+                    color: CceColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: _pair,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: CceColors.neoBase,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: CceShadows.raised,
+              ),
+              child: _pairing
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: CceColors.textTertiary,
+                      ),
+                    )
+                  : const Text(
+                      'Emparejar',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: CceColors.info,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// control igual se monta (atenuado) porque varias teclas lo despiertan.
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner();
