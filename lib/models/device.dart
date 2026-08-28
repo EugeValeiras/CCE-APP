@@ -520,6 +520,23 @@ class Device {
   bool get phoneInCall =>
       state.callState != null && state.callState != 'idle' && state.callState != 'ended';
 
+  /// Relé-pulsador: declara `switch` Y `button` a la vez. Es un actuador
+  /// comandable que ADEMÁS es una tecla de pared.
+  ///
+  /// El caso real es el SONOFF ZBMINIR2 en modo detach: la tecla dispara
+  /// automatizaciones y la salida del relé no controla ninguna luz, así que su
+  /// `state.on` es cierto (la salida existe) pero NO significa "hay una luz
+  /// encendida". Por eso el plano lo pinta NEUTRO en vez de encendido — sin
+  /// dejar de ser comandable. Espejo de isButtonRelay del dashboard.
+  ///
+  /// Se decide por CAPABILITIES y no por `type` ('eWeLink Switch Button'): ese
+  /// string es una etiqueta libre del provider eWeLink y ataría la UI de dos
+  /// clientes a un texto que mañana cambia. Los botones a pilas (SNZB-01P/01M,
+  /// Hue tap dial) declaran `button` + `sensor` pero NO `switch`, y las luces
+  /// declaran `switch` sin `button`: ninguno matchea.
+  bool get isButtonRelay =>
+      capabilities.contains('switch') && capabilities.contains('button');
+
   bool get isLight {
     // Heuristic: has bri field or type name suggests light
     if (isThermostat || isLock || isMediaDevice || isVacuum || isPhone) return false;
