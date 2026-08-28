@@ -14,8 +14,10 @@ import '../services/notification_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/section_header.dart';
+import '../utils/alarm_triggers.dart';
 import '../utils/time_format.dart';
 import 'active_alarm_view.dart';
+import 'alarm_sensors_screen.dart';
 import 'sensor_detail_screen.dart';
 import 'settings_view.dart';
 import 'in_app_notification.dart';
@@ -62,12 +64,18 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   /// null = todavía no se sabe: la línea no se muestra.
   DateTime? _armedSince;
 
+  /// Qué sensores disparan la alarma (`sensorAlarmTriggers` del backend), la
+  /// fuente de "qué protege". null = todavía no se leyó: la lista espera en
+  /// vez de mostrar de más (todos) o de menos (ninguno).
+  Map<String, bool>? _alarmTriggers;
+
   StreamSubscription? _alarmSub;
   StreamSubscription? _armedSub;
   StreamSubscription? _connSub;
   StreamSubscription? _tokenSub;
   StreamSubscription? _pushReceivedSub;
   StreamSubscription? _pushTapSub;
+  StreamSubscription? _configSub;
 
   @override
   void initState() {
@@ -144,6 +152,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       _alarmSub?.cancel();
       _armedSub?.cancel();
       _connSub?.cancel();
+      _configSub?.cancel();
 
       _socket.connect(_config);
 
@@ -163,8 +172,19 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         setState(() => _isConnected = connected);
         if (connected) _fetchAlarmState();
       });
+      // El flag de disparo también se toca desde el detalle de un sensor y
+      // desde el dashboard: el backend avisa con `config:changed`, así que la
+      // lista no queda vieja sin tener que volver a entrar a la pantalla.
+      _configSub = _socket.onLiveEvent.listen((ev) {
+        if (ev.eventName != 'config:changed') return;
+        final section = ev.payload['section'];
+        if (section == 'sensorAlarmTriggers' || section == 'all') {
+          _loadAlarmTriggers();
+        }
+      });
 
       _fetchAlarmState();
+      _loadAlarmTriggers();
       _registerTokenIfReady();
     } catch (e) {
       debugPrint('📱 [Flutter] ERROR conectando: $e');
@@ -216,6 +236,21 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       setState(() => _armedSince = ts);
     } catch (e) {
       debugPrint('📱 [Flutter] Sin fecha de armado: $e');
+    }
+  }
+
+  /// Lee el mapa `sensorAlarmTriggers` que decide qué entra a "qué protege".
+  /// Best-effort: si falla, la lista se queda en su último valor conocido (o
+  /// sin dibujar si nunca hubo uno) en vez de mostrar sensores que no suenan.
+  Future<void> _loadAlarmTriggers() async {
+    final api = _api;
+    if (api == null) return;
+    try {
+      final triggers = await api.getSensorAlarmTriggers();
+      if (!mounted) return;
+      setState(() => _alarmTriggers = triggers);
+    } catch (e) {
+      debugPrint('📱 [Flutter] Sin mapa de disparos de alarma: $e');
     }
   }
 
@@ -332,6 +367,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _alarmSub?.cancel();
     _armedSub?.cancel();
     _connSub?.cancel();
+    _configSub?.cancel();
     _tokenSub?.cancel();
     _pushReceivedSub?.cancel();
     _pushTapSub?.cancel();
@@ -351,6 +387,28 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  /// El engranaje de la alarma abre QUÉ SENSORES la disparan, no la config del
+  /// servidor (que en el teléfono vive al pie de la home, en "Cerrar sesión").
+  ///
+  /// Excepción: el flujo de configuración inicial —sin servidor cargado o sin
+  /// inventario, como cuando `main.dart` monta la pantalla suelta— no tiene
+  /// sensores que listar y el engranaje sigue siendo su única puerta a los
+  /// ajustes.
+  Future<void> _openGear() async {
+    final devices = widget.devices;
+    if (devices == null || !_config.isConfigured) {
+      _openSettings();
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AlarmSensorsScreen(devices: devices),
+      ),
+    );
+    // Al volver, "qué protege" tiene que reflejar lo que se acaba de marcar.
+    await _loadAlarmTriggers();
   }
 
   @override
@@ -383,9 +441,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         ),
         actions: [
           IconButton(
-            tooltip: 'Ajustes',
+            tooltip: widget.devices == null || !_config.isConfigured
+                ? 'Ajustes'
+                : 'Sensores de la alarma',
             icon: const CceIcon(CceIcons.settings, color: CceColors.textTertiary),
-            onPressed: _openSettings,
+            onPressed: _openGear,
           ),
         ],
       ),
@@ -404,7 +464,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                   CceSpace.lg, CceSpace.xl, CceSpace.lg, CceSpace.xl),
               children: [
                 _buildAlarmButton(),
-                _ProtectedList(devices: widget.devices!),
+                ProtectedList(
+                  devices: widget.devices!,
+                  triggers: _alarmTriggers,
+                  onConfigure: _openGear,
+                ),
               ],
             ),
           // Active alarm overlay
@@ -793,7 +857,8 @@ class _AlarmRingPainter extends CustomPainter {
 /// recencia). Pura, para testear el criterio sin montar la pantalla.
 List<Device> protectedSensors(Iterable<Device> all) {
   final list = all
-      .where((d) => !d.hidden && (d.isContactSensor || d.isMotionSensor))
+      .where((d) =>
+          !d.hidden && !isPseudoSensor(d) && (d.isContactSensor || d.isMotionSensor))
       .toList();
   int rank(Device d) {
     if (d.isContactSensor) return d.sensor?.contact == true ? 0 : 1;
@@ -815,6 +880,24 @@ List<Device> protectedSensors(Iterable<Device> all) {
   return list;
 }
 
+/// Pseudo-devices del backend que declaran `contact` pero no son un sensor de
+/// la casa: los ANUNCIADORES (`dev_announcer_*`, type `announcer`), que existen
+/// para que el backend avise cosas —"Portón abriendo", "Portón abierto"— y la
+/// propia ALARMA (`dev_alarm`, binding `alarm_alarm`, hoy `hidden`).
+///
+/// No tienen nada que hacer en una lista que promete qué protege la casa ni en
+/// la que ofrece marcar qué la dispara: marcar "la alarma" para que dispare la
+/// alarma no significa nada. Si aparece otro pseudo-device del mismo estilo, va
+/// acá — el criterio es el prefijo de su binding, que es lo que los distingue
+/// de un device de provider (`ewelink_`, `matter_`, `hue_`, `tuya_`…).
+bool isPseudoSensor(Device d) {
+  const pseudoTypes = {'announcer', 'alarm'};
+  final type = d.type.toLowerCase().trim();
+  if (pseudoTypes.contains(type)) return true;
+  return d.bindingIds.any((b) =>
+      pseudoTypes.any((p) => b.toLowerCase().startsWith('${p}_')));
+}
+
 /// Último disparo del sensor: el `trigTime` que reporta el propio sensor, o
 /// el último evento que la app le vio.
 DateTime? lastTriggerAt(Device d) {
@@ -823,13 +906,34 @@ DateTime? lastTriggerAt(Device d) {
   return d.lastEventAt;
 }
 
-/// "Qué protege": los sensores de apertura y movimiento con su estado, en
-/// filas de 52 px con hairline (el mismo molde que el historial). Se
-/// reconstruye con cada evento del inventario; sin sensores no se dibuja.
-class _ProtectedList extends StatelessWidget {
-  const _ProtectedList({required this.devices});
+/// "Qué protege": los sensores que EFECTIVAMENTE disparan la alarma, con su
+/// estado, en filas de 52 px con hairline (el mismo molde que el historial).
+/// Se reconstruye con cada evento del inventario.
+///
+/// El filtro es el punto: antes se listaban todos los sensores de la casa,
+/// así que la pantalla prometía protección que no existía. Lo que decide es
+/// el mapa `sensorAlarmTriggers` ([triggers]), resuelto por [firesAlarm] —
+/// que prueba el id canónico Y los bindings, porque el mapa mezcla las dos
+/// familias de ids.
+///
+/// Pública por el mismo motivo que [protectedSensors]: el criterio se prueba
+/// sin montar la pantalla (que abre sockets y HTTP al construirse).
+class ProtectedList extends StatelessWidget {
+  const ProtectedList({
+    super.key,
+    required this.devices,
+    required this.triggers,
+    required this.onConfigure,
+  });
 
   final DevicesService devices;
+
+  /// null = todavía no se leyó el mapa. La sección no se dibuja: con una
+  /// lista de seguridad, esperar un instante es mejor que afirmar algo falso.
+  final Map<String, bool>? triggers;
+
+  /// Abre la pantalla donde se elige qué sensores disparan la alarma.
+  final VoidCallback onConfigure;
 
   static const double _row = 52;
 
@@ -838,8 +942,18 @@ class _ProtectedList extends StatelessWidget {
     return ListenableBuilder(
       listenable: devices,
       builder: (context, _) {
-        final sensors = protectedSensors(devices.all);
-        if (sensors.isEmpty) return const SizedBox.shrink();
+        final triggers = this.triggers;
+        if (triggers == null) return const SizedBox.shrink();
+        final candidates = protectedSensors(devices.all);
+        // Una casa sin sensores de apertura ni movimiento no tiene nada que
+        // explicar: no hay decisión que ofrecer.
+        if (candidates.isEmpty) return const SizedBox.shrink();
+
+        final sensors =
+            candidates.where((d) => firesAlarm(d, triggers)).toList();
+        // El contador cuenta sobre lo que se muestra: decir "2 abiertas" por
+        // puertas que no van a sonar es exactamente el ruido que esta tarea
+        // saca de la pantalla.
         final open = sensors
             .where((d) => d.isContactSensor && d.sensor?.contact == true)
             .length;
@@ -853,10 +967,58 @@ class _ProtectedList extends StatelessWidget {
                   ? null
                   : (open == 1 ? '1 abierta' : '$open abiertas'),
             ),
-            for (final d in sensors) _row_(context, d),
+            if (sensors.isEmpty)
+              _emptyRow(context)
+            else
+              for (final d in sensors) _row_(context, d),
           ],
         );
       },
+    );
+  }
+
+  /// Con cero sensores marcados la sección NO puede desaparecer: una casa
+  /// donde nunca se configuró nada se quedaría sin explicación, leyendo la
+  /// ausencia como "todo en orden". Dice por qué está vacía y lleva a
+  /// arreglarlo.
+  Widget _emptyRow(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onConfigure,
+        child: Container(
+          height: 64,
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: CceColors.strokeSoft)),
+          ),
+          child: Row(
+            children: [
+              const CceIcon(CceIcons.alarmShield,
+                  size: 20, color: CceColors.textTertiary, emboss: false),
+              SizedBox(width: CceSpace.md),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ningún sensor dispara la alarma',
+                      style: CceText.body,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text('Tocá para elegir cuáles', style: CceText.caption),
+                  ],
+                ),
+              ),
+              SizedBox(width: CceSpace.sm),
+              const CceIcon(CceIcons.chevronRight,
+                  size: 18, color: CceColors.textTertiary, emboss: false),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

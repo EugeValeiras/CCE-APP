@@ -27,6 +27,7 @@ import '../widgets/vacuum_home_card.dart';
 import '../widgets/phone_home_card.dart';
 import 'room_detail_screen.dart';
 import 'soundbar/soundbar_home_card.dart';
+import 'settings_view.dart';
 import 'splash_view.dart';
 import 'tv/tv_home_card.dart';
 
@@ -850,6 +851,12 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                       HapticFeedback.selectionClick(); // "soltar".
                       _saveOrder(_savedOrder);
                     },
+                    // Pie del scroll: la única puerta a la configuración del
+                    // servidor en el teléfono (el engranaje de la alarma pasó
+                    // a abrir los sensores que la disparan). Va DESPUÉS de la
+                    // última habitación, no fija sobre el contenido: es una
+                    // salida, no una acción de la casa.
+                    footer: SignOutRow(onTap: () => _openServerSettings(context)),
                     itemCount: ordered.length,
                     itemBuilder: (context, i) {
                       final room = ordered[i];
@@ -876,6 +883,27 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
                 ),
         );
       },
+    );
+  }
+
+  /// Abre la configuración del servidor (host y puerto) con lo que ya está
+  /// cargado. NO borra nada: el nombre "Cerrar sesión" es el rótulo de
+  /// producto para "salir de esta casa", pero la acción es editar a qué
+  /// servidor apunta la app. Guardar reconecta el socket y recarga el
+  /// inventario, igual que en la tablet.
+  void _openServerSettings(BuildContext context) {
+    final service = widget.service;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SettingsView(
+          config: service.config,
+          onSaved: () {
+            service.socket.disconnect();
+            service.socket.connect(service.config);
+            service.refresh();
+          },
+        ),
+      ),
     );
   }
 
@@ -928,6 +956,49 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         onToggle: (v) => service.setRoomOn(room, v),
         onBrightnessCommitted: (v) => service.setRoomBrightness(room, v),
         neo: true,
+      ),
+    );
+  }
+}
+
+/// Fila "Cerrar sesión" del pie de la home. Acción secundaria: sin card, sin
+/// relieve y con la tinta apagada, para que no compita con las habitaciones —
+/// pero en `danger` tenue, porque es la única fila que te saca de la casa.
+///
+/// Pública para poder probarla sin montar la home entera (que necesita planos,
+/// sockets y prefs).
+class SignOutRow extends StatelessWidget {
+  const SignOutRow({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  static const double kHeight = 52;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 20),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CceRadii.control),
+          child: SizedBox(
+            height: kHeight,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CceIcon(CceIcons.power,
+                    size: 18, color: CceColors.danger, emboss: false),
+                SizedBox(width: CceSpace.sm),
+                Text(
+                  'Cerrar sesión',
+                  style: CceText.body.copyWith(color: CceColors.danger),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
