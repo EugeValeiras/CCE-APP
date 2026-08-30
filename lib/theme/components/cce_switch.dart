@@ -76,3 +76,46 @@ class CceSwitch extends StatelessWidget {
     );
   }
 }
+
+/// El hueco del switch, SIN perilla: lo que ve una fila que no tiene nada que
+/// togglear (una habitación sin luces, en [RoomCard]).
+///
+/// Vive acá y no en la card a propósito: toma la pista prestada del control de
+/// arriba — mismo [CceSwitch.width], mismo alto, mismo radio, mismo relleno
+/// ([CceColors.surfaceSunken]) y mismo hairline ([CceColors.strokeStrong]) —
+/// para que el día que el switch cambie de medida o de color el riel vacío
+/// cambie con él. Dibujado a mano en la card, se irían separando en silencio.
+///
+/// NO es un switch deshabilitado. [CceSwitch] con `onChanged: null` baja la
+/// opacidad al 40% y DEJA la perilla puesta: dice "el control existe pero está
+/// bloqueado un momento". Acá el control no existe, y la ausencia de la perilla
+/// es todo el mensaje — a opacidad plena, porque el riel es tan real como el de
+/// la fila de al lado. Tampoco se confunde con APAGADO, que sí tiene perilla
+/// (gris, a la izquierda).
+///
+/// Es inerte: sin GestureDetector, sin animación y sin estado. Para un lector
+/// de pantalla es una etiqueta, no un control: un óvalo vacío no dice nada por
+/// sí solo, así que lo dice [semanticLabel].
+class CceSwitchEmptyTrack extends StatelessWidget {
+  const CceSwitchEmptyTrack({super.key, this.semanticLabel = 'Sin luces'});
+
+  /// Lo que anuncia el lector de pantalla en lugar del control ausente.
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: semanticLabel,
+      container: true,
+      child: Container(
+        width: CceSwitch.width,
+        height: CceSwitch._h,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          color: CceColors.surfaceSunken,
+          border: Border.all(color: CceColors.strokeStrong, width: 1),
+        ),
+      ),
+    );
+  }
+}

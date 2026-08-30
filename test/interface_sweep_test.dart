@@ -354,7 +354,7 @@ void main() {
       expect(find.text('Apagada'), findsNothing);
     });
 
-    testWidgets('RoomCard sin luces: sin switch, pero con su ancho reservado',
+    testWidgets('RoomCard sin luces: el riel del switch, vacío (CCE#59)',
         (tester) async {
       Future<void> pumpRoom({required int lightsTotal, bool enabled = true}) =>
           tester.pumpWidget(MaterialApp(
@@ -380,16 +380,21 @@ void main() {
 
       await pumpRoom(lightsTotal: 3);
       expect(find.byType(CceSwitch), findsOneWidget);
-      final withSwitch = tester.getRect(find.text('20.7°'));
+      expect(find.byType(CceSwitchEmptyTrack), findsNothing);
+      final withSwitch = tester.getRect(find.byType(CceSwitch));
+      final badge = tester.getRect(find.text('20.7°'));
 
       await pumpRoom(lightsTotal: 0);
       expect(find.byType(CceSwitch), findsNothing);
-      // El badge no se corre: la columna de temperaturas sigue alineada.
-      expect(tester.getRect(find.text('20.7°')).right, withSwitch.right);
+      // La silueta de la fila NO cambia: el riel vacío ocupa el rectángulo
+      // exacto del switch de la fila de arriba, y el badge no se corre.
+      expect(tester.getRect(find.byType(CceSwitchEmptyTrack)), withSwitch);
+      expect(tester.getRect(find.text('20.7°')), badge);
 
       // Bloqueado momentáneamente ≠ sin luces: ahí el control sigue.
       await pumpRoom(lightsTotal: 3, enabled: false);
       expect(find.byType(CceSwitch), findsOneWidget);
+      expect(find.byType(CceSwitchEmptyTrack), findsNothing);
     });
 
     testWidgets('RoomCard sin estado centra el nombre; con dots no',
