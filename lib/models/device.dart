@@ -401,27 +401,70 @@ class DeviceSensor {
     this.trigTime,
   });
 
-  factory DeviceSensor.fromJson(Map<String, dynamic> json) {
+  /// Parseo del sensor que llega por REST (`GET /devices`).
+  factory DeviceSensor.fromJson(Map<String, dynamic> json) =>
+      DeviceSensor.merge(null, json);
+
+  /// Aplica [json] sobre [current] y devuelve el sensor resultante: cada campo
+  /// que el mapa no traiga —o traiga con un valor que no se puede convertir—
+  /// conserva el valor de [current]. Con `current == null` es el parseo puro,
+  /// por eso [DeviceSensor.fromJson] delega acá.
+  ///
+  /// UNA sola lista de campos para los dos caminos, el REST y el evento del
+  /// WebSocket (`DevicesService._applyDeviceEvent`). Hasta CCE#56 eran dos
+  /// listas calcadas y la defensa de `trigTime` estaba sólo en la del REST:
+  /// el evento casteaba crudo y reventaba con el String que manda eWeLink,
+  /// perdiendo el bloque de sensor entero (motion, contact, temperatura).
+  factory DeviceSensor.merge(DeviceSensor? current, Map<String, dynamic> json) {
     return DeviceSensor(
-      temperature: (json['temperature'] as num?)?.toDouble(),
-      humidity: (json['humidity'] as num?)?.toDouble(),
-      battery: json['battery'] as String?,
-      motion: json['motion'] as bool?,
-      contact: json['contact'] as bool?,
-      brightness: json['brightness'] as String?,
-      outlets: (json['outlets'] as num?)?.toInt(),
-      lastKey: (json['lastKey'] as num?)?.toInt(),
-      outlet: (json['outlet'] as num?)?.toInt(),
+      temperature: _sensorDouble(json['temperature']) ?? current?.temperature,
+      humidity: _sensorDouble(json['humidity']) ?? current?.humidity,
+      battery: _sensorString(json['battery']) ?? current?.battery,
+      motion: _sensorBool(json['motion']) ?? current?.motion,
+      contact: _sensorBool(json['contact']) ?? current?.contact,
+      brightness: _sensorString(json['brightness']) ?? current?.brightness,
+      outlets: _sensorInt(json['outlets']) ?? current?.outlets,
+      lastKey: _sensorInt(json['lastKey']) ?? current?.lastKey,
+      outlet: _sensorInt(json['outlet']) ?? current?.outlet,
       // OJO: el backend manda trigTime como num o como String según el
       // provider (el fixture dorado tiene ambos) — parseo defensivo.
-      trigTime: switch (json['trigTime']) {
-        final num n => n.toInt(),
-        final String s => int.tryParse(s),
-        _ => null,
-      },
+      trigTime: _sensorInt(json['trigTime']) ?? current?.trigTime,
     );
   }
 }
+
+// ── Coerciones del sensor ─────────────────────────────────────────────
+// El mismo campo llega con distinto tipo según el provider. Un cast crudo
+// (`as num?`) no falla en el campo: tira y se lleva puesto el objeto entero.
+// Devolver null ante un valor inconvertible lo degrada a "este campo no vino",
+// que es lo que el merge ya sabe manejar.
+
+double? _sensorDouble(dynamic v) => switch (v) {
+      final num n => n.toDouble(),
+      final String s => double.tryParse(s),
+      _ => null,
+    };
+
+int? _sensorInt(dynamic v) => switch (v) {
+      final num n => n.toInt(),
+      final String s => int.tryParse(s) ?? double.tryParse(s)?.toInt(),
+      _ => null,
+    };
+
+bool? _sensorBool(dynamic v) => switch (v) {
+      final bool b => b,
+      final num n => n != 0,
+      'true' || '1' => true,
+      'false' || '0' => false,
+      _ => null,
+    };
+
+String? _sensorString(dynamic v) => switch (v) {
+      final String s => s,
+      final num n => n.toString(),
+      final bool b => b.toString(),
+      _ => null,
+    };
 
 class Device {
   final String id;
