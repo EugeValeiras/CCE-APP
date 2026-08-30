@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/devices_service.dart';
 import '../services/jbl_service.dart';
 import '../services/tv_service.dart';
 import '../services/ui_settings_service.dart';
@@ -12,9 +15,10 @@ import '../views/tv/tv_screen.dart';
 
 /// Tiles de los dispositivos dedicados (Samsung TV / JBL soundbar) para la
 /// sección "Devices" de una habitación. Mismo lenguaje visual que SensorTile
-/// (glyph extruido + nombre + franja inferior con StatusDot + estado), pero
-/// escuchan a SU service con polling (TvService / JblService) vía
-/// AnimatedBuilder — NO a DevicesService: TV y JBL no viven ahí.
+/// (glyph extruido + nombre + franja inferior con StatusDot + estado), y
+/// escuchan a SU service (TvService / JblService) vía AnimatedBuilder. Con
+/// varios Samsung, el tile de una habitación fija su aparato con `deviceId` y
+/// toma el estado del inventario, porque TvService sólo sigue al elegido.
 ///
 /// Tap: [onOpen] si se provee (tablet → control inline en el panel derecho);
 /// si no, push de la pantalla dedicada (phone) — mismo dual que TvHomeCard /
@@ -25,30 +29,49 @@ class TvDeviceTile extends StatelessWidget {
   final bool neo;
   final VoidCallback? onOpen;
 
+  /// Aparato que representa ESTE tile (`dev_tv-ce588d39`), cuando la habitación
+  /// tiene uno propio: su nombre y su estado salen del inventario y el tap pasa
+  /// a comandarlo a él (CCE#54). En null —home, tablet— el tile sigue siendo el
+  /// del aparato elegido en el control de TV, como siempre.
+  final String? deviceId;
+
+  /// De dónde sale el estado cuando hay [deviceId]: TvService sólo conoce el
+  /// del aparato ELEGIDO, el de los demás vive en /devices/merged.
+  final DevicesService? devices;
+
   const TvDeviceTile({
     super.key,
     required this.service,
     this.size = TileSize.medium,
     this.neo = false,
     this.onOpen,
+    this.deviceId,
+    this.devices,
   });
 
   @override
   Widget build(BuildContext context) {
+    final inventory = deviceId == null ? null : devices;
     return AnimatedBuilder(
-      animation: service,
+      animation: inventory == null
+          ? service
+          : Listenable.merge([service, inventory]),
       builder: (context, _) {
         final tv = service;
-        final active = tv.online && tv.isOn;
+        final device = inventory?.byId(deviceId!);
+        final online = device?.state.reachable ?? tv.online;
+        final isOn = device?.state.on ?? tv.isOn;
+        final active = online && isOn;
         // Sin primera respuesta del service → '—' (mismo placeholder que los
-        // sensores sin lectura); luego el patrón de TvHomeCard.
-        final label = tv.status == null
+        // sensores sin lectura); luego el patrón de TvHomeCard. Con un aparato
+        // fijado no hay espera: el inventario ya trae su estado.
+        final label = device == null && tv.status == null
             ? '—'
-            : (!tv.online
-                ? 'Fuera de línea'
-                : (tv.isOn ? 'Encendido' : 'En espera'));
+            : (!online ? 'Fuera de línea' : (isOn ? 'Encendido' : 'En espera'));
         return _MediaTile(
-          name: tv.displayName,
+          name: device != null
+              ? inventory!.displayName(device)
+              : tv.displayName,
           label: label,
           dotColor: active ? CceColors.info : CceColors.textTertiary,
           glyphColor: active ? CceColors.info : CceColors.textSecondary,
@@ -57,6 +80,9 @@ class TvDeviceTile extends StatelessWidget {
           neo: neo,
           onTap: () {
             HapticFeedback.selectionClick();
+            // El tile de la habitación abre SU aparato, no el que quedó elegido
+            // desde otra pantalla.
+            if (deviceId != null) unawaited(tv.selectByDeviceId(deviceId!));
             if (onOpen != null) {
               onOpen!();
             } else {

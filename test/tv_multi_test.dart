@@ -120,6 +120,23 @@ void main() {
       expect(s.needsPairing, isFalse);
     });
 
+    // El aparato lo puede nombrar la HABITACIÓN y no el selector: el marker y
+    // el tile de una room apuntan a su device canónico (CCE#54).
+    test('un device canónico resuelve a su aparato', () {
+      final s = fresh()
+        ..debugSeed(tvs: [
+          TvSummary.fromJson(Map<String, dynamic>.from(_televisorJson)),
+          TvSummary.fromJson(Map<String, dynamic>.from(_monitorJson)),
+        ]);
+      expect(s.tvForDeviceId('dev_tv-ce588d39')?.id, 'tv-ce588d39');
+      expect(s.tvForDeviceId('dev_tv')?.id, 'tv');
+      expect(s.tvForDeviceId('dev_tv-borrado'), isNull,
+          reason: 'un plano puede apuntar a un aparato que ya no está');
+      expect(fresh().tvForDeviceId('dev_tv'), isNull,
+          reason: 'sin lista no hay a quién apuntar y el control sigue como '
+              'estaba');
+    });
+
     test('elegido el monitor, todo apunta al monitor', () {
       final s = fresh()
         ..debugSeed(

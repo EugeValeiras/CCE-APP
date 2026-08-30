@@ -260,6 +260,25 @@ class TvService extends ChangeNotifier {
     await refresh();
   }
 
+  /// El aparato cuyo device canónico es [deviceId] (`dev_tv-ce588d39`), o null
+  /// si no está en la lista — un plano puede seguir apuntando a uno que el
+  /// backend ya no lista.
+  TvSummary? tvForDeviceId(String deviceId) {
+    for (final t in _tvs) {
+      if (t.canonicalDeviceId == deviceId) return t;
+    }
+    return null;
+  }
+
+  /// Pasa a comandar el aparato [deviceId]. Es lo que hace falta cuando el
+  /// aparato lo nombra la HABITACIÓN y no el selector del control: tocar el
+  /// monitor del Office tiene que abrir el monitor, no el televisor que estaba
+  /// elegido (CCE#54). No-op si ese aparato no está en la lista.
+  Future<void> selectByDeviceId(String deviceId) async {
+    final tv = tvForDeviceId(deviceId);
+    if (tv != null) await selectTv(tv.id);
+  }
+
   /// Dispara el pairing Tizen del aparato elegido. TRÁMITE FÍSICO: aparece un
   /// aviso en SU pantalla y alguien tiene que aceptarlo ahí.
   Future<bool> pair() async {

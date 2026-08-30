@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/device.dart';
+import '../../models/floor_plan.dart';
 import '../../models/room_ref.dart';
 import '../../services/devices_service.dart';
 import '../../services/jbl_service.dart';
@@ -265,30 +266,27 @@ class RoomPanel extends StatelessWidget {
         .toList();
     final locks = devices.where((d) => d.isLock).toList();
     // Pertenencia de TV/JBL derivada de los DEVICES del room ("todos son
-    // dispositivos", espejo del phone en room_detail_screen.dart): si
-    // dev_tv/dev_jbl están en los deviceIds (pasa en las rooms de fallback
-    // groups/_orphans), su tile aparece; la posición en el plano de ESTA room
-    // sigue contando como pertenencia porque las rooms de plano no los listan
-    // en positions (viven en tv/jblPositions). El gate viejo exigía
-    // planId != null y las rooms de fallback jamás mostraban TV/JBL.
-    final fp = service.floorPlans;
-    final mediaDevices = devices.where((d) => d.isMediaDevice).toList();
-    final hasTv = tv != null &&
-        (mediaDevices.any((d) => d.id == kTvDeviceId) ||
-            (room.planId != null &&
-                fp != null &&
-                fp.tvPositions.containsKey(room.planId)));
-    final hasJbl = jbl != null &&
-        (mediaDevices.any((d) => d.id == kJblDeviceId) ||
-            (room.planId != null &&
-                fp != null &&
-                fp.jblPositions.containsKey(room.planId)));
+    // dispositivos", espejo del phone en room_detail_screen.dart): desde
+    // CCE#54 `rooms` mete los dedicados en los deviceIds de la habitación cuyo
+    // plano los ubica —además de las rooms de fallback groups/_orphans—, así
+    // que alcanza con mirar los devices y cada Samsung tiene su tile donde
+    // está. El gate viejo exigía planId != null y las rooms de fallback jamás
+    // mostraban TV/JBL.
+    final tvsInRoom = devices
+        .where((d) => DevicesService.isDedicatedDevice(d, DedicatedFamily.tv))
+        .toList();
+    final jblsInRoom = devices
+        .where((d) => DevicesService.isDedicatedDevice(d, DedicatedFamily.jbl))
+        .toList();
+    final hasTv = tv != null && tvsInRoom.isNotEmpty;
+    final hasJbl = jbl != null && jblsInRoom.isNotEmpty;
     // TODOS los termostatos entran a la sección Devices como tiles (pedido
     // del dueño v1.62): el primario aparece dos veces a propósito — como
     // ThermostatHeaderCard fijo arriba Y como tile en la lista.
     final extraThermostats = thermostats;
-    final extraCount =
-        extraThermostats.length + (hasTv ? 1 : 0) + (hasJbl ? 1 : 0);
+    final extraCount = extraThermostats.length +
+        (hasTv ? tvsInRoom.length : 0) +
+        (hasJbl ? jblsInRoom.length : 0);
 
     if (devices.isEmpty && !hasTv && !hasJbl) {
       return const Center(
@@ -420,15 +418,17 @@ class RoomPanel extends StatelessWidget {
                   }
                   j -= extraThermostats.length;
                   if (hasTv) {
-                    if (j == 0) {
+                    if (j < tvsInRoom.length) {
                       return TvDeviceTile(
                         service: tv!,
+                        devices: service,
+                        deviceId: tvsInRoom[j].id,
                         size: tileSize,
                         neo: neo,
                         onOpen: onOpenTv,
                       );
                     }
-                    j -= 1;
+                    j -= tvsInRoom.length;
                   }
                   return JblDeviceTile(
                     service: jbl!,

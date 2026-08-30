@@ -460,10 +460,10 @@ class ApiService {
         }
       });
     }
-    // Posiciones de los dispositivos dedicados (TV / JBL): una posición ÚNICA
-    // por plano, {planId: {x, y}}. Mismo estilo defensivo que /config/positions:
-    // si el endpoint falla / no responde 200, el mapa queda vacío y el plano
-    // simplemente no muestra ese marker.
+    // Posiciones de los dispositivos dedicados (TV / JBL): un mapa plano cuya
+    // clave es el plano, o el plano Y el aparato — ver [DedicatedPositions].
+    // Mismo estilo defensivo que /config/positions: si el endpoint falla / no
+    // responde 200, el mapa queda vacío y el plano no muestra esos markers.
     final jblPositions = await _fetchDevicePositions('/config/jbl-positions');
     final tvPositions = await _fetchDevicePositions(
       '/config/samsung-tv-positions',
@@ -478,12 +478,13 @@ class ApiService {
     );
   }
 
-  /// GET de un mapa {planId: {x, y}} (posición única por plano) para un
-  /// dispositivo dedicado (TV / JBL). Defensivo: timeout igual al de los planos
-  /// (5s) y, ante cualquier fallo (status != 200, JSON inválido, red caída),
-  /// devuelve un mapa vacío en lugar de tirar.
-  Future<Map<String, LightPosition>> _fetchDevicePositions(String path) async {
-    final out = <String, LightPosition>{};
+  /// GET del mapa de posiciones de una familia de dispositivos dedicados
+  /// (TV / JBL). La clave puede ser `<planId>` o `<planId>::<idDelAparato>`:
+  /// el parseo de las dos formas vive en [DedicatedPositions.fromJson].
+  /// Defensivo: timeout igual al de los planos (5s) y, ante cualquier fallo
+  /// (status != 200, JSON inválido, red caída), devuelve un mapa vacío en
+  /// lugar de tirar.
+  Future<DedicatedPositions> _fetchDevicePositions(String path) async {
     try {
       final resp = await http
           .get(
@@ -491,21 +492,13 @@ class ApiService {
             headers: ServerConfig.tokenHeaders,
           )
           .timeout(const Duration(seconds: 5));
-      if (resp.statusCode != 200) return out;
+      if (resp.statusCode != 200) return DedicatedPositions.empty;
       final data = jsonDecode(resp.body);
-      if (data is Map) {
-        data.forEach((planId, xy) {
-          if (xy is Map) {
-            out[planId.toString()] = LightPosition.fromJson(
-              Map<String, dynamic>.from(xy),
-            );
-          }
-        });
-      }
+      if (data is Map) return DedicatedPositions.fromJson(data);
     } catch (e) {
       debugPrint('[FloorPlan] $path no disponible: $e');
     }
-    return out;
+    return DedicatedPositions.empty;
   }
 
   /// Escritura ATÓMICA de grupo (PUT /groups/{id}/state con patch
