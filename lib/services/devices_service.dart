@@ -1245,21 +1245,20 @@ class DevicesService extends ChangeNotifier {
     }
     if (ev.sensor != null && ev.sensor!.isNotEmpty) {
       // Merge: don't lose temp/hum when we only get motion, and vice-versa.
-      final current = d.sensor;
-      d.sensor = DeviceSensor(
-        temperature: (ev.sensor!['temperature'] as num?)?.toDouble() ?? current?.temperature,
-        humidity: (ev.sensor!['humidity'] as num?)?.toDouble() ?? current?.humidity,
-        battery: (ev.sensor!['battery'] as String?) ?? current?.battery,
-        motion: (ev.sensor!['motion'] as bool?) ?? current?.motion,
-        contact: (ev.sensor!['contact'] as bool?) ?? current?.contact,
-        brightness: (ev.sensor!['brightness'] as String?) ?? current?.brightness,
-        outlets: (ev.sensor!['outlets'] as num?)?.toInt() ?? current?.outlets,
-        lastKey: (ev.sensor!['lastKey'] as num?)?.toInt() ?? current?.lastKey,
-        outlet: (ev.sensor!['outlet'] as num?)?.toInt() ?? current?.outlet,
-        trigTime:
-            (ev.sensor!['trigTime'] as num?)?.toInt() ?? current?.trigTime,
-      );
-      changed = true;
+      // La lista de campos y sus conversiones viven UNA sola vez, en
+      // DeviceSensor.merge, compartidas con el parseo del REST: acá se
+      // re-armaba el sensor a mano con casteos crudos y el `trigTime` String
+      // de eWeLink tiraba ANTES de asignar, tragándose el evento entero
+      // (CCE#56).
+      try {
+        d.sensor = DeviceSensor.merge(d.sensor, ev.sensor!);
+        changed = true;
+      } catch (e, st) {
+        // Cinturón y tirantes: si el sensor igual explotara, lo que este
+        // evento ya aplicó al state sigue en pie y el notifyListeners() de
+        // abajo corre igual — el cambio no queda invisible hasta el próximo.
+        debugPrint('[DevicesService] sensor descartado ${d.id}: $e\n$st');
+      }
     }
     if (!changed) return;
     d.lastEventAt = DateTime.now();
