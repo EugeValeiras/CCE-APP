@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -113,6 +114,35 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
     // lastPlanId notifica y el AnimatedBuilder (que ya escucha widget.ui)
     // re-renderiza: la selección responde igual que con estado local.
     widget.ui.lastPlanId = id;
+  }
+
+  /// Los markers de dispositivos dedicados que van sobre [plan]: uno por
+  /// aparato ubicado ahí. La clave del mapa de posiciones puede nombrar al
+  /// aparato (`<planId>::tv-ce588d39`), así que un plano puede tener varios de
+  /// la misma familia — y cada uno pinta SU estado, no el del que el control de
+  /// TV tenga elegido. Sin el service de la familia no se dibuja nada (las
+  /// vistas que no quieren markers dedicados no lo pasan).
+  List<_DedicatedMarker> _dedicatedMarkers(FloorPlansData fp, FloorPlan plan) {
+    final out = <_DedicatedMarker>[];
+    for (final family in DedicatedFamily.values) {
+      final hasService = switch (family) {
+        DedicatedFamily.tv => widget.tv != null,
+        DedicatedFamily.jbl => widget.jbl != null,
+      };
+      if (!hasService) continue;
+      final positions = switch (family) {
+        DedicatedFamily.tv => fp.tvPositions,
+        DedicatedFamily.jbl => fp.jblPositions,
+      };
+      positions.inPlan(plan.id).forEach((deviceKey, pos) {
+        out.add(_DedicatedMarker(
+          family: family,
+          position: pos,
+          device: widget.service.dedicatedDevice(family, deviceKey),
+        ));
+      });
+    }
+    return out;
   }
 
   /// Cruza el robot con los planos: qué room está limpiando y cómo mostrarlo.
@@ -284,9 +314,10 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
         // Tamaño por plano: acá ya se conoce `plan`, así que el diámetro se
         // resuelve acá y _PlanCanvas/_DeviceDot/_DeviceMarker no cambian.
         final dotSize = kFloorPlanBaseDotSize * (plan.markerScale ?? 1.0);
-        // Posición única (por plano) de los dispositivos dedicados.
-        final tvPos = fp.tvPositions[plan.id];
-        final jblPos = fp.jblPositions[plan.id];
+        // Aparatos dedicados (Samsung / JBL) ubicados en ESTE plano: uno por
+        // marker. Antes se dibujaba uno solo por familia y el segundo Samsung
+        // se perdía (CCE#54).
+        final dedicated = _dedicatedMarkers(fp, plan);
         final showChips =
             widget.showPlanChips && widget.planId == null && fp.plans.length > 1;
         final vacuum = _vacuumStatus(fp);
@@ -328,8 +359,7 @@ class _FloorPlanPanelState extends State<FloorPlanPanel> {
                       openOnTap: widget.neo,
                       tv: widget.tv,
                       jbl: widget.jbl,
-                      tvPos: tvPos,
-                      jblPos: jblPos,
+                      dedicated: dedicated,
                       onOpenTv: widget.onOpenTv,
                       onOpenJbl: widget.onOpenJbl,
                       onOpenThermostat: widget.onOpenThermostat,
@@ -448,12 +478,13 @@ class _PlanCanvas extends StatelessWidget {
   /// de hacer toggle. En phone (`false`) se mantiene tap = toggle.
   final bool openOnTap;
 
-  /// Dispositivos dedicados + su posición única en el plano activo (o null si
-  /// no hay posición / no se pasaron los services).
+  /// Services de los dispositivos dedicados: el control que abre el tap y el
+  /// respaldo del estado del marker cuando el aparato no está en el inventario.
   final TvService? tv;
   final JblService? jbl;
-  final LightPosition? tvPos;
-  final LightPosition? jblPos;
+
+  /// Qué aparatos dedicados dibujar sobre este plano y dónde.
+  final List<_DedicatedMarker> dedicated;
   final VoidCallback? onOpenTv;
   final VoidCallback? onOpenJbl;
   final ValueChanged<Device>? onOpenThermostat;
@@ -467,12 +498,44 @@ class _PlanCanvas extends StatelessWidget {
     this.openOnTap = false,
     this.tv,
     this.jbl,
-    this.tvPos,
-    this.jblPos,
+    this.dedicated = const <_DedicatedMarker>[],
     this.onOpenTv,
     this.onOpenJbl,
     this.onOpenThermostat,
   });
+
+  /// El marker de un aparato dedicado. El estado sale del DEVICE del
+  /// inventario, así cada Samsung pinta el suyo; sólo cae al service de la
+  /// familia si ese aparato no está en /devices/merged.
+  Widget _dedicatedMarker(_DedicatedMarker m) {
+    final isTv = m.family == DedicatedFamily.tv;
+    final device = m.device;
+    final onOpen = isTv ? onOpenTv : onOpenJbl;
+    return _DeviceMarker(
+      listenable: device != null ? service : (isTv ? tv! : jbl!),
+      shape: isTv ? _MarkerShape.tv : _MarkerShape.jbl,
+      label: '', // sin nombre en el plano
+      // azul (el que tenía el soundbar) / naranja JBL (no chillón)
+      onColor: isTv ? const Color(0xFF3A6BC5) : const Color(0xFFE06A2C),
+      isOnline: device == null
+          ? (() => isTv ? tv!.online : jbl!.online)
+          : (() => (service.byId(device.id) ?? device).state.reachable),
+      isOn: device == null
+          ? (() => isTv ? tv!.isOn : jbl!.isOn)
+          : (() => (service.byId(device.id) ?? device).state.on),
+      size: dotSize,
+      onTap: onOpen == null
+          ? null
+          : () {
+              // El marker comanda SU aparato: sin esto, tocar el monitor del
+              // Office abría el televisor que el control tenía elegido.
+              if (isTv && device != null) {
+                unawaited(tv!.selectByDeviceId(device.id));
+              }
+              onOpen();
+            },
+    );
+  }
 
   /// Parser completo del viewBox: comillas simples o dobles, captura los 4
   /// valores (min-x, min-y, w, h). Fallback 800×600 SOLO si no hay viewBox.
@@ -657,44 +720,15 @@ class _PlanCanvas extends StatelessWidget {
                       );
                     }),
                     // Markers de dispositivos dedicados (TV / JBL): misma
-                    // fórmula de proyección que las luces; sólo si hay posición
-                    // para el plano activo y el service correspondiente vino.
-                    if (tv != null && tvPos != null)
-                      Positioned(
-                        left: clampCenter((tvPos!.x - vb.minX) * scale, w),
-                        top: clampCenter((tvPos!.y - vb.minY) * scale, h),
-                        child: FractionalTranslation(
-                          translation: const Offset(-0.5, -0.5),
-                          child: _DeviceMarker(
-                            listenable: tv!,
-                            shape: _MarkerShape.tv,
-                            label: '', // sin nombre en el plano
-                            onColor: const Color(0xFF3A6BC5), // azul (el que tenía el soundbar)
-                            isOnline: () => tv!.online,
-                            isOn: () => tv!.isOn,
-                            size: dotSize,
-                            onTap: onOpenTv,
+                    // fórmula de proyección que las luces.
+                    ...dedicated.map((m) => Positioned(
+                          left: clampCenter((m.position.x - vb.minX) * scale, w),
+                          top: clampCenter((m.position.y - vb.minY) * scale, h),
+                          child: FractionalTranslation(
+                            translation: const Offset(-0.5, -0.5),
+                            child: _dedicatedMarker(m),
                           ),
-                        ),
-                      ),
-                    if (jbl != null && jblPos != null)
-                      Positioned(
-                        left: clampCenter((jblPos!.x - vb.minX) * scale, w),
-                        top: clampCenter((jblPos!.y - vb.minY) * scale, h),
-                        child: FractionalTranslation(
-                          translation: const Offset(-0.5, -0.5),
-                          child: _DeviceMarker(
-                            listenable: jbl!,
-                            shape: _MarkerShape.jbl,
-                            label: '', // sin nombre en el plano
-                            onColor: const Color(0xFFE06A2C), // naranja JBL (no chillón)
-                            isOnline: () => jbl!.online,
-                            isOn: () => jbl!.isOn,
-                            size: dotSize,
-                            onTap: onOpenJbl,
-                          ),
-                        ),
-                      ),
+                        )),
                   ],
                 ),
               ),
@@ -1617,6 +1651,22 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     if (t < 30) return const Color(0xFFFF8A5C);
     return CceColors.danger;
   }
+}
+
+/// Un aparato dedicado ubicado en el plano que se está dibujando: de qué
+/// familia es, dónde va y qué device lo representa (null si el aparato que
+/// nombra la posición ya no está en el inventario — el marker igual se dibuja,
+/// con el estado del service de la familia).
+class _DedicatedMarker {
+  final DedicatedFamily family;
+  final LightPosition position;
+  final Device? device;
+
+  const _DedicatedMarker({
+    required this.family,
+    required this.position,
+    required this.device,
+  });
 }
 
 /// Forma del marker dedicado. Espeja la web (floor-plan.component.ts):

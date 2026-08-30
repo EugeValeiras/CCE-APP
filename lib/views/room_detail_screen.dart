@@ -440,25 +440,22 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         final locks = devices.where((d) => d.isLock).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
         // Pertenencia de TV/JBL derivada de los DEVICES del room ("todos son
-        // dispositivos"): dev_tv/dev_jbl existen en /merged y caen en los
-        // deviceIds de las rooms de fallback (groups/_orphans), así que si el
-        // device está acá, su tile aparece. Las rooms de plano no los listan
-        // en positions (su lugar vive en tv/jblPositions), por eso el plano
-        // sigue contando como pertenencia. El gate viejo exigía planId != null
-        // y las rooms de fallback jamás mostraban TV/JBL.
-        final fp = service.floorPlans;
+        // dispositivos"): dev_tv-*/dev_jbl existen en /merged y desde CCE#54
+        // `rooms` los mete en los deviceIds de la habitación cuyo PLANO los
+        // ubica, además de las rooms de fallback (groups/_orphans). Así que
+        // alcanza con mirar los devices: ya no hace falta cruzar
+        // tv/jblPositions acá, y un Samsung por habitación tiene su tile.
         final planId = widget.room?.planId;
-        final mediaDevices = devices.where((d) => d.isMediaDevice).toList();
-        final hasTv = widget.tv != null &&
-            (mediaDevices.any((d) => d.id == kTvDeviceId) ||
-                (planId != null &&
-                    fp != null &&
-                    fp.tvPositions.containsKey(planId)));
-        final hasJbl = widget.jbl != null &&
-            (mediaDevices.any((d) => d.id == kJblDeviceId) ||
-                (planId != null &&
-                    fp != null &&
-                    fp.jblPositions.containsKey(planId)));
+        final tvsInRoom = devices
+            .where((d) =>
+                DevicesService.isDedicatedDevice(d, DedicatedFamily.tv))
+            .toList();
+        final jblsInRoom = devices
+            .where((d) =>
+                DevicesService.isDedicatedDevice(d, DedicatedFamily.jbl))
+            .toList();
+        final hasTv = widget.tv != null && tvsInRoom.isNotEmpty;
+        final hasJbl = widget.jbl != null && jblsInRoom.isNotEmpty;
         // TODOS los termostatos entran a la sección Devices como tiles
         // (pedido del dueño v1.62): el primario aparece dos veces a propósito
         // — como ThermostatHeaderCard fijo arriba Y como tile en la lista.
@@ -475,8 +472,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // El robot es un device MÁS: entra a la grilla de "Devices" junto a los
         // termostatos, el TV y el JBL, en vez de tener su sección aparte.
         final extraCount = extraThermostats.length +
-            (hasTv ? 1 : 0) +
-            (hasJbl ? 1 : 0) +
+            (hasTv ? tvsInRoom.length : 0) +
+            (hasJbl ? jblsInRoom.length : 0) +
             vacuums.length;
         final onCount = lights.where((l) => l.state.on).length;
         // Color representativo del room (mismo tint normalizado que usa RoomCard
@@ -491,6 +488,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         // Botón "Limpiar esta habitación": sale del vínculo que se configura
         // en el dashboard (floorPlans[].vacuumRoom). El widget se auto-oculta
         // si no hay vínculo, robot o habitación resoluble.
+        final fp = service.floorPlans;
         final FloorPlan? roomPlan = (planId != null && fp != null)
             ? fp.plans.where((p) => p.id == planId).firstOrNull
             : null;
@@ -693,13 +691,15 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                           }
                           j -= vacuums.length;
                           if (hasTv) {
-                            if (j == 0) {
+                            if (j < tvsInRoom.length) {
                               return TvDeviceTile(
                                   service: widget.tv!,
+                                  devices: service,
+                                  deviceId: tvsInRoom[j].id,
                                   size: TileSize.medium,
                                   neo: true);
                             }
-                            j -= 1;
+                            j -= tvsInRoom.length;
                           }
                           return JblDeviceTile(
                               service: widget.jbl!,

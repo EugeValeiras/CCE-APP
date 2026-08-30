@@ -185,26 +185,99 @@ class LightPosition {
   }
 }
 
+/// Familia de dispositivo DEDICADO: los que no viven en `positions` con las
+/// luces sino en un mapa de posiciones propio del backend
+/// (`/config/jbl-positions`, `/config/samsung-tv-positions`).
+enum DedicatedFamily {
+  /// Samsung TV / monitor: devices `dev_tv…`, `type: 'tv'` en /devices/merged.
+  tv('tv'),
+
+  /// Barra de sonido JBL: device `dev_jbl`, `type: 'speaker'`.
+  jbl('speaker');
+
+  const DedicatedFamily(this.deviceType);
+
+  /// `type` con el que /devices/merged marca a estos aparatos.
+  final String deviceType;
+}
+
+/// Dónde va, en cada plano, cada aparato de una familia dedicada.
+///
+/// El backend guarda un mapa PLANO cuya clave tiene hoy dos formatos que
+/// conviven en la misma casa:
+///
+/// ```json
+/// { "edafc1f9-…":              {"x": 26, "y": 110},   // ← sólo el plano
+///   "733a3c72-…::tv-ce588d39": {"x": 95, "y":  43} }  // ← plano + aparato
+/// ```
+///
+/// La primera es la forma legacy, de cuando había UN aparato por familia; la
+/// segunda llegó con varios Samsung (CCE#45) y nombra al aparato —
+/// `tv-ce588d39` es el device canónico `dev_tv-ce588d39`. Modelar esto como
+/// `{planId: posición}` (lo que hacía la app) descarta la segunda en silencio:
+/// el monitor del Office no se dibujaba y encima caía en "Sin ubicación"
+/// (CCE#54). Las dos formas tienen que seguir funcionando: la pelada sigue
+/// viva en la config de la casa.
+class DedicatedPositions {
+  /// planId → id del aparato (`null` = clave pelada) → posición.
+  final Map<String, Map<String?, LightPosition>> byPlan;
+
+  const DedicatedPositions(this.byPlan);
+
+  static const DedicatedPositions empty = DedicatedPositions({});
+
+  /// Lo que separa el plano del aparato en la clave compuesta.
+  static const String keySeparator = '::';
+
+  /// Parsea el `{clave: {x, y}}` crudo de la API. Mismo criterio defensivo que
+  /// /config/positions: lo que no trae un objeto de posición se ignora.
+  factory DedicatedPositions.fromJson(Map<dynamic, dynamic> raw) {
+    final byPlan = <String, Map<String?, LightPosition>>{};
+    raw.forEach((key, xy) {
+      if (xy is! Map) return;
+      final k = key.toString();
+      final sep = k.indexOf(keySeparator);
+      final planId = sep < 0 ? k : k.substring(0, sep);
+      if (planId.isEmpty) return;
+      final device = sep < 0 ? '' : k.substring(sep + keySeparator.length);
+      byPlan.putIfAbsent(planId, () => <String?, LightPosition>{})[
+              device.isEmpty ? null : device] =
+          LightPosition.fromJson(Map<String, dynamic>.from(xy));
+    });
+    return DedicatedPositions(byPlan);
+  }
+
+  bool get isEmpty => byPlan.isEmpty;
+  bool get isNotEmpty => byPlan.isNotEmpty;
+
+  /// Los aparatos ubicados en [planId]: id del aparato (`null` = clave pelada)
+  /// → dónde va. Vacío si el plano no tiene ninguno.
+  Map<String?, LightPosition> inPlan(String? planId) => planId == null
+      ? const <String?, LightPosition>{}
+      : (byPlan[planId] ?? const <String?, LightPosition>{});
+
+  /// ¿Hay algún aparato de esta familia ubicado en [planId]?
+  bool hasPlan(String? planId) => inPlan(planId).isNotEmpty;
+}
+
 class FloorPlansData {
   final List<FloorPlan> plans;
   final String? activePlanId;
   /// positions[planId][deviceId] => LightPosition
   final Map<String, Map<String, LightPosition>> positions;
 
-  /// Posición ÚNICA por plano del JBL soundbar: jblPositions[planId] => pos.
-  /// (GET /config/jbl-positions devuelve {planId: {x, y}}.)
-  final Map<String, LightPosition> jblPositions;
+  /// Dónde va la barra JBL en cada plano (GET /config/jbl-positions).
+  final DedicatedPositions jblPositions;
 
-  /// Posición ÚNICA por plano del Samsung TV: tvPositions[planId] => pos.
-  /// (GET /config/samsung-tv-positions devuelve {planId: {x, y}}.)
-  final Map<String, LightPosition> tvPositions;
+  /// Dónde va cada Samsung en cada plano (GET /config/samsung-tv-positions).
+  final DedicatedPositions tvPositions;
 
   FloorPlansData({
     required this.plans,
     required this.activePlanId,
     required this.positions,
-    this.jblPositions = const {},
-    this.tvPositions = const {},
+    this.jblPositions = DedicatedPositions.empty,
+    this.tvPositions = DedicatedPositions.empty,
   });
 
   /// Plano a mostrar cuando ninguna vista lo fuerza: [candidateId] (la

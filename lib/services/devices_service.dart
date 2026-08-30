@@ -16,7 +16,9 @@ import '../theme/cce_tokens.dart';
 import '../utils/light_color.dart';
 import 'api_service.dart';
 import 'app_messenger.dart';
+import 'jbl_service.dart' show kJblDeviceId;
 import 'socket_service.dart';
+import 'tv_service.dart' show kTvDeviceId;
 
 class DevicesService extends ChangeNotifier {
   final ServerConfig config;
@@ -723,6 +725,11 @@ class DevicesService extends ChangeNotifier {
   ///  (1) planos con posiciones → planId = plan.id, hueRoomId = plan.hueRoomId
   ///  (2) groups               → planId = null, hueRoomId = null
   ///  (3) '_orphans'           → planId = null, hueRoomId = null
+  ///
+  /// Un plano ubica dos clases de device: las luces y compañía, que viven en
+  /// `positions`, y los DEDICADOS (Samsung TV / JBL), que tienen mapa propio.
+  /// Mirar sólo el primero mandaba a "Sin ubicación" aparatos que el plano
+  /// estaba dibujando (CCE#54).
   List<RoomRef> get rooms {
     final result = <RoomRef>[];
     final assigned = <String>{};
@@ -735,9 +742,13 @@ class DevicesService extends ChangeNotifier {
     final fp = _floorPlans;
     if (fp != null) {
       for (final plan in fp.plans) {
-        final pos = fp.positions[plan.id];
-        if (pos == null || pos.isEmpty) continue;
-        final ids = pos.keys.where(visible).toList();
+        // Los dedicados van al FINAL y sin repetir: el ícono de la sala sale de
+        // su primer device (roomGlyphBuilder), y ninguna habitación tiene por
+        // qué cambiar de ícono porque ahora también lista el televisor.
+        final ids = <String>{
+          ...?fp.positions[plan.id]?.keys,
+          ...dedicatedDeviceIdsIn(plan.id),
+        }.where(visible).toList();
         if (ids.isEmpty) continue;
         assigned.addAll(ids);
         result.add(RoomRef(
@@ -777,6 +788,71 @@ class DevicesService extends ChangeNotifier {
       ));
     }
     return result;
+  }
+
+  // ── Dispositivos dedicados (Samsung TV / JBL) ──────────────────────────────
+  // Su lugar en el plano no vive en `positions` sino en un mapa propio, con dos
+  // formatos de clave (ver [DedicatedPositions]). Esto traduce esas claves a
+  // devices canónicos, que es lo que necesitan `rooms` y los markers del plano.
+
+  /// ¿[d] es un aparato de la familia dedicada [family]?
+  static bool isDedicatedDevice(Device d, DedicatedFamily family) =>
+      d.isMediaDevice && d.type.toLowerCase() == family.deviceType;
+
+  DedicatedPositions _dedicatedPositions(DedicatedFamily family) =>
+      switch (family) {
+        DedicatedFamily.tv => _floorPlans?.tvPositions,
+        DedicatedFamily.jbl => _floorPlans?.jblPositions,
+      } ??
+      DedicatedPositions.empty;
+
+  /// Device canónico al que apunta una entrada de [DedicatedPositions]:
+  /// [deviceKey] es lo que va después del `::` en la clave (`tv-ce588d39`), o
+  /// null si la clave era el plano pelado. Null si ese aparato ya no existe.
+  Device? dedicatedDevice(DedicatedFamily family, String? deviceKey) =>
+      deviceKey != null
+          ? _byId['dev_$deviceKey']
+          : _defaultDedicatedDevice(family);
+
+  /// A qué aparato se refiere la clave PELADA de [family] — la que se escribió
+  /// cuando la casa tenía uno solo:
+  ///  1. el id histórico (`dev_tv` / `dev_jbl`), si todavía existe;
+  ///  2. si no, el único de su tipo que ninguna clave compuesta reclama: así
+  ///     quedó la casa cuando el televisor pasó a `dev_tv-1ca02124` (CCE#47) y
+  ///     el monitor se ubicó con clave compuesta;
+  ///  3. con más de un candidato, el primero por id. Cuál se elija da un poco
+  ///     igual, pero tiene que ser SIEMPRE el mismo: una habitación que baila
+  ///     entre refrescos es peor que una habitación equivocada.
+  Device? _defaultDedicatedDevice(DedicatedFamily family) {
+    final legacy = _byId[switch (family) {
+      DedicatedFamily.tv => kTvDeviceId,
+      DedicatedFamily.jbl => kJblDeviceId,
+    }];
+    if (legacy != null) return legacy;
+    final claimed = <String>{
+      for (final plan in _dedicatedPositions(family).byPlan.values)
+        for (final key in plan.keys)
+          if (key != null) 'dev_$key',
+    };
+    final candidates = _byId.values
+        .where((d) => isDedicatedDevice(d, family) && !claimed.contains(d.id))
+        .toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
+    return candidates.isEmpty ? null : candidates.first;
+  }
+
+  /// Ids canónicos de los dispositivos dedicados ubicados en [planId], en el
+  /// orden en que los trae la config. Los aparatos que ya no existen se saltean.
+  List<String> dedicatedDeviceIdsIn(String? planId) {
+    if (planId == null) return const [];
+    final out = <String>[];
+    for (final family in DedicatedFamily.values) {
+      for (final key in _dedicatedPositions(family).inPlan(planId).keys) {
+        final d = dedicatedDevice(family, key);
+        if (d != null && !out.contains(d.id)) out.add(d.id);
+      }
+    }
+    return out;
   }
 
   List<Device> _roomDevices(RoomRef room) =>
