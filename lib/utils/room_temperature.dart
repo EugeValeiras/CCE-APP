@@ -94,6 +94,25 @@ abstract final class RoomTemperature {
       thermostat(service, room, selectedSensorId: selectedSensorId) ??
       primary(service, room, selectedSensorId: selectedSensorId);
 
+  /// Device del que sale la lectura que finalmente se muestra — el que hay que
+  /// mirar para cualquier OTRO dato del mismo aparato.
+  ///
+  /// Existe porque el chip de humedad de la home lo necesita: si eligiera su
+  /// sensor por su cuenta, una habitación con dos termómetros podría terminar
+  /// mostrando la temperatura de uno y la humedad del otro como si fueran la
+  /// misma lectura.
+  static Device? source(
+    DevicesService service,
+    RoomRef? room, {
+    String? selectedSensorId,
+  }) {
+    final shown = displayed(service, room, selectedSensorId: selectedSensorId);
+    if (shown != null && reading(shown) != null) return shown;
+    // Termostato elegido que no reporta lectura ambiente: cae al pool de
+    // lectura en vez de quedarse mudo teniendo un termómetro en la room.
+    return primary(service, room, selectedSensorId: selectedSensorId);
+  }
+
   /// Temperatura a mostrar para [room] en °C, o null si la habitación no tiene
   /// ningún sensor con lectura. Es el valor que alimenta el badge del
   /// `RoomCard`, y coincide con el que muestra `RoomTemperatureHeader` al
@@ -103,12 +122,7 @@ abstract final class RoomTemperature {
     RoomRef? room, {
     String? selectedSensorId,
   }) {
-    final shown = displayed(service, room, selectedSensorId: selectedSensorId);
-    final value = shown == null ? null : reading(shown);
-    if (value != null) return value;
-    // Termostato elegido que no reporta lectura ambiente: el badge cae al pool
-    // de lectura en vez de quedarse mudo teniendo un termómetro en la room.
-    final fallback = primary(service, room, selectedSensorId: selectedSensorId);
-    return fallback == null ? null : reading(fallback);
+    final shown = source(service, room, selectedSensorId: selectedSensorId);
+    return shown == null ? null : reading(shown);
   }
 }
