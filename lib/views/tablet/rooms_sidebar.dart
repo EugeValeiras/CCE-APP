@@ -8,7 +8,6 @@ import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/cce_logo.dart';
 import '../../theme/components/room_card.dart';
-import '../../utils/room_ambient.dart';
 import '../../utils/room_icon.dart';
 import '../../utils/room_temperature.dart';
 import '../../widgets/pulse_on_update.dart';
@@ -145,17 +144,6 @@ class _RoomsSidebarState extends State<RoomsSidebar> {
           room,
           selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
         ),
-        // Chips de sensores para las salas sin luces (CCE#57), igual que en la
-        // home del teléfono: el sidebar monta la MISMA card y no puede
-        // divergir. La fila "Toda la casa" de abajo no es una habitación y por
-        // eso tampoco los pasa.
-        chips: stats.lightsTotal == 0
-            ? RoomAmbient.forRoom(
-                service,
-                room,
-                selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
-              )
-            : const [],
         neo: widget.neo,
         onTap: () => widget.onSelect(room.id),
         onToggle: (v) => _toggleRoom(room, v),
