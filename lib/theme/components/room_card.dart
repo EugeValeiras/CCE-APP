@@ -8,6 +8,7 @@ import '../cce_tokens.dart';
 import 'brightness_slider.dart';
 import 'cce_card.dart';
 import 'cce_switch.dart';
+import 'sensor_chip.dart';
 import 'status_dot.dart';
 
 /// Card de habitación (sidebar tablet y lista phone).
@@ -44,6 +45,7 @@ class RoomCard extends StatefulWidget {
     this.contactOpen = false,
     this.subtitleOverride,
     this.temperature,
+    this.chips = const [],
     this.toggleEnabled = true,
     required this.onTap,
     required this.onToggle,
@@ -91,6 +93,18 @@ class RoomCard extends StatefulWidget {
   /// antes de que existiera el badge. La fila "Toda la casa" del sidebar no es
   /// una habitación real y por eso tampoco lo pasa.
   final double? temperature;
+
+  /// Mediciones de la habitación, ya resueltas por `RoomAmbient` (la card
+  /// tampoco sabe de sensores acá). Se dibujan SÓLO cuando [lightsTotal] == 0,
+  /// en el lugar del subtítulo de estado: una habitación sin luces no tiene
+  /// nada que decir sobre luces, y ese renglón es lo único que la fila puede
+  /// ofrecer. Con luces se ignoran — esas filas no cambian.
+  ///
+  /// Cuando hay chips, la temperatura viaja EN un chip y no se dibuja el badge
+  /// de la derecha: sale de la columna que comparten las filas con luces, que
+  /// es el precio aceptado por tratar a las cuatro habitaciones sin luces
+  /// igual entre sí (decisión de producto, CCE#57).
+  final List<SensorChipData> chips;
 
   /// false ⇒ Switch deshabilitado (onChanged: null); onTap sigue vivo.
   final bool toggleEnabled;
@@ -177,6 +191,11 @@ class _RoomCardState extends State<RoomCard> {
             : '');
     // OJO: con 2+ dots el texto es '' pero SÍ hay dots que dibujar.
     final showStatus = activeDots > 0 || subtitle.isNotEmpty;
+    // Sin luces, los chips OCUPAN el renglón del subtítulo (no se suman a él):
+    // sin luces ese subtítulo sólo podía hablar de puertas y movimiento, y los
+    // chips lo dicen mejor y con más datos. Sin chips que mostrar la fila queda
+    // exactamente como estaba.
+    final showChips = widget.lightsTotal == 0 && widget.chips.isNotEmpty;
     // El subtítulo NO se tiñe: el dot que lo precede ya lleva el color del
     // estado. Pintar los dos del mismo color era decir dos veces lo mismo y
     // sumaba una fuente de color más a la lista.
@@ -215,7 +234,21 @@ class _RoomCardState extends State<RoomCard> {
                 overflow: TextOverflow.ellipsis,
                 style: CceText.headline,
               ),
-              if (showStatus) ...[
+              if (showChips) ...[
+                SizedBox(height: CceSpace.xs),
+                // Los chips comparten el ancho del Expanded con el título, NO
+                // el renglón: el nombre se trunca solo (ellipsis) y los chips
+                // reciben el ancho entero de la columna. Si aun así no entran,
+                // cada uno se comprime por su Flexible antes que desbordar.
+                Row(
+                  children: [
+                    for (var i = 0; i < widget.chips.length; i++) ...[
+                      if (i > 0) SizedBox(width: CceSpace.sm),
+                      Flexible(child: SensorChip(widget.chips[i])),
+                    ],
+                  ],
+                ),
+              ] else if (showStatus) ...[
                 SizedBox(height: CceSpace.xs),
                 Row(
                   children: [
@@ -268,7 +301,10 @@ class _RoomCardState extends State<RoomCard> {
         // menor que el del bloque título/subtítulo, así que NO estira la fila
         // y [kHeight] se mantiene igual con y sin badge — que es justamente la
         // decisión de diseño que documenta el header de este archivo.
-        if (widget.temperature != null) ...[
+        //
+        // Con chips el badge NO se dibuja: la temperatura ya viaja en el primer
+        // chip y repetirla acá sería el mismo número dos veces en la misma fila.
+        if (widget.temperature != null && !showChips) ...[
           SizedBox(width: CceSpace.sm),
           _TemperatureBadge(widget.temperature!),
         ],
@@ -277,14 +313,27 @@ class _RoomCardState extends State<RoomCard> {
         // El título Expanded cede ancho; entra al final del Row sin desbordar.
         //
         // Sin luces NO hay switch: un control que nunca se puede tocar es
-        // ruido (feedback del PR #22). Se RESERVA su ancho para que el badge
-        // de temperatura de las demás filas siga alineado en columna — sin
-        // eso, una sala con termómetro y sin luces corría su "20.7°" a la
-        // derecha y rompía el ritmo de la lista. [toggleEnabled] false es
-        // otra cosa: el control existe, sólo está bloqueado momentáneamente,
-        // y ahí sí se muestra deshabilitado.
+        // ruido (feedback del PR #22). Su ancho se conserva EXACTO
+        // ([CceSwitch.width]) para que el badge de temperatura de las demás
+        // filas siga alineado en columna — sin eso, una sala con termómetro y
+        // sin luces corría su "20.7°" a la derecha y rompía el ritmo de la
+        // lista. Lo que era un hueco mudo ahora lleva un chevron tenue: la
+        // única acción real de esa fila es entrar al detalle, y hasta ahora no
+        // se anunciaba en ningún lado. [toggleEnabled] false es otra cosa: el
+        // control existe, sólo está bloqueado momentáneamente, y ahí sí se
+        // muestra deshabilitado.
         if (widget.lightsTotal == 0)
-          const SizedBox(width: CceSwitch.width)
+          const SizedBox(
+            width: CceSwitch.width,
+            child: Center(
+              child: CceIcon(
+                CceIcons.chevronRight,
+                size: 16,
+                color: CceColors.textMuted,
+                emboss: false,
+              ),
+            ),
+          )
         else
           CceSwitch(
             value: widget.anyOn,

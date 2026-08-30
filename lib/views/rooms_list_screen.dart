@@ -17,6 +17,7 @@ import '../theme/components/cce_card.dart';
 import '../theme/components/cce_logo.dart';
 import '../theme/components/room_card.dart';
 import '../theme/components/section_header.dart';
+import '../utils/room_ambient.dart';
 import '../utils/room_icon.dart';
 import '../utils/room_temperature.dart';
 import '../widgets/pulse_on_update.dart';
@@ -939,6 +940,17 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           room,
           selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
         ),
+        // Chips de sensores: SÓLO para las habitaciones sin luces, que son las
+        // que hoy no tienen nada que mostrar en el renglón de estado (CCE#57).
+        // Con luces la fila queda exactamente como estaba, y ni siquiera se
+        // recorren los devices.
+        chips: stats.lightsTotal == 0
+            ? RoomAmbient.forRoom(
+                service,
+                room,
+                selectedSensorId: TempSensorPrefs.instance.idFor(room.id),
+              )
+            : const [],
         onTap: () {
           HapticFeedback.selectionClick();
           Navigator.of(context).push(MaterialPageRoute(
