@@ -19,7 +19,7 @@ import 'package:cce_app/theme/components/featured_tile.dart';
 import 'package:cce_app/theme/components/light_card.dart';
 import 'package:cce_app/theme/components/room_card.dart';
 import 'package:cce_app/theme/components/section_header.dart';
-import 'package:cce_app/theme/components/status_dot.dart';
+import 'package:cce_app/theme/components/status_badge.dart';
 import 'package:cce_app/utils/time_format.dart';
 import 'package:cce_app/views/alarm_view.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
@@ -397,7 +397,7 @@ void main() {
       expect(find.byType(CceSwitchEmptyTrack), findsNothing);
     });
 
-    testWidgets('RoomCard sin estado centra el nombre; con dots no',
+    testWidgets('RoomCard sin estado centra el nombre; con badges no',
         (tester) async {
       Future<void> pumpRoom({required bool anyOn, bool motion = false}) =>
           tester.pumpWidget(MaterialApp(
@@ -424,11 +424,12 @@ void main() {
       final card = tester.getRect(find.byType(RoomCard));
       final title = tester.getRect(find.text('Living'));
       expect(title.center.dy, closeTo(card.center.dy, 1.0));
-      expect(find.byType(StatusDot), findsNothing);
+      expect(find.byType(StatusBadge), findsNothing);
 
-      // Dos dots: el texto es '' pero la fila con los dots se dibuja.
+      // Dos estados activos: dos badges, cada uno con lo suyo (CCE#63 — antes
+      // acá había dos puntos mudos y el texto se vaciaba).
       await pumpRoom(anyOn: true, motion: true);
-      expect(find.byType(StatusDot), findsNWidgets(2));
+      expect(find.byType(StatusBadge), findsNWidgets(2));
       expect(tester.getRect(find.text('Living')).center.dy,
           lessThan(card.center.dy));
     });
