@@ -11,6 +11,7 @@ import '../../../models/capability.dart';
 import '../../../models/device.dart';
 import '../../../models/hue_room.dart';
 import '../../../models/light_group.dart';
+import '../../../utils/arg_controls.dart';
 import '../../../utils/verb_labels.dart';
 import '../../../models/server_config.dart';
 import '../../../services/devices_service.dart';
@@ -1154,6 +1155,21 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
   late String _verb = widget.action.verb;
   late Map<String, dynamic> _args = Map<String, dynamic>.from(widget.action.args);
 
+  @override
+  void initState() {
+    super.initState();
+    // Una acción guardada ANTES de que su arg fuera exigible (o por otro
+    // cliente) llega sin él: se completa con el mismo default que muestra el
+    // control, para que abrirla y aplicarla no exija tocar el slider.
+    final device = widget.devices.byId(_deviceId);
+    final spec = _verbSpec;
+    if (device != null && spec != null) {
+      for (final entry in _defaultArgs(spec, device).entries) {
+        _args.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+  }
+
   CapabilityCatalog get _cat => widget.devices.capabilityCatalog;
 
   List<Device> get _actionableDevices => widget.devices.all.where((d) {
@@ -1259,7 +1275,7 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
                   showCheckmark: false,
                   onSelected: (_) => setState(() {
                     _verb = a.verb;
-                    _args = _defaultArgs(a);
+                    _args = _defaultArgs(a, selected);
                   }),
                 ),
             ],
@@ -1270,10 +1286,29 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
     );
   }
 
-  Map<String, dynamic> _defaultArgs(CatalogActionSpec spec) {
+  /// Args con los que nace la acción al elegir el verbo. Siembra EXACTAMENTE lo
+  /// que muestra el control (el booleano en «No», el número en el valor vigente
+  /// del device, el enum estático en su primera opción): sin esto, elegir el
+  /// verbo y guardar sin tocar nada dejaba la acción sin su argumento requerido
+  /// y el backend la rechazaba al ejecutarla.
+  Map<String, dynamic> _defaultArgs(CatalogActionSpec spec, Device device) {
     final out = <String, dynamic>{};
     for (final a in spec.args) {
-      if (a.defaultValue != null) out[a.name] = a.defaultValue;
+      if (a.defaultValue != null) {
+        out[a.name] = a.defaultValue;
+        continue;
+      }
+      if (!a.required) continue;
+      if (a.type == 'boolean') {
+        out[a.name] = false;
+      } else if (a.type == 'number') {
+        final range = argRangeFor(a, device.state);
+        if (range == null) continue;
+        out[a.name] = initialArgValue(spec, range, device.state);
+      } else if (a.enumRef != null) {
+        final opts = _resolveEnum(a.enumRef!, device);
+        if (opts.isNotEmpty) out[a.name] = opts.first;
+      }
     }
     return out;
   }
@@ -1310,19 +1345,57 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
               ),
           ],
         ));
-      } else if (arg.type == 'number' && arg.min != null && arg.max != null) {
-        final v = (_args[arg.name] as num?)?.toDouble() ?? arg.min!.toDouble();
-        widgets.add(_editorLabel('${arg.name}  ·  ${v.round()}'));
+      } else if (arg.type == 'string') {
+        // String libre (canal de TV, appId): sin control no había forma de
+        // completarlo y la acción se guardaba sin su argumento.
+        widgets.add(_editorLabel(verbLabel(spec.verb)));
+        widgets.add(TextField(
+          controller: _textArg(arg.name),
+          style: CceText.body,
+          onChanged: (v) => setState(
+              () => _args[arg.name] = v.trim().isEmpty ? null : v.trim()),
+        ));
+      } else if (arg.type == 'number') {
+        // El rango sale del DEVICE (minFrom/maxFrom del ArgSpec) con el
+        // documental del catálogo de respaldo: para el termostato es
+        // state.minTemp–state.maxTemp, no un campo libre.
+        final range = argRangeFor(arg, d.state);
+        if (range == null) continue;
+        final v = range.snap((_args[arg.name] as num?)?.toDouble() ??
+            initialArgValue(spec, range, d.state).toDouble());
+        widgets.add(_editorLabel(
+            '${verbLabel(spec.verb)}  ·  ${fmtArgNum(v)}${arg.unit ?? ''}'));
         widgets.add(Slider(
-          value: v.clamp(arg.min!.toDouble(), arg.max!.toDouble()),
-          min: arg.min!.toDouble(),
-          max: arg.max!.toDouble(),
-          onChanged: (nv) => setState(() => _args[arg.name] = nv.round()),
+          value: v,
+          min: range.min,
+          max: range.max,
+          divisions: range.divisions,
+          onChanged: (nv) => setState(() => _args[arg.name] = range.asArg(nv)),
         ));
       }
     }
     return widgets;
   }
+
+  final Map<String, TextEditingController> _textArgs = {};
+
+  /// Controller del TextField de un arg string, sincronizado con [_args]: al
+  /// cambiar de verbo el texto se resetea con los args nuevos.
+  TextEditingController _textArg(String name) {
+    final c = _textArgs.putIfAbsent(name, () => TextEditingController());
+    final value = (_args[name] ?? '').toString();
+    if (c.text != value) c.text = value;
+    return c;
+  }
+
+  @override
+  void dispose() {
+    for (final c in _textArgs.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
 }
 
 /// Aviso: mensaje + sonido (con preview ▶) + tipo.

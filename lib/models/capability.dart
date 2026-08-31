@@ -13,9 +13,25 @@ class CatalogArgSpec {
 
   /// 'boolean' | 'number' | 'string'
   final String type;
+
+  /// Espejo del backend: un arg es requerido salvo que diga lo contrario
+  /// (`required: false`), y el catálogo omite la clave cuando lo es.
   final bool required;
   final num? min;
   final num? max;
+
+  /// Campos de state de los que sale el rango REAL del device cuando los
+  /// reporta (CCE#62): el setpoint de un termostato vive entre state.minTemp y
+  /// state.maxTemp, que cambian por modelo. Es el análogo numérico de un
+  /// enumRef dinámico; [min]/[max] quedan de piso documental.
+  final String? minFrom;
+  final String? maxFrom;
+
+  /// Paso del control numérico (0.5 = medio grado). null ⇒ de a 1.
+  final num? step;
+
+  /// Unidad para rotular el valor ('°C').
+  final String? unit;
 
   /// Referencia a un enum del catálogo (REMOTE_KEY_IDS, TV_INPUTS,
   /// VACUUM_CLEAN_MODES, …). Los dinámicos por-device se hidratan del state.
@@ -25,9 +41,13 @@ class CatalogArgSpec {
   const CatalogArgSpec({
     required this.name,
     required this.type,
-    this.required = false,
+    this.required = true,
     this.min,
     this.max,
+    this.minFrom,
+    this.maxFrom,
+    this.step,
+    this.unit,
     this.enumRef,
     this.defaultValue,
   });
@@ -35,9 +55,13 @@ class CatalogArgSpec {
   factory CatalogArgSpec.fromJson(Map<String, dynamic> json) => CatalogArgSpec(
         name: (json['name'] ?? '').toString(),
         type: (json['type'] ?? 'string').toString(),
-        required: json['required'] == true,
+        required: json['required'] != false,
         min: json['min'] is num ? json['min'] as num : null,
         max: json['max'] is num ? json['max'] as num : null,
+        minFrom: json['minFrom'] as String?,
+        maxFrom: json['maxFrom'] as String?,
+        step: json['step'] is num ? json['step'] as num : null,
+        unit: json['unit'] as String?,
         enumRef: json['enumRef'] as String?,
         defaultValue: json['default'],
       );

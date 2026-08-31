@@ -201,6 +201,37 @@ class DeviceState {
     this.networkOperator,
   });
 
+  /// Lee un campo NUMÉRICO del estado por su nombre del catálogo. Lo usa el
+  /// editor de acciones para resolver `minFrom`/`maxFrom` (CCE#62): el rango
+  /// del control sale del propio device (minTemp/maxTemp del termostato) en vez
+  /// del rango documental del catálogo.
+  num? numField(String? field) {
+    switch (field) {
+      case 'bri':
+        return bri;
+      case 'hue':
+        return hue;
+      case 'sat':
+        return sat;
+      case 'ct':
+        return ct;
+      case 'currentTemp':
+        return currentTemp;
+      case 'targetTemp':
+        return targetTemp;
+      case 'minTemp':
+        return minTemp;
+      case 'maxTemp':
+        return maxTemp;
+      case 'volume':
+        return volume;
+      case 'battery':
+        return battery;
+      default:
+        return null;
+    }
+  }
+
   factory DeviceState.fromJson(Map<String, dynamic> json) {
     return DeviceState(
       on: json['on'] == true,
