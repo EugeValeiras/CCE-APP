@@ -240,8 +240,7 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.hueScene:
       return 'Escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
-      final name = _deviceName(devices, act.deviceId);
-      return '$name: ${verbLabel(act.verb)}';
+      return _devicePhrase(_deviceName(devices, act.deviceId), act);
     case AutomationActionKind.notification:
       return 'Aviso: "${act.notificationMessage}"';
     case AutomationActionKind.alarm:
@@ -274,6 +273,35 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
   }
 }
 
+/// 21 → "21", 21.5 → "21.5" (misma convención que la pantalla del termostato).
+String _fmtNum(num n) => n == n.roundToDouble()
+    ? n.toStringAsFixed(0)
+    : n.toDouble().toStringAsFixed(1);
+
+/// Frase de una acción por capability. Los verbos con argumento se leen con su
+/// VALOR ("Poner el termostato en 21°"): "CCE Thermostat: setTargetTemp" no
+/// dice a cuánto queda la calefacción, que es justo lo que se quiere revisar
+/// de un vistazo. Los verbos sin caso propio conservan "Device: Verbo".
+String _devicePhrase(String name, AutomationAction act, {bool short = false}) {
+  final args = act.args;
+  switch (act.verb) {
+    case 'setTargetTemp':
+      final temp = args['targetTemp'];
+      if (temp is! num) break;
+      return short ? '$name ${_fmtNum(temp)}°' : 'Poner $name en ${_fmtNum(temp)}°';
+    case 'setPower':
+      final on = args['on'] == true;
+      if (short) return '$name ${on ? 'on' : 'off'}';
+      return on ? 'Prender $name' : 'Apagar $name';
+    case 'setTempMode':
+      final mode = args['mode'];
+      if (mode is! String || mode.isEmpty) break;
+      final label = tempModeLabel(mode);
+      return short ? '$name modo $label' : 'Poner $name en modo $label';
+  }
+  return short ? '$name ${verbLabel(act.verb)}' : '$name: ${verbLabel(act.verb)}';
+}
+
 String _actionFragment(AutomationAction act, DevicesService devices) {
   switch (act.kind) {
     case AutomationActionKind.light:
@@ -292,7 +320,9 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.hueScene:
       return 'escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
-      return '${_deviceName(devices, act.deviceId)} ${verbLabel(act.verb)}';
+      return _devicePhrase(_deviceName(devices, act.deviceId), act,
+              short: true)
+          .toLowerCase();
     case AutomationActionKind.notification:
       return 'aviso';
     case AutomationActionKind.alarm:

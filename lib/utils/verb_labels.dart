@@ -21,6 +21,9 @@ const Map<String, String> kVerbLabels = {
   'modeRadio': 'Radio',
   'playPause': 'Play/Pausa',
   'setNightMode': 'Modo noche',
+  'setTargetTemp': 'Temperatura',
+  'setPower': 'Encendido',
+  'setTempMode': 'Modo',
   'setVolume': 'Volumen',
   'volumeUp': 'Volumen +',
   'volumeDown': 'Volumen -',
@@ -28,3 +31,11 @@ const Map<String, String> kVerbLabels = {
 };
 
 String verbLabel(String verb) => kVerbLabels[verb] ?? verb;
+
+/// Etiquetas (ES) de los modos del termostato (enum THERMOSTAT_TEMP_MODES).
+const Map<String, String> kTempModeLabels = {
+  'Manual': 'Manual',
+  'Program': 'Programa',
+};
+
+String tempModeLabel(String mode) => kTempModeLabels[mode] ?? mode;
