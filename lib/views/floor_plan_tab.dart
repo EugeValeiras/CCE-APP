@@ -514,6 +514,10 @@ class _PlanCanvas extends StatelessWidget {
     return _DeviceMarker(
       listenable: device != null ? service : (isTv ? tv! : jbl!),
       shape: isTv ? _MarkerShape.tv : _MarkerShape.jbl,
+      // El giro y el tamaño son de ESTE aparato, acomodados desde el dashboard
+      // (CCE#60). Sin campos guardados valen 0 y 1: el marcador se dibuja como
+      // siempre.
+      rotation: m.position.rotationRadians,
       label: '', // sin nombre en el plano
       // azul (el que tenía el soundbar) / naranja JBL (no chillón)
       onColor: isTv ? const Color(0xFF3A6BC5) : const Color(0xFFE06A2C),
@@ -523,7 +527,7 @@ class _PlanCanvas extends StatelessWidget {
       isOn: device == null
           ? (() => isTv ? tv!.isOn : jbl!.isOn)
           : (() => (service.byId(device.id) ?? device).state.on),
-      size: dotSize,
+      size: dotSize * m.position.scaleFactor,
       onTap: onOpen == null
           ? null
           : () {
@@ -712,7 +716,11 @@ class _PlanCanvas extends StatelessWidget {
                           child: _DeviceDot(
                             device: device,
                             service: service,
-                            size: dotSize,
+                            // El tamaño del PLANO por el de ESTE ícono, y su
+                            // giro (CCE#60). Sin campos guardados el marcador
+                            // se dibuja exactamente como siempre.
+                            size: dotSize * e.value.scaleFactor,
+                            rotation: e.value.rotationRadians,
                             openOnTap: openOnTap,
                             onOpenThermostat: onOpenThermostat,
                           ),
@@ -1004,6 +1012,13 @@ class _DeviceDot extends StatefulWidget {
   final DevicesService service;
   final double size;
 
+  /// Giro del ícono en RADIANES (EugeValeiras/CCE#60). Se aplica al GLIFO y no
+  /// al marcador entero: los dots son circulares —girarlos no se vería— y los
+  /// badges de lectura son TEXTO, que rotado se vuelve ilegible. Es el mismo
+  /// criterio con el que el dashboard deja las etiquetas fuera del grupo que
+  /// gira.
+  final double rotation;
+
   /// Tablet: tap ABRE el control (LightColorScreen) en vez de togglear.
   final bool openOnTap;
 
@@ -1015,6 +1030,7 @@ class _DeviceDot extends StatefulWidget {
     required this.device,
     required this.service,
     required this.size,
+    this.rotation = 0,
     this.openOnTap = false,
     this.onOpenThermostat,
   });
@@ -1084,14 +1100,24 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
 
   /// Ícono del device con la MISMA resolución que la lista (MDI / icons0 SVG /
   /// emoji), para que plano y lista coincidan.
-  Widget _iconWidget(double size, Color color) => IconResolver.widget(
-        widget.device,
-        configuredIcon: widget.service.iconFor(widget.device.id),
-        customIcons: widget.service.customIcons,
-        displayName: widget.service.displayName(widget.device),
-        size: size,
-        color: color,
-      );
+  ///
+  /// Acá se aplica el giro del ícono (CCE#60): TODO lo que dibuja este marcador
+  /// pasa por este método, así que girarlo una vez alcanza para el dot
+  /// encendido, el apagado, el del relé y el del candado — y deja afuera, por
+  /// construcción, los badges de temperatura y el rótulo "Pulsador", que son
+  /// texto y no giran.
+  Widget _iconWidget(double size, Color color) {
+    final icon = IconResolver.widget(
+      widget.device,
+      configuredIcon: widget.service.iconFor(widget.device.id),
+      customIcons: widget.service.customIcons,
+      displayName: widget.service.displayName(widget.device),
+      size: size,
+      color: color,
+    );
+    if (widget.rotation == 0) return icon;
+    return Transform.rotate(angle: widget.rotation, child: icon);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1732,6 +1758,11 @@ class _DeviceMarker extends StatelessWidget {
   final double size;
   final VoidCallback? onTap;
 
+  /// Giro de la píldora en RADIANES (EugeValeiras/CCE#60). Acá el giro sí mueve
+  /// TODO el cuerpo, porque la píldora es alargada y su orientación ES la
+  /// información: es el ángulo del mueble en la casa.
+  final double rotation;
+
   static const Color _offColor = Color(0xFF9E9E9E);
 
   const _DeviceMarker({
@@ -1742,6 +1773,7 @@ class _DeviceMarker extends StatelessWidget {
     required this.isOnline,
     required this.isOn,
     required this.size,
+    this.rotation = 0,
     this.onTap,
   });
 
@@ -1752,36 +1784,41 @@ class _DeviceMarker extends StatelessWidget {
       builder: (context, _) {
         final online = isOnline();
         final active = online && isOn();
-        // Espeja el marker del dashboard (floor-plan.component): panel vertical
-        // TRANSLÚCIDO con BORDE del color de marca + wordmark de marca girado
-        // 90° (color de marca encendido, gris apagado) y dot de estado. SIN
-        // relleno sólido ni "pantalla" triangular (eso no existe en la web).
+        // Espeja el marker del dashboard (floor-plan.component): panel
+        // TRANSLÚCIDO con BORDE del color de marca + wordmark de marca (color de
+        // marca encendido, gris apagado) y dot de estado. SIN relleno sólido ni
+        // "pantalla" triangular (eso no existe en la web).
+        //
+        // CCE#60: la píldora se dibuja HORIZONTAL y la para el GIRO GUARDADO,
+        // igual que en el dashboard. Antes era vertical por construcción (con el
+        // wordmark en un RotatedBox), que es la misma rotación cableada que el
+        // #60 vino a sacar del template de la web: con el dibujo fijo, el ángulo
+        // que el usuario elija desde el dashboard no se podría reflegir acá. La
+        // migración de la API le escribió 90° a lo que ya estaba ubicado, así
+        // que el marcador arranca EXACTAMENTE como se veía siempre.
 
-        // Proporción ~18×100 de la web, escalada al dotSize del plano.
-        final pillW = size * 0.34;
-        final pillH = size * 1.40;
+        // Proporción ~100×18 de la web, escalada al dotSize del plano.
+        final pillW = size * 1.40;
+        final pillH = size * 0.34;
         final isTv = shape == _MarkerShape.tv;
         final double border = (size * 0.05).clamp(1.4, 2.6).toDouble();
 
-        // Wordmark de marca girado 90° para correr a lo largo de la píldora
-        // vertical (igual que la web). Tamaño por forma: el JBL es ~cuadrado y
-        // llena el ancho; el Samsung es un wordmark ancho que corre a lo largo.
-        // OverflowBox: el glifo puede exceder el ancho de la píldora sin que las
-        // constraints lo achiquen (la tinta visible igual entra en el ancho).
-        final double glyphSize = isTv ? pillH * 0.58 : pillW * 1.12;
+        // Wordmark de marca corriendo a lo largo de la píldora. Tamaño por
+        // forma: el JBL es ~cuadrado y llena el alto; el Samsung es un wordmark
+        // ancho que corre a lo largo. OverflowBox: el glifo puede exceder el
+        // alto de la píldora sin que las constraints lo achiquen (la tinta
+        // visible igual entra).
+        final double glyphSize = isTv ? pillW * 0.58 : pillH * 1.12;
         final Widget logo = OverflowBox(
           minWidth: 0,
           maxWidth: double.infinity,
           minHeight: 0,
           maxHeight: double.infinity,
-          child: RotatedBox(
-            quarterTurns: 1,
-            child: CceIcon(
-              isTv ? CceIcons.samsung : CceIcons.jbl,
-              size: glyphSize,
-              color: active ? onColor : _offColor,
-              emboss: false,
-            ),
+          child: CceIcon(
+            isTv ? CceIcons.samsung : CceIcons.jbl,
+            size: glyphSize,
+            color: active ? onColor : _offColor,
+            emboss: false,
           ),
         );
 
@@ -1796,7 +1833,7 @@ class _DeviceMarker extends StatelessWidget {
             color: active
                 ? onColor.withValues(alpha: 0.15)
                 : Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(pillW * 0.42),
+            borderRadius: BorderRadius.circular(pillH * 0.42),
             border: Border.all(
               color: active ? onColor : _offColor.withValues(alpha: 0.55),
               width: border,
@@ -1824,20 +1861,7 @@ class _DeviceMarker extends StatelessWidget {
           ),
         );
 
-        // Píldora + dot online en la esquina superior derecha (como la web).
-        final body = Stack(
-          clipBehavior: Clip.none,
-          children: [
-            pill,
-            Positioned(
-              right: -size * 0.06,
-              top: -size * 0.06,
-              child: onlineDot,
-            ),
-          ],
-        );
-
-        return GestureDetector(
+        final tappablePill = GestureDetector(
           onTap: onTap == null
               ? null
               : () {
@@ -1845,8 +1869,39 @@ class _DeviceMarker extends StatelessWidget {
                   onTap!();
                 },
           behavior: HitTestBehavior.opaque,
-          child: body,
+          child: rotation == 0
+              ? pill
+              : Transform.rotate(angle: rotation, child: pill),
         );
+
+        // Píldora girada + dot online arriba a la derecha. El dot NO gira: es
+        // chrome del marcador, no parte del aparato (mismo criterio que el
+        // dashboard, donde vive fuera del grupo que rota). Va anclado a una caja
+        // CUADRADA del largo de la píldora, así queda en la misma esquina sea
+        // cual sea el ángulo — y con los 90° de siempre, exactamente donde
+        // estaba antes del #60.
+        //
+        // El GestureDetector envuelve sólo la píldora y no la caja: el área
+        // tocable sigue siendo la del aparato, no un cuadrado que le robaría el
+        // tap a los markers vecinos.
+        final body = SizedBox(
+          width: pillW,
+          height: pillW,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              tappablePill,
+              Positioned(
+                right: -size * 0.06,
+                top: -size * 0.06,
+                child: onlineDot,
+              ),
+            ],
+          ),
+        );
+
+        return body;
       },
     );
   }

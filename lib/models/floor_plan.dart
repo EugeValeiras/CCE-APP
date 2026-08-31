@@ -172,15 +172,51 @@ class VacuumRoomLink {
   }
 }
 
+/// Dónde va un ícono en el plano y CÓMO se dibuja (EugeValeiras/CCE#60).
+///
+/// Hasta el #60 esto era `{x, y}` y nada más: el tamaño era un atributo DEL
+/// PLANO (`markerScale`, el mismo para todos los markers) y el televisor y el
+/// soundbar salían girados 90° porque estaba escrito a mano en el dibujo. Ahora
+/// cada ícono lleva su propio giro y su propio tamaño, se acomodan desde el
+/// dashboard y la app los REFLEJA — acá no se editan (ver el issue).
+///
+/// Los dos campos son OPCIONALES para siempre. Cuando esto se escribió había 59
+/// posiciones guardadas en la casa y ninguna los tenía: sin `rotation` vale 0 y
+/// sin `scale` vale 1. Ese default es el contrato que comparten la API, el
+/// dashboard y la app, y por eso los getters de abajo lo resuelven UNA vez, acá,
+/// en vez de repetir `?? 0` en cada widget que dibuja.
 class LightPosition {
   final double x;
   final double y;
-  LightPosition(this.x, this.y);
+
+  /// Giro del ícono en grados, 0–359. `null` = sin girar.
+  final double? rotation;
+
+  /// Multiplicador del `markerScale` del plano, 0.1–3.0. `null` = sin ajuste.
+  final double? scale;
+
+  LightPosition(this.x, this.y, {this.rotation, this.scale});
+
+  /// El giro con su default, en RADIANES (que es lo que pide `Transform`).
+  double get rotationRadians => (rotation ?? 0) * math.pi / 180;
+
+  /// El multiplicador con su default. Nunca `null`.
+  double get scaleFactor => scale ?? 1;
+
+  /// Lee un `num` finito, o `null`. Un `NaN` en un `Transform` no lanza: pinta
+  /// un marcador invisible, que es peor que ignorarlo.
+  static double? _finite(dynamic v) {
+    if (v is! num) return null;
+    final d = v.toDouble();
+    return d.isFinite ? d : null;
+  }
 
   factory LightPosition.fromJson(Map<String, dynamic> json) {
     return LightPosition(
       (json['x'] as num?)?.toDouble() ?? 0,
       (json['y'] as num?)?.toDouble() ?? 0,
+      rotation: _finite(json['rotation']),
+      scale: _finite(json['scale']),
     );
   }
 }
