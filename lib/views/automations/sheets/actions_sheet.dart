@@ -1155,6 +1155,21 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
   late String _verb = widget.action.verb;
   late Map<String, dynamic> _args = Map<String, dynamic>.from(widget.action.args);
 
+  @override
+  void initState() {
+    super.initState();
+    // Una acción guardada ANTES de que su arg fuera exigible (o por otro
+    // cliente) llega sin él: se completa con el mismo default que muestra el
+    // control, para que abrirla y aplicarla no exija tocar el slider.
+    final device = widget.devices.byId(_deviceId);
+    final spec = _verbSpec;
+    if (device != null && spec != null) {
+      for (final entry in _defaultArgs(spec, device).entries) {
+        _args.putIfAbsent(entry.key, () => entry.value);
+      }
+    }
+  }
+
   CapabilityCatalog get _cat => widget.devices.capabilityCatalog;
 
   List<Device> get _actionableDevices => widget.devices.all.where((d) {
