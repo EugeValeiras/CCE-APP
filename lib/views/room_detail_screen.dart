@@ -20,12 +20,10 @@ import '../widgets/lock_tile.dart';
 import '../models/hue_room.dart';
 import '../theme/components/hue_room_card.dart';
 import '../widgets/vacuum_room_button.dart';
-import '../widgets/vacuum_tile.dart';
 import '../widgets/media_device_tile.dart';
 import '../widgets/room_temperature_header.dart';
 import '../widgets/scenes_section.dart';
 import '../widgets/sensor_tile.dart';
-import '../widgets/thermostat_tile.dart';
 
 class RoomDetailScreen extends StatefulWidget {
   final String title;
@@ -58,12 +56,19 @@ class RoomDetailScreen extends StatefulWidget {
 
 class _RoomDetailScreenState extends State<RoomDetailScreen> {
   // Orden de las secciones, persistido localmente. Reordenable desde el menú.
+  //
+  // CCE#67: 'sensors' se partió en dos — 'devices' (lo que se OPERA: TV, JBL) y
+  // 'sensors' (lo que se LEE: puertas, movimiento, botones). El orden guardado
+  // por la versión anterior tiene tres claves y NO valida contra el largo de
+  // acá, así que cae al default: es lo deseado (el usuario reordena de nuevo y
+  // se persisten las cuatro), y la pantalla se dibuja igual.
   static const _orderKey = 'room.sectionOrder';
-  static const _defaultOrder = ['scenes', 'lights', 'sensors'];
+  static const _defaultOrder = ['scenes', 'lights', 'devices', 'sensors'];
   List<String> _order = List.of(_defaultOrder);
 
   // Orden de los elementos (deviceIds) por sección, persistido por habitación.
   List<String> _lightOrder = [];
+  List<String> _deviceOrder = [];
   List<String> _sensorOrder = [];
 
   /// Spinner del master de Hue mientras el bridge confirma. Es un solo room por
@@ -94,7 +99,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
       final prefs = await SharedPreferences.getInstance();
       final saved = prefs.getStringList(_orderKey);
       final lo = prefs.getStringList('room.$_roomKey.lightOrder');
+      // 'sensorOrder' viene de cuando la grilla era una sola: puede traer ids
+      // de TV/JBL (y de termostatos/aspiradoras) que ya no son sensores. No hay
+      // que limpiarlos: _applyOrder ignora los ids que no están en la lista, y
+      // la primera reordenación reescribe la clave con los sensores solos.
       final so = prefs.getStringList('room.$_roomKey.sensorOrder');
+      final dvo = prefs.getStringList('room.$_roomKey.deviceOrder');
       setState(() {
         if (saved != null &&
             saved.length == _defaultOrder.length &&
@@ -103,6 +113,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
         }
         if (lo != null) _lightOrder = lo;
         if (so != null) _sensorOrder = so;
+        if (dvo != null) _deviceOrder = dvo;
       });
     } catch (_) {}
   }
@@ -139,6 +150,43 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
 
   DevicesService get service => widget.service;
 
+  // --- Qué va en cada sección (CCE#67) -------------------------------------
+  // El criterio vive acá y no repetido en build() y en el sheet de reordenar:
+  // que las dos vistas puedan divergir es justo lo que dejó la grilla mezclada.
+  //
+  // Termostatos y aspiradoras NO entran a ninguna lista: el termostato vive en
+  // RoomTemperatureHeader (que además deja mover el objetivo con − / +) y la
+  // aspiradora en el botón "Limpiar esta habitación". OJO si algún día hay DOS
+  // termostatos (o dos robots) en la misma habitación: el header muestra el
+  // elegido y el otro quedaría invisible en el detalle.
+
+  /// Luces de la habitación, en el orden persistido.
+  List<Device> _lightsOf(List<Device> all) => _applyOrder(
+      all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat).toList(),
+      _lightOrder);
+
+  /// Lo que se OPERA: TV y JBL. Sólo los que tienen su service disponible —
+  /// sin él no hay tile que dibujar.
+  List<Device> _operablesOf(List<Device> all) => _applyOrder([
+        if (widget.tv != null)
+          ...all.where(
+              (d) => DevicesService.isDedicatedDevice(d, DedicatedFamily.tv)),
+        if (widget.jbl != null)
+          ...all.where(
+              (d) => DevicesService.isDedicatedDevice(d, DedicatedFamily.jbl)),
+      ], _deviceOrder);
+
+  /// Lo que se LEE: puertas, movimiento, botones. Nada más.
+  List<Device> _sensorsOf(List<Device> all) => _applyOrder(
+      all
+          .where((d) =>
+              (d.isSensorDevice || d.isSwitch) &&
+              !d.isThermostat &&
+              !d.isLock &&
+              !d.isVacuum)
+          .toList(),
+      _sensorOrder);
+
   Future<void> _toggleAll(List<Device> lights, bool on) async {
     HapticFeedback.selectionClick();
     for (final l in lights) {
@@ -162,7 +210,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
               leading: const Icon(Icons.swap_vert, color: CceColors.textPrimary),
               title: const Text('Reordenar secciones',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Cambiá el orden de Escenas, Luces y Dispositivos',
+              subtitle: const Text(
+                  'Cambiá el orden de Escenas, Luces, Dispositivos y Sensores',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -174,7 +223,8 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   const Icon(Icons.drag_indicator, color: CceColors.textPrimary),
               title: const Text('Reordenar elementos',
                   style: TextStyle(color: CceColors.textPrimary)),
-              subtitle: const Text('Ordená las luces y devices de la habitación',
+              subtitle: const Text(
+                  'Ordená las luces, los dispositivos y los sensores',
                   style: TextStyle(color: CceColors.textTertiary)),
               onTap: () {
                 Navigator.of(context).pop();
@@ -188,18 +238,17 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
     );
   }
 
-  // OJO: solo cambia el LABEL visible ('Devices'); el key persistido sigue
-  // siendo 'sensors' (room.sectionOrder) — renombrarlo invalidaría el orden
-  // guardado de todos los usuarios.
   String _sectionLabel(String key) => switch (key) {
         'scenes' => 'Escenas',
         'lights' => 'Luces',
-        _ => 'Dispositivos',
+        'devices' => 'Dispositivos',
+        _ => 'Sensores',
       };
 
   IconData _sectionIcon(String key) => switch (key) {
         'scenes' => Icons.auto_awesome,
         'lights' => Icons.lightbulb_outline,
+        'devices' => Icons.devices_other,
         _ => Icons.sensors,
       };
 
@@ -283,22 +332,10 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
   void _openReorderItems() {
     final devices =
         widget.deviceIds.map(service.byId).whereType<Device>().toList();
-    final lightIds = _applyOrder(
-            devices
-                .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
-                .toList(),
-            _lightOrder)
-        .map((d) => d.id)
-        .toList();
-    final sensorIds = _applyOrder(
-            devices
-                .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isVacuum)
-                .toList(),
-            _sensorOrder)
-        .map((d) => d.id)
-        .toList();
-    if (lightIds.isEmpty && sensorIds.isEmpty) return;
+    final lightIds = _lightsOf(devices).map((d) => d.id).toList();
+    final deviceIds = _operablesOf(devices).map((d) => d.id).toList();
+    final sensorIds = _sensorsOf(devices).map((d) => d.id).toList();
+    if (lightIds.isEmpty && deviceIds.isEmpty && sensorIds.isEmpty) return;
 
     String nameOf(String id) {
       final d = service.byId(id);
@@ -314,6 +351,7 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
       ),
       builder: (_) {
         final lo = List.of(lightIds);
+        final dvo = List.of(deviceIds);
         final so = List.of(sensorIds);
         return StatefulBuilder(
           builder: (context, setSheet) {
@@ -386,12 +424,23 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         setState(() => _lightOrder = List.of(lo));
                         _saveItemOrder('light', lo);
                       }),
-                      section('Dispositivos', so, (oldI, newI) {
+                      section('Dispositivos', dvo, (oldI, newI) {
+                        setSheet(() {
+                          if (newI > oldI) newI -= 1;
+                          dvo.insert(newI, dvo.removeAt(oldI));
+                        });
+                        setState(() => _deviceOrder = List.of(dvo));
+                        _saveItemOrder('device', dvo);
+                      }),
+                      section('Sensores', so, (oldI, newI) {
                         setSheet(() {
                           if (newI > oldI) newI -= 1;
                           so.insert(newI, so.removeAt(oldI));
                         });
                         setState(() => _sensorOrder = List.of(so));
+                        // Reescribe 'sensorOrder' con los sensores solos: acá
+                        // se limpian los ids de TV/JBL que dejó la grilla
+                        // mezclada de antes de CCE#67.
                         _saveItemOrder('sensor', so);
                       }),
                     ],
@@ -417,24 +466,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
       builder: (context, _) {
         final devices =
             widget.deviceIds.map(service.byId).whereType<Device>().toList();
-        final lights = _applyOrder(
-            devices
-                .where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat)
-                .toList(),
-            _lightOrder);
-        // Termostato del room → header fijo arriba del contenido (no es una
-        // sección reordenable). Tomamos el primario (alfabético) si hay varios.
-        final thermostats =
-            devices.where((d) => d.isThermostat).toList()
-              ..sort((a, b) => a.name.compareTo(b.name));
-        // (El termostato ya no se renderiza aparte: RoomTemperatureHeader es
-        // el header único de clima y lo muestra con +/− si es lo elegido.)
-        final sensors = _applyOrder(
-            devices
-                .where((d) =>
-                    (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isVacuum)
-                .toList(),
-            _sensorOrder);
+        final lights = _lightsOf(devices);
+        // Sensores: SOLO lo que se lee. El termostato no está acá (vive en
+        // RoomTemperatureHeader, que lo muestra con +/− si es el elegido) ni la
+        // aspiradora (vive en "Limpiar esta habitación").
+        final sensors = _sensorsOf(devices);
         // Cerraduras del room → sección propia (no reordenable, fija al final).
         final locks = devices.where((d) => d.isLock).toList()
           ..sort((a, b) => a.name.compareTo(b.name));
@@ -455,10 +491,11 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             .toList();
         final hasTv = widget.tv != null && tvsInRoom.isNotEmpty;
         final hasJbl = widget.jbl != null && jblsInRoom.isNotEmpty;
-        // TODOS los termostatos entran a la sección Devices como tiles
-        // (pedido del dueño v1.62): el primario aparece dos veces a propósito
-        // — como ThermostatHeaderCard fijo arriba Y como tile en la lista.
-        final extraThermostats = thermostats;
+        // "Dispositivos": lo que se OPERA, en su propia grilla y con su propio
+        // orden persistido (room.<roomKey>.deviceOrder). Ya no van "de
+        // prestado" al final de la de sensores, así que sí participan del
+        // reorder.
+        final operables = _operablesOf(devices);
         // Room de Hue vinculado: el master on/off de las luces de esta room.
         // Va PINNEADO al frente de la grilla de Luces (no en Escenas: prender
         // el room entero no es aplicar una escena, es el master del grupo).
@@ -466,14 +503,6 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
             widget.room == null ? null : service.hueRoomForRoom(widget.room!);
         final hasHueRoom = hueRoom != null;
 
-        final vacuums = devices.where((d) => d.isVacuum).toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-        // El robot es un device MÁS: entra a la grilla de "Devices" junto a los
-        // termostatos, el TV y el JBL, en vez de tener su sección aparte.
-        final extraCount = extraThermostats.length +
-            (hasTv ? tvsInRoom.length : 0) +
-            (hasJbl ? jblsInRoom.length : 0) +
-            vacuums.length;
         final onCount = lights.where((l) => l.state.on).length;
         // Color representativo del room (mismo tint normalizado que usa RoomCard
         // en la home): el master toggle PRENDE con el color del room en vez del
@@ -622,15 +651,60 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                   ),
                 ]
               : const [],
-          // "Devices" (ex "Sensores"): sensores (orden persistido intacto) →
-          // termostatos extra → TV → JBL, en UN solo grid indexado. Los tiles
-          // nuevos van fijos al final (no participan del reorder).
-          'sensors': (sensors.isNotEmpty || extraCount > 0)
+          // "Dispositivos": lo que se OPERA (TV, JBL). Sin ninguno, la sección
+          // no se dibuja — igual que las demás.
+          'devices': operables.isNotEmpty
               ? [
                   const SliverPadding(
                     padding: EdgeInsets.symmetric(horizontal: 16),
                     sliver: SliverToBoxAdapter(
                       child: SectionHeader(title: 'Dispositivos'),
+                    ),
+                  ),
+                  SliverPadding(
+                    // Cierra con el mismo aire que la grilla de Luces (8): con
+                    // los 24 de una sección final, el título de Sensores
+                    // quedaba flotando a media pantalla de sus tiles.
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: TileSize.medium.maxTileExtent,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
+                        mainAxisExtent: TileSize.medium.sensorTileHeight,
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                          final d = operables[i];
+                          // Cada tile escucha a SU service (TvService /
+                          // JblService), no a DevicesService.
+                          if (DevicesService.isDedicatedDevice(
+                              d, DedicatedFamily.tv)) {
+                            return TvDeviceTile(
+                                service: widget.tv!,
+                                devices: service,
+                                deviceId: d.id,
+                                size: TileSize.medium,
+                                neo: true);
+                          }
+                          return JblDeviceTile(
+                              service: widget.jbl!,
+                              size: TileSize.medium,
+                              neo: true);
+                        },
+                        childCount: operables.length,
+                      ),
+                    ),
+                  ),
+                ]
+              : const [],
+          // "Sensores": lo que se LEE (puertas, movimiento, botones).
+          'sensors': sensors.isNotEmpty
+              ? [
+                  const SliverPadding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverToBoxAdapter(
+                      child: SectionHeader(title: 'Sensores'),
                     ),
                   ),
                   SliverPadding(
@@ -643,69 +717,18 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> {
                         mainAxisExtent: TileSize.medium.sensorTileHeight,
                       ),
                       delegate: SliverChildBuilderDelegate(
-                        (context, i) {
-                          if (i < sensors.length) {
-                            return ListenableBuilder(
-                              listenable: service,
-                              builder: (ctx, _) {
-                                final d =
-                                    service.byId(sensors[i].id) ?? sensors[i];
-                                return SensorTile(
-                                    device: d,
-                                    service: service,
-                                    size: TileSize.medium,
-                                    neo: true);
-                              },
-                            );
-                          }
-                          var j = i - sensors.length;
-                          if (j < extraThermostats.length) {
-                            final t = extraThermostats[j];
-                            return ListenableBuilder(
-                              listenable: service,
-                              builder: (ctx, _) {
-                                final d = service.byId(t.id) ?? t;
-                                return ThermostatTile(
-                                    device: d,
-                                    service: service,
-                                    size: TileSize.medium,
-                                    neo: true);
-                              },
-                            );
-                          }
-                          j -= extraThermostats.length;
-                          if (j < vacuums.length) {
-                            final v = vacuums[j];
-                            return ListenableBuilder(
-                              listenable: service,
-                              builder: (ctx, _) {
-                                final d = service.byId(v.id) ?? v;
-                                return VacuumTile(
-                                    device: d,
-                                    service: service,
-                                    size: TileSize.medium,
-                                    neo: true);
-                              },
-                            );
-                          }
-                          j -= vacuums.length;
-                          if (hasTv) {
-                            if (j < tvsInRoom.length) {
-                              return TvDeviceTile(
-                                  service: widget.tv!,
-                                  devices: service,
-                                  deviceId: tvsInRoom[j].id,
-                                  size: TileSize.medium,
-                                  neo: true);
-                            }
-                            j -= tvsInRoom.length;
-                          }
-                          return JblDeviceTile(
-                              service: widget.jbl!,
-                              size: TileSize.medium,
-                              neo: true);
-                        },
-                        childCount: sensors.length + extraCount,
+                        (context, i) => ListenableBuilder(
+                          listenable: service,
+                          builder: (ctx, _) {
+                            final d = service.byId(sensors[i].id) ?? sensors[i];
+                            return SensorTile(
+                                device: d,
+                                service: service,
+                                size: TileSize.medium,
+                                neo: true);
+                          },
+                        ),
+                        childCount: sensors.length,
                       ),
                     ),
                   ),
