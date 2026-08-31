@@ -8,7 +8,7 @@ import '../cce_tokens.dart';
 import 'brightness_slider.dart';
 import 'cce_card.dart';
 import 'cce_switch.dart';
-import 'status_dot.dart';
+import 'status_badge.dart';
 
 /// Card de habitación (sidebar tablet y lista phone).
 ///
@@ -22,7 +22,7 @@ import 'status_dot.dart';
 /// se acomoda DENTRO de esa caja; nada la estira.
 ///
 /// El estado ENCENDIDO se comunica con el ácento del sistema (ícono + switch +
-/// dot), NO con el color real de las luces: en una lista lo que importa es
+/// badge), NO con el color real de las luces: en una lista lo que importa es
 /// *si* algo está prendido, no de qué color está. El color real de cada lámpara
 /// vive en su tile y en el detalle, donde sí es la información principal —
 /// pintarlo acá era lo que convertía la home en un arcoíris de toggles.
@@ -76,13 +76,16 @@ class RoomCard extends StatefulWidget {
   final bool selected; // resaltado en sidebar tablet
   final bool compact; // phone vs tablet
 
-  /// true → StatusDot(CceColors.motion, pulse: true).
+  /// true → badge "Movimiento" ([CceColors.motion], con latido).
   final bool motion;
 
-  /// true → StatusDot(CceColors.contact, pulse: true).
+  /// true → badge "Abierta" ([CceColors.contact], con latido).
   final bool contactOpen;
 
-  /// "Toda la casa": "12/31 · 2 con movimiento".
+  /// "Toda la casa": "12/31 · 2 con movimiento". Es una FRASE, no un estado:
+  /// cuando viene, la línea de estado es ese texto y no se dibuja ningún badge
+  /// (ver build). La fila del sidebar de tablet resume la casa entera con sus
+  /// propios números, y un badge al lado sólo le sacaría ancho.
   final String? subtitleOverride;
 
   /// Temperatura actual de la habitación en °C, ya resuelta por
@@ -101,7 +104,7 @@ class RoomCard extends StatefulWidget {
   /// OPT-IN: relieve neumórfico (home teléfono y sidebar tablet). Default false
   /// ⇒ render plano legacy. Con neo:true la card es SIEMPRE la almohada raised
   /// de neoBase (mismo material apagada/encendida); el ON sólo suma glow +
-  /// anillo + ícono/dot de acento, sin fill de color.
+  /// anillo + ícono/badge de acento, sin fill de color.
   final bool neo;
 
   @override
@@ -154,33 +157,61 @@ class _RoomCardState extends State<RoomCard> {
     final Color glyphColor =
         widget.anyOn ? accent : CceColors.textTertiary;
 
-    // Subtítulo de estado (pedido del dueño v1.62): SIN "Encendido/Apagado"
-    // (ni "Sin luces") — los dots solos comunican el estado. Con EXACTAMENTE
-    // UN dot activo se muestra su acción como texto; con 0 o 2+ dots, ''.
-    // El subtitleOverride de "Toda la casa" (sidebar tablet) sigue ganando y
-    // se muestra tal cual.
+    // LÍNEA DE ESTADO: un badge por hecho activo (CCE#63).
     //
-    // Sin NADA que mostrar (ni dots ni texto) la fila del subtítulo NO se
-    // renderiza y el título queda centrado en la card. Antes se dibujaba un
-    // Text vacío que reservaba el line-height para que el título no se
-    // recentrara al cambiar de estado; el dueño lo vio en pantalla (PR #22)
-    // y prefirió "Living" y "Cocina" centrados. Efecto aceptado: una sala con
-    // sensor recentra el título cuando aparece "Movimiento detectado".
-    final activeDots = (widget.contactOpen ? 1 : 0) +
-        (widget.motion ? 1 : 0) +
-        (widget.anyOn ? 1 : 0);
-    final subtitle = widget.subtitleOverride ??
-        (activeDots == 1
-            ? (widget.contactOpen
-                ? 'Puerta abierta'
-                : (widget.motion ? 'Movimiento detectado' : 'Luz encendida'))
-            : '');
-    // OJO: con 2+ dots el texto es '' pero SÍ hay dots que dibujar.
-    final showStatus = activeDots > 0 || subtitle.isNotEmpty;
-    // El subtítulo NO se tiñe: el dot que lo precede ya lleva el color del
-    // estado. Pintar los dos del mismo color era decir dos veces lo mismo y
-    // sumaba una fuente de color más a la lista.
-    const Color subtitleColor = CceColors.textSecondary;
+    // Antes eran puntos de color más un texto que aparecía SÓLO con exactamente
+    // un estado activo: con dos o tres, el texto se vaciaba y quedaban puntos
+    // mudos. O sea que cuanto más pasaba en la habitación, menos decía la fila
+    // — Living y Office mostraban un punto naranja y uno azul sin una palabra.
+    // Ahora cada hecho se dice con su propia pastilla y no depende de cuántos
+    // haya; el reparto del ancho lo resuelve [StatusBadgeRow].
+    //
+    // ORDEN (y prioridad de ancho): contacto → movimiento → luz. Es el mismo
+    // orden que tenían los dots, y no es arbitrario: los sensores no se dicen
+    // en ningún otro lugar de la fila, mientras que la luz encendida ya la
+    // dicen el ícono en acento, el switch y el slider. Si hay que sacrificar
+    // una palabra, la que menos se extraña es la última.
+    //
+    // Las palabras son cortas ("Abierta", no "Puerta abierta") porque el ancho
+    // es el recurso escaso de esta fila y el glifo ya dice de qué se habla; la
+    // frase entera vive en el tooltip y en el Semantics de cada badge.
+    final badges = <StatusBadgeData>[
+      if (widget.contactOpen)
+        const StatusBadgeData(
+          glyph: CceIcons.doorOpen,
+          label: 'Abierta',
+          color: CceColors.contact,
+          semanticLabel: 'Puerta abierta',
+          live: true,
+        ),
+      if (widget.motion)
+        const StatusBadgeData(
+          glyph: CceIcons.personStanding,
+          label: 'Movimiento',
+          color: CceColors.motion,
+          semanticLabel: 'Movimiento detectado',
+          live: true,
+        ),
+      if (widget.anyOn)
+        const StatusBadgeData(
+          glyph: CceIcons.lights,
+          label: 'Luz',
+          color: CceColors.amberHi,
+          semanticLabel: 'Luz encendida',
+        ),
+    ];
+    // "Toda la casa" (sidebar tablet) manda una FRASE ya escrita: gana sobre
+    // los badges y se muestra tal cual. No es un estado de una habitación —
+    // es el resumen de todas — y meterle una pastilla al lado sólo le comería
+    // ancho a los números que vino a decir.
+    final subtitle = widget.subtitleOverride;
+    // Sin NADA que mostrar la fila de estado NO se renderiza y el título queda
+    // centrado en la card. Antes se dibujaba un Text vacío que reservaba el
+    // line-height para que el título no se recentrara al cambiar de estado; el
+    // dueño lo vio en pantalla (PR #22) y prefirió "Living" y "Cocina"
+    // centrados. Efecto aceptado: una sala con sensor recentra el título
+    // cuando aparece el badge de movimiento.
+    final showStatus = subtitle != null || badges.isNotEmpty;
 
     final headerRow = Row(
       children: [
@@ -217,47 +248,17 @@ class _RoomCardState extends State<RoomCard> {
               ),
               if (showStatus) ...[
                 SizedBox(height: CceSpace.xs),
-                Row(
-                  children: [
-                    if (widget.contactOpen) ...[
-                      const StatusDot(
-                        CceColors.contact,
-                        pulse: true,
-                        semanticLabel: 'Puerta abierta',
-                      ),
-                      SizedBox(width: CceSpace.sm),
-                    ],
-                    if (widget.motion) ...[
-                      const StatusDot(
-                        CceColors.motion,
-                        pulse: true,
-                        semanticLabel: 'Movimiento',
-                      ),
-                      SizedBox(width: CceSpace.sm),
-                    ],
-                    // Punto AMARILLO fijo "luz encendida" (amberHi): siempre
-                    // que anyOn, SIN cantidad y SIN pulso; convive con los
-                    // dots de contact (naranja) y motion (azul) — ya no se
-                    // suprime cuando hay sensores activos.
-                    if (widget.anyOn) ...[
-                      const StatusDot(
-                        CceColors.amberHi,
-                        semanticLabel: 'Luz encendida',
-                      ),
-                      SizedBox(width: CceSpace.sm),
-                    ],
-                    Flexible(
-                      child: Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: CceText.caption.copyWith(
-                          color: subtitleColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    // La frase NO se tiñe: es un resumen, no un estado.
+                    style: CceText.caption
+                        .copyWith(color: CceColors.textSecondary),
+                  )
+                else
+                  StatusBadgeRow(badges),
               ],
             ],
           ),
@@ -347,7 +348,7 @@ class _RoomCardState extends State<RoomCard> {
           card,
           // Hairline de la card. Siempre presente: es lo que da estructura sin
           // sombras. Se refuerza sólo cuando la card está seleccionada
-          // (sidebar tablet); el estado encendido ya lo dicen ícono, dot y
+          // (sidebar tablet); el estado encendido ya lo dicen ícono, badge y
           // switch, y un anillo más sería decir lo mismo por cuarta vez.
           Positioned.fill(
             child: IgnorePointer(
