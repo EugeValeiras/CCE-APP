@@ -10,7 +10,7 @@ import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
 import '../../theme/components/section_header.dart';
 import 'automation_card.dart';
-import 'automation_editor_page.dart';
+import 'automation_wizard_page.dart';
 
 /// Vista de Automatizaciones (destino del rail, índice 1).
 ///
@@ -57,11 +57,13 @@ class _AutomationsViewState extends State<AutomationsView> {
     super.dispose();
   }
 
+  /// Abre el wizard (CCE#66) sobre una copia descartable. Un flujo que no
+  /// entra en el molde se muestra en solo lectura desde la misma página.
   Future<void> _openEditor(Automation? existing) async {
     final draft = existing?.copyForEdit() ?? Automation.blank();
     final result = await Navigator.of(context).push(
       MaterialPageRoute<Object?>(
-        builder: (_) => AutomationEditorPage(
+        builder: (_) => AutomationWizardPage(
           service: _service,
           devices: widget.devices,
           draft: draft,
@@ -100,7 +102,7 @@ class _AutomationsViewState extends State<AutomationsView> {
     });
     await Navigator.of(context).push(
       MaterialPageRoute<Object?>(
-        builder: (_) => AutomationEditorPage(
+        builder: (_) => AutomationWizardPage(
           service: _service,
           devices: widget.devices,
           draft: copy,

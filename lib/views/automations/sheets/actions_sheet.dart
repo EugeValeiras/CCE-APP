@@ -25,19 +25,23 @@ import '../automation_phrases.dart';
 /// Sheet ENTONCES: EL editor de acciones combinables (lista reordenable).
 /// El modo Simple (una escena/grupo como source) se retiró el 2026-07-30:
 /// la config está migrada a source:'custom' y las legacy se convierten al
-/// abrir el editor. Muta el draft directo.
+/// abrir el editor. Muta el draft directo — SOLO `draft.actions`, así que el
+/// wizard (CCE#66) lo reusa para la lista de «¿y después?» pasándole un
+/// cascarón cuya `actions` es esa segunda lista; [title] es lo único que
+/// cambia entre las dos pantallas.
 Future<bool> showActionsSheet(
   BuildContext context, {
   required Automation draft,
   required DevicesService devices,
   required ServerConfig config,
+  String title = 'Entonces',
 }) async {
   final result = await showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) =>
-        _ActionsSheet(draft: draft, devices: devices, config: config),
+    builder: (_) => _ActionsSheet(
+        draft: draft, devices: devices, config: config, title: title),
   );
   return result == true;
 }
@@ -334,11 +338,13 @@ class _ActionsSheet extends StatefulWidget {
     required this.draft,
     required this.devices,
     required this.config,
+    required this.title,
   });
 
   final Automation draft;
   final DevicesService devices;
   final ServerConfig config;
+  final String title;
 
   @override
   State<_ActionsSheet> createState() => _ActionsSheetState();
@@ -709,8 +715,7 @@ class _ActionsSheetState extends State<_ActionsSheet> {
               ),
               Row(
                 children: [
-                  const Expanded(
-                      child: Text('Entonces', style: CceText.title)),
+                  Expanded(child: Text(widget.title, style: CceText.title)),
                   FilledButton(
                     onPressed: () => Navigator.of(context).pop(true),
                     child: const Text('Listo'),
