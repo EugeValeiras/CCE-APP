@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/automation.dart';
 import '../models/event_record.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
+import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../services/socket_service.dart';
 import '../theme/cce_icons.dart';
@@ -10,6 +12,9 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/section_header.dart';
 import '../theme/components/status_dot.dart';
 import '../utils/time_format.dart';
+import 'automations/automation_wizard_page.dart';
+import 'history/actor_labels.dart';
+import 'history/cause_grouping.dart';
 import 'history/event_grouping.dart';
 import 'history/event_presenter.dart';
 import 'history/phone_events.dart';
@@ -66,13 +71,14 @@ extension HistoryFilterX on HistoryFilter {
   }
 }
 
-/// Entrada de la lista renderizada: header de día o grupo de eventos.
+/// Entrada de la lista renderizada: header de día o HECHO (uno o más cambios
+/// que comparten causa).
 class _Entry {
   _Entry.header(this.headerLabel) : group = null;
   _Entry.group(this.group) : headerLabel = null;
 
   final String? headerLabel;
-  final EventGroup? group;
+  final CauseGroup? group;
 }
 
 /// Historial de la casa: filas de [EventRow.kHeight] con riel de hora en
@@ -129,6 +135,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void dispose() {
     _ticker?.cancel();
     _liveSub?.cancel();
+    _autos?.dispose();
     _scroll.dispose();
     super.dispose();
   }
@@ -236,19 +243,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   /// Pipeline: items → sin el log del teléfono → sin la telemetría repetida
-  /// del robot → filtro → grupos adyacentes → headers de día.
+  /// del robot → filtro → runs adyacentes → HECHOS (por causa) → headers de día.
   ///
   /// UNA llamada = UNA entrada (CCE#24): de los cinco o seis eventos que deja
   /// una llamada sobrevive sólo el `phone:call-state` de fin, que es el que
   /// trae el veredicto; el resto lo saca [isCallLogNoise] ANTES del filtro,
   /// para que "Todos" y "Teléfono" cuenten la misma historia. Lo mismo con el
   /// latido del robot ([stripRepeatedTelemetry]): queda el cambio, no el eco.
+  ///
+  /// UN comando = UNA entrada (CCE#75): [groupByCause] junta los cambios que
+  /// el backend marcó como eco del mismo comando (y, sin esa marca, los del
+  /// mismo aparato en una ventana corta). Prender el Hall pasa de doce filas a
+  /// una, con quién lo pidió.
   List<_Entry> _buildEntries() {
     final filtered = stripRepeatedTelemetry(
       _items.where((e) => !isCallLogNoise(e)).toList(),
       widget.devices,
     ).where(_filter.accepts).toList();
-    final groups = groupEvents(filtered, widget.devices);
+    final groups =
+        groupByCause(groupEvents(filtered, widget.devices), widget.devices);
     final out = <_Entry>[];
     String? currentDay;
     final now = DateTime.now();
@@ -263,11 +276,54 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return out;
   }
 
-  void _toggleExpanded(EventGroup g) {
+  void _toggleExpanded(CauseGroup g) {
     setState(() {
-      final id = g.latest.id;
-      if (!_expanded.remove(id)) _expanded.add(id);
+      if (!_expanded.remove(g.key)) _expanded.add(g.key);
     });
+  }
+
+  /// Se crea acá y no se recibe por constructor (mismo patrón que
+  /// sensor_detail_screen) para no cambiar la firma de la pantalla ni la de
+  /// sus call sites: toma lo mismo que ya tiene.
+  AutomationsService? _autos;
+  AutomationsService get _automations => _autos ??=
+      AutomationsService(config: widget.config, devices: widget.devices);
+
+  /// De «por qué pasó esto» a «qué automatización lo hizo», en un toque.
+  Future<void> _openAutomation(String id) async {
+    final svc = _automations;
+    var found = _findAutomation(svc, id);
+    if (found == null) {
+      // Recién creado el service la lista puede estar vacía todavía.
+      await svc.refresh();
+      found = _findAutomation(svc, id);
+    }
+    if (!mounted) return;
+    if (found == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Esa automatización ya no existe')),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<Object?>(
+        builder: (_) => AutomationWizardPage(
+          service: svc,
+          devices: widget.devices,
+          // Copia descartable, como desde la lista: el wizard muta el draft al
+          // abrirlo y Cancelar no puede dejar tocado el item de la lista.
+          draft: found!.copyForEdit(),
+          isNew: false,
+        ),
+      ),
+    );
+  }
+
+  Automation? _findAutomation(AutomationsService svc, String id) {
+    for (final a in svc.automations) {
+      if (a.id == id) return a;
+    }
+    return null;
   }
 
   Widget _buildFilters() {
@@ -433,8 +489,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         return EventRow(
                           group: g,
                           devices: widget.devices,
-                          expanded: _expanded.contains(g.latest.id),
+                          expanded: _expanded.contains(g.key),
                           onToggleExpand: () => _toggleExpanded(g),
+                          onOpenAutomation: _openAutomation,
                         );
                       },
                     ),
@@ -446,14 +503,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 }
 
-/// Fila de un grupo de eventos: riel de hora + ícono semántico + frase +
-/// metadato, con pill ×N y chevron cuando el grupo colapsa varios eventos.
+/// Fila de un HECHO: riel de hora + ícono semántico + frase + metadato, con
+/// pill (×N o «4 luces») y chevron cuando abarca varios eventos, y —cuando el
+/// backend dijo quién lo causó— una segunda línea con el actor.
 /// Pública para poder testear el layout (una fila = [kHeight]).
 class EventRow extends StatelessWidget {
-  final EventGroup group;
+  final CauseGroup group;
   final DevicesService devices;
   final bool expanded;
   final VoidCallback onToggleExpand;
+
+  /// Abre la automatización que causó el hecho. Opcional: sin esto la línea
+  /// del actor se muestra igual, sólo que no enlaza.
+  final void Function(String automationId)? onOpenAutomation;
 
   const EventRow({
     super.key,
@@ -461,6 +523,7 @@ class EventRow extends StatelessWidget {
     required this.devices,
     required this.expanded,
     required this.onToggleExpand,
+    this.onOpenAutomation,
   });
 
   /// Alto de la fila (sin expandir): antes ~82 con card; ahora 52.
@@ -472,9 +535,11 @@ class EventRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = presentGroup(group, devices);
+    final r = presentCause(group, devices);
     final isLive = group.latest.id.startsWith('live-');
-    final grouped = group.count > 1;
+    final grouped = group.expandable;
+    final quien = actorLabel(group.actor, devices);
+    final autoId = automationIdOfActor(group.actor);
 
     return Material(
       color: Colors.transparent,
@@ -530,7 +595,7 @@ class EventRow extends StatelessWidget {
                     ],
                     if (grouped) ...[
                       SizedBox(width: CceSpace.sm),
-                      _CountPill(count: group.count),
+                      _CountPill(label: _countLabel(group, devices)),
                       SizedBox(width: CceSpace.xs),
                       AnimatedRotation(
                         turns: expanded ? 0.5 : 0,
@@ -550,6 +615,22 @@ class EventRow extends StatelessWidget {
                   ],
                 ),
               ),
+              // QUIÉN lo hizo. Sólo aparece si el backend lo informó: un
+              // cambio sin causa pasó solo, y decir «desde la app» ahí sería
+              // inventar. Enlaza cuando la causa es una automatización.
+              if (quien != null)
+                Padding(
+                  padding: EdgeInsets.only(
+                    left: _rail + _icon + CceSpace.md,
+                    bottom: CceSpace.sm,
+                  ),
+                  child: _ActorLine(
+                    label: quien,
+                    onTap: autoId != null && onOpenAutomation != null
+                        ? () => onOpenAutomation!(autoId)
+                        : null,
+                  ),
+                ),
               if (grouped && expanded)
                 Padding(
                   padding: EdgeInsets.only(
@@ -589,15 +670,29 @@ class EventRow extends StatelessWidget {
   }
 }
 
-/// Pill ×N: cuántas veces se repitió el evento agrupado.
+/// Qué dice el pill de un hecho: cuántos APARATOS cambiaron cuando son varios
+/// («4 luces», que es la información del issue), y cuántas veces se repitió
+/// cuando es uno solo («×3»).
+String _countLabel(CauseGroup g, DevicesService devices) {
+  // Cuando el título nombra al conjunto («Hall se encendió») el pill dice
+  // cuántos son; cuando el título YA los contó («5 luces se apagaron»), decirlo
+  // de nuevo no agrega nada y el pill pasa a contar los cambios que hay
+  // adentro, que es lo que se despliega al tocar.
+  if (g.deviceCount > 1 && !causeSubject(g, devices).plural) {
+    return causeCountLabel(g, devices);
+  }
+  return '×${g.eventCount}';
+}
+
+/// Pill: cuántos aparatos abarca el hecho, o cuántas veces se repitió.
 ///
 /// NEUTRO a propósito. Antes heredaba el color semántico del evento (azul de
 /// movimiento, rojo de alerta…), así que la cantidad se pintaba con el mismo
 /// código de color que el tipo de evento — dos significados en un color. El
-/// ícono de la fila ya dice de qué se trata; esto sólo dice cuántas veces.
+/// ícono de la fila ya dice de qué se trata; esto sólo dice cuántos.
 class _CountPill extends StatelessWidget {
-  final int count;
-  const _CountPill({required this.count});
+  final String label;
+  const _CountPill({required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -611,10 +706,62 @@ class _CountPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(CceRadii.pill),
       ),
       child: Text(
-        '×$count',
+        label,
         style: CceText.section.copyWith(
           color: CceColors.textSecondary,
           letterSpacing: 0,
+        ),
+      ),
+    );
+  }
+}
+
+/// Segunda línea de la fila: quién causó el hecho. Cuando la causa es una
+/// automatización se puede tocar para ir a verla — de «por qué pasó esto» a
+/// «qué automatización lo hizo» sin buscarla a mano.
+class _ActorLine extends StatelessWidget {
+  const _ActorLine({required this.label, this.onTap});
+
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final enlazada = onTap != null;
+    final texto = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: CceText.caption.copyWith(
+              color:
+                  enlazada ? CceColors.accent : CceColors.textTertiary,
+            ),
+          ),
+        ),
+        if (enlazada) ...[
+          SizedBox(width: CceSpace.xs),
+          const CceIcon(CceIcons.chevronRight,
+              size: 12, color: CceColors.accent, emboss: false),
+        ],
+      ],
+    );
+    if (!enlazada) return Align(alignment: Alignment.centerLeft, child: texto);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+                horizontal: CceSpace.xs, vertical: 2),
+            child: texto,
+          ),
         ),
       ),
     );

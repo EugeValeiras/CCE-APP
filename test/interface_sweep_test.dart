@@ -23,6 +23,7 @@ import 'package:cce_app/theme/components/status_badge.dart';
 import 'package:cce_app/utils/time_format.dart';
 import 'package:cce_app/views/alarm_view.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
+import 'package:cce_app/views/history/cause_grouping.dart';
 import 'package:cce_app/views/history/event_grouping.dart';
 import 'package:cce_app/views/history/event_presenter.dart';
 import 'package:cce_app/views/history_screen.dart';
@@ -436,7 +437,12 @@ void main() {
 
     testWidgets('la fila del historial mide 52', (tester) async {
       final devices = _devices();
-      final g = groupEvents([_temp(22.4)], devices).single;
+      // Un hecho de un solo evento y sin causa: la fila que no cambió con
+      // CCE#75 (sin línea de actor, sin pill) y que fija la altura.
+      final g = groupByCause(
+        groupEvents([_temp(22.4)], devices),
+        devices,
+      ).single;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: EventRow(
