@@ -88,17 +88,6 @@ class _TriggerSheetState extends State<_TriggerSheet> {
   String _pressLabel(dynamic v) =>
       _pressKinds[(v as num?)?.toInt()] ?? 'Pulsación ${v ?? '?'}';
 
-  static const _delaySteps = [0, 15, 30, 60, 120, 300, 600];
-  static const _delayLabels = [
-    'No',
-    '15 s',
-    '30 s',
-    '1 m',
-    '2 m',
-    '5 m',
-    '10 m',
-  ];
-
   @override
   void dispose() {
     // Cinturón: si el usuario cambió el tipo de trigger o deseleccionó la
@@ -596,7 +585,6 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     return ListenableBuilder(
       listenable: widget.devices,
       builder: (context, _) {
-        final delayIdx = _delaySteps.indexOf(trigger.sensorDelay);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -615,32 +603,70 @@ class _TriggerSheetState extends State<_TriggerSheet> {
                     setState(() => trigger.sensorTriggersMode = v),
               ),
             ],
-            _sectionLabel('Esperar antes de ejecutar'),
-            _Stepper(
-              valueText: delayIdx >= 0
-                  ? _delayLabels[delayIdx]
-                  : '${trigger.sensorDelay} s',
-              onMinus: () => setState(() {
-                final i = delayIdx <= 0 ? 0 : delayIdx - 1;
-                trigger.sensorDelay = _delaySteps[i];
-              }),
-              onPlus: () => setState(() {
-                final i = delayIdx < 0
-                    ? 0
-                    : (delayIdx >= _delaySteps.length - 1
-                          ? _delaySteps.length - 1
-                          : delayIdx + 1);
-                trigger.sensorDelay = _delaySteps[i];
-              }),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Se cancela si la condición deja de cumplirse antes',
-              style: TextStyle(color: CceColors.textTertiary, fontSize: 12),
-            ),
+            // CCE#80 — Acá había un stepper «Esperar antes de ejecutar» que
+            // escribía `sensorDelay`. Se retiró: el wizard tiene la pantalla
+            // «¿Y después?», que es donde va una espera, y un número escondido
+            // en el disparador contaba la misma historia dos veces. Lo que
+            // todavía lo traiga no lo oculta en silencio: ver _legacyDelayNotice.
+            if (trigger.sensorDelay > 0)
+              _legacyDelayNotice(trigger.sensorDelay),
           ],
         );
       },
+    );
+  }
+
+  /// El sostenido viejo, en SOLO LECTURA.
+  ///
+  /// `sensorDelay` no era una pausa a secas: el motor espera N segundos y
+  /// CANCELA si el sensor cambia en el medio («sin movimiento durante 5 min →
+  /// apagar; si vuelve el movimiento, no apagues»). Un `wait` del flujo no se
+  /// cancela, así que la traducción fiel es `Esperar N → Bifurcar: ¿sigue? →
+  /// lo que había`, y esa conversión se hace desde el Dashboard, que tiene el
+  /// editor completo del flujo. Acá sólo se avisa. El valor no se toca: el
+  /// draft lo re-serializa tal cual y el motor lo sigue respetando.
+  Widget _legacyDelayNotice(int seconds) {
+    return Container(
+      margin: const EdgeInsets.only(top: 20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: CceColors.accentWash,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        border: Border.all(color: CceColors.accent.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 1),
+            child: CceIcon(CceIcons.history, size: 18, color: CceColors.accent),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Esta automatización espera ${legacyDelayLabel(seconds)} '
+                  'antes de disparar (forma vieja)',
+                  style: const TextStyle(
+                    color: CceColors.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Hoy las esperas van en el flujo, donde se ven. Convertirla a '
+                  'pasos se hace desde el Dashboard, que tiene el editor '
+                  'completo.',
+                  style: CceText.caption,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1046,6 +1072,21 @@ class _TimePill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// «10 s», «5 min», «1 min 30 s», «1 h»: los segundos del sostenido viejo
+/// (CCE#80), dichos como los dice el Dashboard. Un número de segundos pelado no
+/// dice nada cuando la espera es de diez minutos.
+String legacyDelayLabel(int seconds) {
+  if (seconds <= 0) return 'nada';
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  final s = seconds % 60;
+  return [
+    if (h > 0) '$h h',
+    if (m > 0) '$m min',
+    if (s > 0) '$s s',
+  ].join(' ');
 }
 
 /// ¿Es un control de botones (pulsador, remote, dial)?
