@@ -526,6 +526,37 @@ void main() {
       expect(wizardShapeOf(steps([doOn, {'type': 'stop'}, doOff])), isNull);
     });
 
+    // CCE#81 — el «Llamar» con salidas: la app lo narra, el wizard no lo edita.
+    test('un call queda en solo lectura y dice por qué', () {
+      final flow = steps([
+        {
+          'type': 'call',
+          'contactId': 'c_porton',
+          'timeoutSeconds': 60,
+          'onAnswered': [doOn],
+          'onMissed': [doOff],
+        },
+      ]);
+      expect(flow.single, isA<FlowCallStep>());
+      expect(wizardShapeOf(flow), isNull);
+      expect(wizardUnsupportedReason(flow), contains('cómo termine la llamada'));
+    });
+
+    test('un call escondido en una rama también', () {
+      final flow = steps([
+        {
+          'type': 'if',
+          'cond': dark,
+          'then': [
+            {'type': 'call', 'number': '123', 'timeoutSeconds': 30},
+            doOn,
+          ],
+        },
+      ]);
+      expect(wizardShapeOf(flow), isNull);
+      expect(wizardUnsupportedReason(flow), contains('llama'));
+    });
+
     test('flow vacío entra (automatización sin acciones todavía)', () {
       final shape = wizardShapeOf(const []);
       expect(shape, isNotNull);
@@ -562,10 +593,91 @@ void main() {
       expect(a.effectiveConditions, hasLength(2));
     });
 
+    test('con call las acciones del camino feliz son las de «atendida»', () {
+      final a = Automation.fromJson({
+        'id': 'x',
+        'name': 'x',
+        'enabled': true,
+        'trigger': {'type': 'manual'},
+        'actions': [],
+        'flow': [
+          {
+            'type': 'call',
+            'contactId': 'c_porton',
+            'timeoutSeconds': 60,
+            'onAnswered': [
+              {
+                'type': 'do',
+                'actions': [
+                  {'kind': 'device', 'deviceId': 'd_ok', 'on': true},
+                ],
+              },
+            ],
+            'onMissed': [
+              {
+                'type': 'do',
+                'actions': [
+                  {'kind': 'notification', 'message': 'nadie'},
+                ],
+              },
+            ],
+          },
+        ],
+      });
+      expect(a.effectiveActions.map((x) => x.lightId), ['d_ok']);
+    });
+
     test('con waitFor las acciones del camino feliz no incluyen onTimeout', () {
       final m = prod.singleWhere((m) => m['id'] == 'auto_mq872o2ekqh47vglzq');
       final a = Automation.fromJson(m);
       expect(a.effectiveActions, isEmpty);
+    });
+  });
+
+  group('CCE#81: el call se conserva entero', () {
+    const callJson = {
+      'type': 'call',
+      'contactId': 'c_porton',
+      'timeoutSeconds': 45,
+      'onAnswered': [
+        {
+          'type': 'do',
+          'actions': [
+            {'kind': 'alarm', 'action': 'disarm'},
+          ],
+        },
+      ],
+      'onRejected': [
+        {'type': 'stop'},
+      ],
+      'onTimeout': [
+        {
+          'type': 'do',
+          'actions': [
+            {'kind': 'notification', 'message': 'venció'},
+          ],
+        },
+        {'type': 'stop'},
+      ],
+    };
+
+    test('se parsea con sus salidas presentes, y sólo ésas', () {
+      final s = FlowStep.parse(callJson) as FlowCallStep;
+      expect(s.contactId, 'c_porton');
+      expect(s.number, isNull);
+      expect(s.timeoutSeconds, 45);
+      expect(s.branches.keys, ['onAnswered', 'onRejected', 'onTimeout']);
+      expect(s.branch('onMissed'), isEmpty);
+      expect(s.branch('onTimeout').length, 2);
+      expect(s.allBranches.length, 5);
+    });
+
+    test('re-serializar no cambia un byte (el JSON crudo se conserva)', () {
+      final s = FlowStep.parse(callJson);
+      expect(sameFlow([s.toJson()], [callJson]), isTrue);
+      // Y un campo que la app no modela sobrevive igual.
+      final extra = {...callJson, 'futuro': 1};
+      expect(sameFlow([FlowStep.parse(extra).toJson()], [extra]), isTrue);
     });
   });
 

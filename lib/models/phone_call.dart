@@ -275,6 +275,13 @@ class PhoneStatus {
   final int callsLastHour;
   final int maxCallsPerHour;
 
+  /// La última llamada que TERMINÓ desde que arrancó el backend (CCE#81):
+  /// resultado, dirección y cuándo empezó. `dev_phone` lo publica como
+  /// `lastCallResult` / `lastCallDirection` / `lastCallAt`; esto es el seed.
+  final String? lastCallResult;
+  final String? lastCallDirection;
+  final int? lastCallAt;
+
   const PhoneStatus({
     this.enabled = false,
     this.online = false,
@@ -295,12 +302,16 @@ class PhoneStatus {
     this.callContactName,
     this.callsLastHour = 0,
     this.maxCallsPerHour = 0,
+    this.lastCallResult,
+    this.lastCallDirection,
+    this.lastCallAt,
   });
 
   factory PhoneStatus.fromJson(Map<String, dynamic> json) {
     final signal = json['signal'];
     final call = json['call'];
     final webAudio = json['webAudio'];
+    final lastCall = json['lastCall'];
     return PhoneStatus(
       enabled: json['enabled'] == true,
       online: json['online'] == true,
@@ -323,6 +334,11 @@ class PhoneStatus {
       callContactName: call is Map ? _nonBlank(call['contactName']) : null,
       callsLastHour: (json['callsLastHour'] as num?)?.toInt() ?? 0,
       maxCallsPerHour: (json['maxCallsPerHour'] as num?)?.toInt() ?? 0,
+      lastCallResult: lastCall is Map ? _nonBlank(lastCall['result']) : null,
+      lastCallDirection:
+          lastCall is Map ? _nonBlank(lastCall['direction']) : null,
+      lastCallAt:
+          lastCall is Map ? (lastCall['startedAt'] as num?)?.toInt() : null,
     );
   }
 

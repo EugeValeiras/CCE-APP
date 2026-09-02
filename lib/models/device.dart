@@ -141,6 +141,14 @@ class DeviceState {
   final String? peerName;
   /// Epoch ms del inicio de la llamada en curso.
   final int? callStartedAt;
+  /// Cómo terminó la ÚLTIMA llamada (CCE#81): 'answered' | 'missed' |
+  /// 'rejected' | 'not-connected' | 'failed'. Ausente hasta la primera que
+  /// termina desde que arrancó el backend.
+  final String? lastCallResult;
+  /// 'in' | 'out' de esa última llamada.
+  final String? lastCallDirection;
+  /// Epoch ms del inicio de esa última llamada.
+  final int? lastCallAt;
   /// ¿La línea CURSA tráfico? 'active' | 'inactive' | 'unknown'.
   ///
   /// NO se deriva del registro de red: una línea sin habilitar reporta
@@ -195,6 +203,9 @@ class DeviceState {
     this.peerNumber,
     this.peerName,
     this.callStartedAt,
+    this.lastCallResult,
+    this.lastCallDirection,
+    this.lastCallAt,
     this.lineActive,
     this.signalBars,
     this.networkTech,
@@ -299,6 +310,9 @@ class DeviceState {
       peerNumber: json['peerNumber'] as String?,
       peerName: json['peerName'] as String?,
       callStartedAt: (json['callStartedAt'] as num?)?.toInt(),
+      lastCallResult: json['lastCallResult'] as String?,
+      lastCallDirection: json['lastCallDirection'] as String?,
+      lastCallAt: (json['lastCallAt'] as num?)?.toInt(),
       lineActive: json['lineActive'] as String?,
       signalBars: (json['signalBars'] as num?)?.toInt(),
       networkTech: json['networkTech'] as String?,
@@ -350,6 +364,9 @@ class DeviceState {
     String? peerNumber,
     String? peerName,
     int? callStartedAt,
+    String? lastCallResult,
+    String? lastCallDirection,
+    int? lastCallAt,
     String? lineActive,
     int? signalBars,
     String? networkTech,
@@ -395,6 +412,9 @@ class DeviceState {
       peerNumber: peerNumber ?? this.peerNumber,
       peerName: peerName ?? this.peerName,
       callStartedAt: callStartedAt ?? this.callStartedAt,
+      lastCallResult: lastCallResult ?? this.lastCallResult,
+      lastCallDirection: lastCallDirection ?? this.lastCallDirection,
+      lastCallAt: lastCallAt ?? this.lastCallAt,
       lineActive: lineActive ?? this.lineActive,
       signalBars: signalBars ?? this.signalBars,
       networkTech: networkTech ?? this.networkTech,

@@ -1400,6 +1400,9 @@ class _ReadOnlyView extends StatelessWidget {
         return const Icon(Icons.play_arrow_rounded, size: 16, color: color);
       case FlowLineKind.wait:
         return const Icon(Icons.timer_outlined, size: 16, color: color);
+      case FlowLineKind.call:
+        return const Icon(Icons.phone_forwarded_outlined,
+            size: 16, color: color);
       case FlowLineKind.stop:
         return const Icon(Icons.stop_circle_outlined, size: 16, color: color);
       case FlowLineKind.unknown:

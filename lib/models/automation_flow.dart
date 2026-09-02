@@ -127,6 +127,8 @@ sealed class FlowStep {
         return FlowWaitStep(json);
       case 'waitFor':
         return FlowWaitForStep(json);
+      case 'call':
+        return FlowCallStep(json);
       case 'stop':
         return FlowStopStep(json);
       default:
@@ -192,6 +194,45 @@ class FlowWaitForStep extends FlowStep {
 
   num? get timeoutSeconds =>
       raw['timeoutSeconds'] is num ? raw['timeoutSeconds'] as num : null;
+}
+
+/// Las cinco salidas del `call`, en el orden en que se narran. Espejo de
+/// `CALL_BRANCHES` del backend.
+const List<String> kCallBranches = [
+  'onAnswered',
+  'onMissed',
+  'onRejected',
+  'onFailed',
+  'onTimeout',
+];
+
+/// CCE#81 — Llama, ESPERA a que la llamada termine y sigue por la rama del
+/// resultado. Es el primer step con más de dos salidas. La app sólo lo NARRA:
+/// el wizard no lo edita (un flujo con `call` se abre en solo lectura).
+class FlowCallStep extends FlowStep {
+  FlowCallStep(super.json)
+      : branches = {
+          for (final k in kCallBranches)
+            if (json.containsKey(k)) k: FlowStep.parseList(json[k]),
+        };
+
+  /// Las salidas PRESENTES en el JSON, por nombre. Una ausente no está en el
+  /// mapa: el motor la hace caer en el paso siguiente.
+  final Map<String, List<FlowStep>> branches;
+
+  String? get number => raw['number'] is String ? raw['number'] as String : null;
+  String? get contactId =>
+      raw['contactId'] is String ? raw['contactId'] as String : null;
+  num? get timeoutSeconds =>
+      raw['timeoutSeconds'] is num ? raw['timeoutSeconds'] as num : null;
+
+  /// La salida `kind`, o `[]` si no está.
+  List<FlowStep> branch(String kind) => branches[kind] ?? const [];
+
+  /// Todas las listas de pasos que cuelgan, para caminar el árbol.
+  List<List<FlowStep>> get allBranches => [
+        for (final k in kCallBranches) branch(k),
+      ];
 }
 
 class FlowStopStep extends FlowStep {
@@ -382,6 +423,8 @@ List<Map<String, dynamic>> happyPathFlowActions(List<FlowStep> flow) {
           out.addAll(s.actions);
         case FlowIfStep():
           walk(s.then);
+        case FlowCallStep():
+          walk(s.branch('onAnswered')); // CCE#81 — la rama feliz es «atendida».
         default:
           break; // wait / waitFor / stop no aportan acciones al espejo.
       }
@@ -553,6 +596,9 @@ String? wizardUnsupportedReason(List<FlowStep> flow) {
       if (s is FlowWaitForStep && has(test, s.onTimeout ?? const [])) {
         return true;
       }
+      if (s is FlowCallStep && s.allBranches.any((b) => has(test, b))) {
+        return true;
+      }
     }
     return false;
   }
@@ -565,6 +611,11 @@ String? wizardUnsupportedReason(List<FlowStep> flow) {
         n += count(test, s.then) + count(test, s.otherwise ?? const []);
       }
       if (s is FlowWaitForStep) n += count(test, s.onTimeout ?? const []);
+      if (s is FlowCallStep) {
+        for (final b in s.allBranches) {
+          n += count(test, b);
+        }
+      }
     }
     return n;
   }
@@ -572,6 +623,9 @@ String? wizardUnsupportedReason(List<FlowStep> flow) {
   bool condComplex(FlowCond c) =>
       c.isOr || c.isNot || (c.isAnd && c.children.any((x) => !x.isLeaf));
 
+  if (has((s) => s is FlowCallStep, flow)) {
+    return 'llama y sigue según cómo termine la llamada';
+  }
   if (has((s) => s is FlowWaitForStep, flow)) {
     return 'espera a que se cumpla una condición';
   }

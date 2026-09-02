@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/device.dart';
 import '../../models/phone_call.dart';
 import '../../theme/cce_tokens.dart';
+import '../../utils/time_format.dart';
 import 'phone_surface.dart';
 
 /// El estado de la línea en UNA línea: `● Línea activa · Personal · WCDMA` y
@@ -58,6 +59,14 @@ class LineStatusChip extends StatelessWidget {
         ),
       _ => (null, CceColors.textSecondary),
     };
+
+    // CCE#81 — El veredicto de la última llamada, como estado y no sólo como
+    // fila del historial: es lo que `dev_phone` publica en `lastCallResult`.
+    final lastCall = lastCallSummary(
+      result: state.lastCallResult ?? status.lastCallResult,
+      direction: state.lastCallDirection ?? status.lastCallDirection,
+      at: state.lastCallAt ?? status.lastCallAt,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -116,9 +125,57 @@ class LineStatusChip extends StatelessWidget {
               style: CceText.caption.copyWith(color: cautionColor),
             ),
           ),
+        if (lastCall != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+            child: Text(
+              lastCall,
+              style: CceText.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
       ],
     );
   }
+}
+
+/// «Última llamada: saliente, contestaron · hace 3 min». null si el backend
+/// todavía no cerró ninguna desde que arrancó (el dato no se rehidrata del
+/// historial: es estado en vivo, y hasta la primera llamada no existe).
+///
+/// El resultado se lee con las mismas palabras que el historial
+/// ([PhoneCall.resultLabel]), pero sin `hangupBy`: acá no se sabe quién cortó,
+/// así que una saliente que no conectó dice «no contestaron» a secas.
+String? lastCallSummary({
+  required String? result,
+  required String? direction,
+  required int? at,
+  DateTime? now,
+}) {
+  if (result == null || result.isEmpty) return null;
+  final incoming = direction == 'in';
+  final verdict = switch (result) {
+    'answered' => incoming ? 'atendida' : 'contestaron',
+    'missed' => 'perdida',
+    'rejected' => 'rechazada',
+    'not-connected' => 'no contestaron',
+    'failed' => 'falló',
+    _ => result,
+  };
+  final kind = switch (direction) {
+    'in' => 'entrante',
+    'out' => 'saliente',
+    _ => null,
+  };
+  final head = kind == null ? verdict : '$kind, $verdict';
+  final when = at == null
+      ? null
+      : TimeFormat.relativeInSentence(
+          DateTime.fromMillisecondsSinceEpoch(at),
+          now: now,
+        );
+  return 'Última llamada: $head${when != null ? ' · $when' : ''}';
 }
 
 /// Las cinco barritas de señal, a escala. Las mismas en el chip y en la card
