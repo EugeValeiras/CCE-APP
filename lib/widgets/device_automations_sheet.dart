@@ -5,7 +5,7 @@ import '../models/device.dart';
 import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
-import '../views/automations/automation_editor_page.dart';
+import '../views/automations/automation_wizard_page.dart';
 import '../views/automations/automation_phrases.dart';
 import '../views/automations/sheets/trigger_sheet.dart';
 
@@ -75,10 +75,12 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
   Future<void> _abrir(Automation a) async {
     await Navigator.of(context).push(
       MaterialPageRoute<Object?>(
-        builder: (_) => AutomationEditorPage(
+        builder: (_) => AutomationWizardPage(
           service: widget.automations,
           devices: widget.devices,
-          draft: a,
+          // Copia descartable, como desde la lista: el wizard muta el draft
+          // al abrirlo y Cancelar no puede dejar tocado el item de la lista.
+          draft: a.copyForEdit(),
           isNew: false,
         ),
       ),
@@ -107,7 +109,7 @@ class _DeviceAutomationsSheetState extends State<DeviceAutomationsSheet> {
     });
     await Navigator.of(context).push(
       MaterialPageRoute<Object?>(
-        builder: (_) => AutomationEditorPage(
+        builder: (_) => AutomationWizardPage(
           service: widget.automations,
           devices: widget.devices,
           draft: draft,

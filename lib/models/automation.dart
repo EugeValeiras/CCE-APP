@@ -1,17 +1,34 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:collection/collection.dart';
+
+import 'automation_flow.dart';
+
 /// Modelo de automatización con round-trip SIN PÉRDIDA a dos niveles:
 /// el objeto raíz y cada acción guardan su JSON original ([raw]) y las
 /// ediciones se aplican como overlay sobre ese mapa — campos que la UI no
-/// modela (mode, planId, futuros) sobreviven byte a byte al PUT.
+/// modela (mode, planId, flowLayout, futuros) sobreviven byte a byte al PUT.
 ///
 /// Shape espejado del backend (`CceConfig['automations']`, ver informe
 /// automations-api): el server NO valida el body, así que TODA la
 /// validación vive en el cliente ([validationError]).
+///
+/// Desde CCE#64 el server devuelve además el modelo de FLUJO (`when` +
+/// `flow`, ver `automation_flow.dart`). Cuando `flow` está PERSISTIDO (no
+/// viene con `flowDerived: true`) el motor lo prioriza sobre `actions`: por
+/// eso el wizard escribe `when` + `flow` ([setOwnFlow]) y la app muestra las
+/// acciones del árbol ([effectiveActions]) y no el `actions` legacy.
 
 Map<String, dynamic> _jsonCopy(Map source) =>
     Map<String, dynamic>.from(jsonDecode(jsonEncode(source)) as Map);
+
+const DeepCollectionEquality _deepEq = DeepCollectionEquality();
+
+/// Los `source` del modo Simple retirado: al persistir un flujo propio pasan a
+/// 'custom', porque con ellos el executor ignora `actions` Y el flujo mostraría
+/// algo distinto de lo que corre.
+const _legacySources = {'scene', 'group', 'hueScene', 'hueRoom'};
 
 /// Genera un id client-side con la convención del dashboard:
 /// "auto_" + random base36.
@@ -108,14 +125,142 @@ class Automation {
 
   String? get planId => raw['planId'] as String?;
 
+  // ── Modelo de flujo (CCE#64) ─────────────────────────────────────────────
+
+  /// El árbol `flow` tal como vino del server (propio o proyectado). Vacío si
+  /// el JSON no lo trae.
+  List<FlowStep> get flow => FlowStep.parseList(raw['flow']);
+
+  /// true = el `flow`/`when` de este JSON es una PROYECCIÓN del formato viejo
+  /// hecha por el GET, no algo que alguien haya escrito.
+  bool get flowDerived => raw['flowDerived'] == true;
+
+  /// ¿Tiene flujo PROPIO persistido? Si sí, el motor corre el árbol e ignora
+  /// `actions`: cualquier edición de `actions` se perdería en silencio.
+  bool get hasOwnFlow =>
+      !flowDerived && raw['flow'] is List && (raw['flow'] as List).isNotEmpty;
+
+  /// Los disparadores como lista (`when`). Si el server no la mandó, se
+  /// deriva del `trigger` igual que hace el backend.
+  List<Map<String, dynamic>> get when {
+    final w = raw['when'];
+    if (w is List && w.isNotEmpty) {
+      return [for (final t in w) if (t is Map) Map<String, dynamic>.from(t)];
+    }
+    return [deriveWhenEntry(trigger.toJson())];
+  }
+
+  /// Las acciones PARA MOSTRAR: con flujo propio, las del camino feliz del
+  /// árbol traducidas al shape legacy; si no, [actions]. Las cards, el detalle
+  /// por dispositivo y la prueba client-side leen de acá, porque con flujo
+  /// propio `actions` es apenas un espejo que otro cliente pudo dejar viejo.
+  List<AutomationAction> get effectiveActions => hasOwnFlow
+      ? [
+          for (final a in happyPathFlowActions(flow))
+            AutomationAction.fromJson(flowActionToLegacy(a)),
+        ]
+      : actions;
+
+  /// Las condiciones PARA MOSTRAR: con flujo propio, las hojas del `if` raíz;
+  /// si no, las del trigger.
+  List<AutomationCondition> get effectiveConditions {
+    if (!hasOwnFlow) return trigger.conditions;
+    final steps = flow;
+    if (steps.isNotEmpty && steps.first is FlowIfStep) {
+      return (steps.first as FlowIfStep).cond.leaves;
+    }
+    return const [];
+  }
+
+  /// true a partir de [setOwnFlow]: [toJson] emite el modelo de flujo.
+  bool _flowMode = false;
+
+  /// El wizard escribe `when` + `flow`, nunca `actions` como fuente. Deja el
+  /// draft en modo flujo: desde acá [toJson] persiste [flow] como propio
+  /// (sin `flowDerived`), saca las `conditions` del trigger (viven en el `if`
+  /// del árbol: dejarlas puestas duplicaría el gate y un futuro «si no» jamás
+  /// correría — misma convención que `flow-save.ts` del Dashboard), recalcula
+  /// `when` y escribe en `actions` el ESPEJO del camino feliz, que es lo que
+  /// escribe el Dashboard y lo que un cliente viejo puede mostrar sin mentir.
+  ///
+  /// Idempotente: llamar de nuevo con otro árbol reemplaza el anterior.
+  void setOwnFlow(List<Map<String, dynamic>> flow) {
+    raw['flow'] = [for (final s in flow) _jsonCopy(s)];
+    raw.remove('flowDerived');
+    if (_legacySources.contains(source)) {
+      raw['source'] = 'custom';
+      raw.remove('sourceId');
+      raw.remove('sourceAction');
+      raw.remove('sourceSmart');
+    }
+    _flowMode = true;
+  }
+
   /// Serializa: raw + overrides. JAMÁS strippea campos desconocidos.
+  ///
+  /// Con flujo PROPIO —el que vino persistido o el que puso [setOwnFlow]— se
+  /// emite el modelo de flujo: `trigger` sin `conditions`, `when` derivado y
+  /// `actions` como espejo. Si el flujo es el que vino, el espejo también: así
+  /// una automatización que el Dashboard escribió y la app abrió sin tocar
+  /// vuelve byte a byte.
   Map<String, dynamic> toJson() {
     final out = _jsonCopy(raw);
-    out['trigger'] = trigger.toJson();
-    out['actions'] = [for (final a in actions) a.toJson()];
+    final flowMode = _flowMode || hasOwnFlow;
+    final (trig, triggerFromOriginal) =
+        _triggerJson(ignoreConditions: flowMode);
+    if (flowMode) {
+      trig.remove('conditions');
+      // El gate implícito viejo: con `conditions` vacío el engine vuelve a
+      // mirarlo, y la condición de luz ya está en el árbol.
+      final brightness = trig['sensorBrightness'];
+      if (brightness is String && brightness != 'any') {
+        trig['sensorBrightness'] = 'any';
+      }
+      out['trigger'] = trig;
+      final origWhen = _original['when'];
+      out['when'] = triggerFromOriginal && origWhen is List && origWhen.isNotEmpty
+          ? [
+              for (final w in origWhen)
+                if (w is Map) _jsonCopy(w)..remove('conditions'),
+            ]
+          : [deriveWhenEntry(trig)];
+      final origFlow = _original['flow'];
+      final origActions = _original['actions'];
+      out['actions'] = origFlow is List &&
+              origActions is List &&
+              _deepEq.equals(raw['flow'], origFlow)
+          ? [for (final a in origActions) if (a is Map) _jsonCopy(a)]
+          : [for (final a in happyPathFlowActions(flow)) flowActionToLegacy(a)];
+    } else {
+      out['trigger'] = trig;
+      out['actions'] = [for (final a in actions) a.toJson()];
+    }
     // El tipo del server lo declara requerido ('toggle'|'full').
     out['mode'] ??= 'toggle';
     return out;
+  }
+
+  /// El trigger a serializar y si salió del original. Si SEMÁNTICAMENTE no
+  /// cambió respecto del que vino (mismo JSON normalizado), salen los BYTES
+  /// originales: el modelo completa `alarmCondition`/`sensorTriggersMode`/
+  /// escalares al normalizar, y varias de las 26 de la casa no los traen —
+  /// sin esto, abrir y guardar sin tocar les agregaba campos.
+  ///
+  /// Con [ignoreConditions] las `conditions` no cuentan en la comparación:
+  /// en modo flujo viven en el `if` del árbol y se sacan del trigger después.
+  (Map<String, dynamic>, bool) _triggerJson({required bool ignoreConditions}) {
+    final current = trigger.toJson();
+    if (ignoreConditions) current.remove('conditions');
+    final orig = _original['trigger'];
+    if (orig is Map) {
+      final origNormalized =
+          AutomationTrigger.fromJson(Map<String, dynamic>.from(orig)).toJson();
+      if (ignoreConditions) origNormalized.remove('conditions');
+      if (_deepEq.equals(current, origNormalized)) {
+        return (_jsonCopy(orig), true);
+      }
+    }
+    return (current, false);
   }
 
   /// Copia editable: el snapshot [original] de la copia es el estado actual
@@ -161,8 +306,12 @@ class Automation {
 
   /// Validación dura client-side (el server acepta cualquier cosa).
   /// Devuelve el motivo visible en español, o null si se puede guardar.
-  String? validationError() {
-    if (name.trim().isEmpty) return 'Poné un nombre a la automatización';
+  /// Con [ignoreName] no mira el nombre: el wizard lo usa para saber si lo
+  /// configurado ya vale ANTES de sugerir uno.
+  String? validationError({bool ignoreName = false}) {
+    if (!ignoreName && name.trim().isEmpty) {
+      return 'Poné un nombre a la automatización';
+    }
     switch (trigger.type) {
       case 'sensor':
         if (trigger.sensorTriggers.isEmpty) {

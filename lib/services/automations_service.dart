@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/automation.dart';
+import '../models/automation_flow.dart';
 import '../models/device.dart';
 import '../models/light_group.dart';
 import '../models/server_config.dart';
@@ -123,8 +124,12 @@ class AutomationsService extends ChangeNotifier {
   /// un grupo. NO cubre todavía rooms de Hue ni escenas — el modelo local de
   /// [HueRoom] no expone qué luces contiene, así que no hay forma de saberlo
   /// sin pedirlo al bridge.
+  ///
+  /// Se mira [Automation.effectiveActions]: con flujo propio (CCE#64) el
+  /// `actions` legacy es un espejo que otro cliente pudo dejar viejo, y lo
+  /// que gobierna al device es el árbol.
   bool _isTarget(Automation a, Set<String> ids) {
-    for (final act in a.actions) {
+    for (final act in a.effectiveActions) {
       if (ids.contains(act.lightId) || ids.contains(act.deviceId)) return true;
       final gid = act.groupId;
       if (gid != null) {
@@ -431,7 +436,7 @@ class AutomationsService extends ChangeNotifier {
     }
     if (a.source != 'custom') return null;
     final warnings = <String>{};
-    for (final act in a.actions) {
+    for (final act in a.effectiveActions) {
       switch (act.kind) {
         case AutomationActionKind.notification:
           warnings.add('La prueba no envía notificaciones');
@@ -562,7 +567,13 @@ class AutomationsService extends ChangeNotifier {
           }
           await _applyHueRoom(sid, a.sourceAction);
         default: // custom
-          for (final act in a.actions) {
+          // Con flujo propio el replay client-side es sólo el camino feliz
+          // (sin esperas ni ramas): degradado explícito, nunca en silencio.
+          if (a.hasOwnFlow && a.flow.any((s) => s is! FlowDoStep)) {
+            warnings.add('La prueba corre las acciones sin las esperas');
+            degraded = true;
+          }
+          for (final act in a.effectiveActions) {
             switch (act.kind) {
               case AutomationActionKind.notification:
                 warnings.add('La prueba no envía notificaciones');

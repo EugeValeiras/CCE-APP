@@ -1,10 +1,24 @@
 import '../../models/automation.dart';
+import '../../models/automation_flow.dart';
 import '../../services/devices_service.dart';
 import '../../utils/button_events.dart';
 import '../../utils/verb_labels.dart';
 
-/// Frases humanas en español para automatizaciones (cards, editor, filas).
-/// Todo sujeto → hecho, sin flechas ASCII, sin MAYÚSCULAS.
+/// Frases humanas en español para automatizaciones (cards, wizard, filas,
+/// narración de un flujo en solo lectura). Todo sujeto → hecho, sin flechas
+/// ASCII, sin MAYÚSCULAS.
+///
+/// Las frases de la card y del resumen leen [Automation.effectiveActions] y
+/// [Automation.effectiveConditions]: con flujo propio (CCE#64) lo que corre
+/// es el árbol, no el `actions` legacy.
+
+/// "Prender Living" → "prender Living": baja SÓLO la primera letra, los
+/// nombres de dispositivos conservan sus mayúsculas.
+String _lcFirst(String s) =>
+    s.isEmpty ? s : s[0].toLowerCase() + s.substring(1);
+
+String _ucFirst(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
 String _deviceName(DevicesService devices, String? id) {
   if (id == null || id.isEmpty) return 'sensor';
@@ -196,8 +210,33 @@ String triggerPhrase(Automation a, DevicesService devices) {
         return '${triggers.length} sensores';
       }
       return sensorTriggerPhrase(triggers.first, devices);
+    case 'incomingCall':
+      return 'Llamada entrante${_callFromSuffix(t)}';
+    case 'callStarted':
+      return 'Empieza una llamada${_callFromSuffix(t)}';
+    case 'callEnded':
+      return 'Termina una llamada${_callFromSuffix(t)}';
+    case 'calendar':
+      return t.raw['calendarEdge'] == 'end'
+          ? 'Termina un evento del calendario'
+          : 'Empieza un evento del calendario';
     default:
       return 'Manual';
+  }
+}
+
+/// " de un contacto" / " de un desconocido" según el filtro `callFrom` de los
+/// triggers de telefonía (la app no tiene la libreta a mano para el nombre).
+String _callFromSuffix(AutomationTrigger t) {
+  switch (t.raw['callFrom']) {
+    case 'contact':
+      return ' de un contacto';
+    case 'known':
+      return ' de un conocido';
+    case 'unknown':
+      return ' de un desconocido';
+    default:
+      return '';
   }
 }
 
@@ -269,8 +308,33 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
       if (act.on == 'bri_down') {
         return 'Bajar brillo de ${_deviceName(devices, act.lightId)}';
       }
+      // Acciones que el Dashboard sabe armar y la app sólo muestra (la fila
+      // no tiene lápiz): se narran igual, no como "Acción avanzada".
+      if (act.on == 'announce') {
+        return 'Anunciar «${act.raw['announcerId'] ?? '?'}»';
+      }
+      if (act.on == 'automation') return _automationTogglePhrase(act, devices);
+      if (act.on == 'call') {
+        final number = act.raw['callNumber'];
+        return number is String && number.isNotEmpty
+            ? 'Llamar al $number'
+            : 'Llamar a un contacto';
+      }
       return 'Acción avanzada';
   }
+}
+
+/// "Activar «Modo movimiento»" / "Desactivar 2 automatizaciones" / "Alternar…"
+String _automationTogglePhrase(AutomationAction act, DevicesService devices) {
+  final ids = act.raw['automationIds'];
+  final list = ids is List ? [for (final i in ids) i.toString()] : <String>[];
+  final verb = switch (act.raw['automationAction']) {
+    'enable' => 'Activar',
+    'disable' => 'Desactivar',
+    _ => 'Alternar',
+  };
+  if (list.length == 1) return '$verb «${devices.automationName(list.first)}»';
+  return '$verb ${list.length} automatizaciones';
 }
 
 /// 21 → "21", 21.5 → "21.5" (misma convención que la pantalla del termostato).
@@ -330,12 +394,18 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.jbl:
       return 'parlante ${act.jblAction == 'off' ? 'off' : 'on'}';
     case AutomationActionKind.advanced:
-      return 'avanzada';
+      return switch (act.on) {
+        'announce' => 'anuncio',
+        'automation' => 'automatizaciones',
+        'call' => 'llamada',
+        _ => 'avanzada',
+      };
   }
 }
 
 /// "Living y Cocina off · parlante off · aviso", "Escena 1-Basic",
-/// "Grupo Living on". >3 fragmentos → "… +N más".
+/// "Grupo Living on". >3 fragmentos → "… +N más". Con flujo propio se
+/// anteponen las esperas: "Living on · esperar 5 min · Living off".
 String actionsPhrase(Automation a, DevicesService devices) {
   switch (a.source) {
     case 'scene':
@@ -345,10 +415,15 @@ String actionsPhrase(Automation a, DevicesService devices) {
       return 'Grupo ${_groupName(devices, a.sourceId)} '
           '${a.sourceAction == 'off' ? 'off' : 'on'}';
     default:
-      if (a.actions.isEmpty) return 'Sin acciones';
-      final fragments = [
-        for (final act in a.actions) _actionFragment(act, devices),
-      ];
+      final acts = a.effectiveActions;
+      if (acts.isEmpty) {
+        // Un flujo que sólo tiene ramas que no son el camino feliz (un
+        // waitFor con onTimeout, p.ej.) no es "sin acciones": es un flujo.
+        return a.hasOwnFlow ? 'Flujo del Dashboard' : 'Sin acciones';
+      }
+      final fragments = a.hasOwnFlow
+          ? _flowFragments(a.flow, devices)
+          : [for (final act in acts) _actionFragment(act, devices)];
       if (fragments.length > 3) {
         return '${fragments.take(3).join(' · ')} +${fragments.length - 3} más';
       }
@@ -356,32 +431,164 @@ String actionsPhrase(Automation a, DevicesService devices) {
   }
 }
 
-/// Frase de UNA condición.
+/// Los fragmentos de la card para un flujo propio: acciones del camino feliz
+/// con las esperas intercaladas ("Living on · esperar 5 min · Living off").
+List<String> _flowFragments(List<FlowStep> flow, DevicesService devices) {
+  final out = <String>[];
+  void walk(List<FlowStep> steps) {
+    for (final s in steps) {
+      switch (s) {
+        case FlowDoStep():
+          for (final a in s.actions) {
+            out.add(_actionFragment(
+                AutomationAction.fromJson(flowActionToLegacy(a)), devices));
+          }
+        case FlowWaitStep():
+          out.add(waitPhrase(s.seconds?.round() ?? 0));
+        case FlowIfStep():
+          walk(s.then);
+        default:
+          break;
+      }
+    }
+  }
+
+  walk(flow);
+  return out;
+}
+
+const _lockWays = {
+  'fingerprint': 'con huella',
+  'password': 'con clave',
+  'card': 'con tarjeta',
+  'remote': 'a distancia',
+  'face': 'con la cara',
+};
+
+/// "el parlante" / "la tele" para las condiciones `modulePower`.
+String _moduleName(dynamic module) => switch (module) {
+      'jbl' => 'el parlante',
+      'tv' => 'la tele',
+      _ => '$module',
+    };
+
+/// Frase de UNA condición (pastilla de la card, filas del sheet SOLO SI).
 String conditionPhrase(AutomationCondition c, DevicesService devices) {
   if (c.type == 'timeWindow') {
     return 'de ${c.fromTime ?? '—'} a ${c.toTime ?? '—'}';
+  }
+  if (c.type == 'modulePower') {
+    final on = c.raw['on'] == true;
+    return 'con ${_moduleName(c.raw['module'])} ${on ? 'prendido' : 'apagado'}'
+        .replaceFirst('la tele prendido', 'la tele prendida')
+        .replaceFirst('la tele apagado', 'la tele apagada');
+  }
+  if (c.type == 'deviceState') {
+    final name = _deviceName(devices, c.raw['deviceId'] as String?);
+    return 'si $name: ${c.field ?? '?'} ${_num(c.value)}';
   }
   if (c.field == 'brightness') {
     return c.value == 'brighter' ? 'si hay luz' : 'si está oscuro';
   }
   if (c.field == 'lockOpenWay') {
-    const ways = {
-      'fingerprint': 'con huella',
-      'password': 'con clave',
-      'card': 'con tarjeta',
-      'remote': 'a distancia',
-      'face': 'con la cara',
-    };
-    return ways[c.value] ?? 'con ${c.value}';
+    return _lockWays[c.value] ?? 'con ${c.value}';
   }
   final name = _deviceName(devices, c.sensorId);
   return 'si $name: ${c.field ?? '?'} ${_num(c.value)}';
 }
 
+/// La condición como CLÁUSULA, sin el "si" adelante, para armar oraciones:
+/// "está oscuro", "es entre las 20:00 y las 07:00", "el parlante está
+/// apagado", "hay movimiento en Pasillo".
+String conditionClause(AutomationCondition c, DevicesService devices) {
+  switch (c.type) {
+    case 'timeWindow':
+      return 'es entre las ${c.fromTime ?? '—'} y las ${c.toTime ?? '—'}';
+    case 'modulePower':
+      final on = c.raw['on'] == true;
+      final module = _moduleName(c.raw['module']);
+      final adj = module == 'la tele'
+          ? (on ? 'prendida' : 'apagada')
+          : (on ? 'prendido' : 'apagado');
+      return '$module está $adj';
+    case 'deviceState':
+      final name = _deviceName(devices, c.raw['deviceId'] as String?);
+      return '$name tiene ${c.field ?? '?'} en ${_num(c.value)}';
+  }
+  final name = _deviceName(devices, c.sensorId);
+  switch (c.field) {
+    case 'brightness':
+      return c.value == 'brighter' ? 'hay luz' : 'está oscuro';
+    case 'lockOpenWay':
+      return 'abre ${_lockWays[c.value] ?? 'con ${c.value}'}';
+    case 'motion':
+      return c.value == true
+          ? 'hay movimiento en $name'
+          : 'no hay movimiento en $name';
+    case 'contact':
+      return c.value == true ? '$name está abierto' : '$name está cerrado';
+    case 'temperature':
+      final v = _num(c.value);
+      if (c.operator == 'lt' || c.operator == 'lte') {
+        return '$name está por debajo de $v°';
+      }
+      if (c.operator == 'gt' || c.operator == 'gte') {
+        return '$name está por encima de $v°';
+      }
+      return '$name está a $v°';
+  }
+  return '$name tiene ${c.field ?? '?'} en ${_num(c.value)}';
+}
+
+/// Las frases de VARIAS condiciones, desambiguadas: dos «está oscuro» de dos
+/// sensores distintos se leen como una sola si no se dice quién mide, así que
+/// las repetidas llevan el sensor ("está oscuro en Living Movimiento 1").
+/// [phrase] arma cada frase (clausula u oración corta).
+List<String> disambiguatedConditions(
+  List<AutomationCondition> conds,
+  DevicesService devices,
+  String Function(AutomationCondition) phrase,
+) {
+  final base = [for (final c in conds) phrase(c)];
+  final counts = <String, int>{};
+  for (final b in base) {
+    counts[b] = (counts[b] ?? 0) + 1;
+  }
+  return [
+    for (var i = 0; i < conds.length; i++)
+      if ((counts[base[i]] ?? 0) > 1 &&
+          conds[i].type == 'sensor' &&
+          (conds[i].sensorId ?? '').isNotEmpty)
+        '${base[i]} en ${_deviceName(devices, conds[i].sensorId)}'
+      else
+        base[i],
+  ];
+}
+
+/// El árbol booleano de un `if` como cláusula: "está oscuro y es entre las
+/// 20:00 y las 07:00", "hay movimiento en A o hay movimiento en B",
+/// "no se cumple que …".
+String condClause(FlowCond c, DevicesService devices) {
+  if (c.isAnd || c.isOr) {
+    final leaves = c.children.every((x) => x.isLeaf)
+        ? disambiguatedConditions(
+            [for (final x in c.children) x.leaf],
+            devices,
+            (x) => conditionClause(x, devices),
+          )
+        : [for (final x in c.children) condClause(x, devices)];
+    return leaves.join(c.isAnd ? ' y ' : ' o ');
+  }
+  if (c.isNot) {
+    return 'no se cumple que ${condClause(c.children.first, devices)}';
+  }
+  return conditionClause(c.leaf, devices);
+}
+
 /// "si está oscuro", "con alarma armada", primera + "+N" si hay más.
 String conditionsPhrase(Automation a, DevicesService devices) {
   final parts = <String>[
-    for (final c in a.trigger.conditions) conditionPhrase(c, devices),
+    for (final c in a.effectiveConditions) conditionPhrase(c, devices),
   ];
   switch (a.trigger.alarmCondition) {
     case 'armed':
@@ -394,90 +601,273 @@ String conditionsPhrase(Automation a, DevicesService devices) {
   return '${parts.first} +${parts.length - 1}';
 }
 
-/// "Cuando haya movimiento en Pasillo, si está oscuro, prender el grupo
-/// Living" — banner vivo del editor.
-String editorSummary(Automation a, DevicesService devices) {
+/// El disparador como cláusula después de "Cuando": "haya movimiento en
+/// Pasillo", "sean las 19:00 (L–V)", "toques el botón 1 de Dial", "termine
+/// una llamada de un contacto", "la ejecutes manualmente".
+String triggerClause(Automation a, DevicesService devices) {
   final t = a.trigger;
-  String cuando;
   switch (t.type) {
     case 'schedule':
       if (t.scheduleMode == 'interval') {
-        cuando = 'cada ${t.interval} min';
+        var s = 'pasen ${t.interval} min';
         if (t.fromTime != null && t.toTime != null) {
-          cuando += ' entre las ${t.fromTime} y las ${t.toTime}';
+          s += ' entre las ${t.fromTime} y las ${t.toTime}';
         }
-      } else {
-        cuando = 'sean las ${t.time ?? '—'}';
-        final d = daysCompact(t.days);
-        if (d.isNotEmpty) cuando += ' ($d)';
+        return s;
       }
+      var s = 'sean las ${t.time ?? '—'}';
+      final d = daysCompact(t.days);
+      if (d.isNotEmpty) s += ' ($d)';
+      return s;
     case 'sensor':
-      if (t.sensorTriggers.isEmpty) {
-        cuando = 'se dispare el sensor';
-      } else {
-        final first = t.sensorTriggers.first;
-        final name = _deviceName(devices, first.sensorId);
-        switch (first.sensorField) {
-          case 'motion':
-            cuando = first.sensorValue == true
-                ? 'haya movimiento en $name'
-                : 'deje de haber movimiento en $name';
-          case 'contact':
-            cuando =
-                first.sensorValue == true ? 'se abra $name' : 'se cierre $name';
-          case 'lastKey':
-            cuando = 'toques el botón ${_num(first.sensorValue)} del $name';
-          case 'temperature':
-            cuando = (first.sensorOperator == 'lt' ||
-                    first.sensorOperator == 'lte')
-                ? '$name baje de ${_num(first.sensorValue)}°'
-                : '$name supere los ${_num(first.sensorValue)}°';
-          case 'lockActor':
-            cuando = 'entre ${first.sensorValue}';
-          case 'lockEventKind':
-            cuando = first.sensorValue == 'doorbell'
-                ? 'toquen el timbre'
-                : 'alguien destrabe $name';
-          case 'vacuumState':
-            cuando = switch (first.sensorValue) {
-              'cleaning' => '$name empiece a limpiar',
-              'docked' => '$name vuelva a la base',
-              'error' => '$name entre en error',
-              _ => 'cambie $name',
-            };
-          default:
-            cuando = 'cambie $name';
-        }
-        if (t.sensorTriggers.length > 1) {
-          cuando += t.sensorTriggersMode == 'all'
-              ? ' (y ${t.sensorTriggers.length - 1} sensores más)'
-              : ' (o ${t.sensorTriggers.length - 1} sensores más)';
-        }
+      if (t.sensorTriggers.isEmpty) return 'se dispare el sensor';
+      final first = t.sensorTriggers.first;
+      final name = _deviceName(devices, first.sensorId);
+      String s;
+      switch (first.sensorField) {
+        case 'motion':
+          s = first.sensorValue == true
+              ? 'haya movimiento en $name'
+              : 'deje de haber movimiento en $name';
+        case 'contact':
+          s = first.sensorValue == true ? 'se abra $name' : 'se cierre $name';
+        case 'lastKey':
+          // lastKey es el TIPO de pulsación (0 click, 1 doble, 2 mantenido);
+          // el botón físico lo dice sensorOutlet (0-based, se muestra +1).
+          final verb = switch (int.tryParse('${first.sensorValue}')) {
+            1 => 'toques dos veces',
+            2 => 'mantengas apretado',
+            _ => 'toques',
+          };
+          final outlet = first.sensorOutlet;
+          s = outlet != null
+              ? '$verb el botón ${outlet + 1} de $name'
+              : '$verb $name';
+        case 'temperature':
+          s = (first.sensorOperator == 'lt' || first.sensorOperator == 'lte')
+              ? '$name baje de ${_num(first.sensorValue)}°'
+              : '$name supere los ${_num(first.sensorValue)}°';
+        case 'humidity':
+          s = (first.sensorOperator == 'lt' || first.sensorOperator == 'lte')
+              ? 'la humedad de $name baje de ${_num(first.sensorValue)}%'
+              : 'la humedad de $name supere el ${_num(first.sensorValue)}%';
+        case 'lockActor':
+          s = 'entre ${first.sensorValue}';
+        case 'lockEventKind':
+          s = first.sensorValue == 'doorbell'
+              ? 'toquen el timbre'
+              : 'alguien destrabe $name';
+        case 'vacuumState':
+          s = switch (first.sensorValue) {
+            'cleaning' => '$name empiece a limpiar',
+            'docked' => '$name vuelva a la base',
+            'error' => '$name entre en error',
+            _ => 'cambie $name',
+          };
+        default:
+          s = 'cambie $name';
       }
+      final more = t.sensorTriggers.length - 1;
+      if (more > 0) {
+        final noun = more == 1 ? 'sensor más' : 'sensores más';
+        s += t.sensorTriggersMode == 'all' ? ' (y $more $noun)' : ' (o $more $noun)';
+      }
+      return s;
+    case 'incomingCall':
+      return 'entre una llamada${_callFromSuffix(t)}';
+    case 'callStarted':
+      return 'empiece una llamada${_callFromSuffix(t)}';
+    case 'callEnded':
+      return 'termine una llamada${_callFromSuffix(t)}';
+    case 'calendar':
+      return t.raw['calendarEdge'] == 'end'
+          ? 'termine un evento del calendario'
+          : 'empiece un evento del calendario';
     default:
-      cuando = 'la ejecutes manualmente';
+      return 'la ejecutes manualmente';
   }
+}
 
-  String entonces;
+/// "5 min", "30 s", "1 h", "1 h 30 min", "2 min 30 s".
+String durationLabel(int seconds) {
+  if (seconds < 60) return '$seconds s';
+  final h = seconds ~/ 3600;
+  final m = (seconds % 3600) ~/ 60;
+  final s = seconds % 60;
+  final parts = <String>[
+    if (h > 0) '$h h',
+    if (m > 0) '$m min',
+    if (s > 0) '$s s',
+  ];
+  return parts.join(' ');
+}
+
+/// "esperar 5 min".
+String waitPhrase(int seconds) => 'esperar ${durationLabel(seconds)}';
+
+/// Las acciones como lista hablada: "prender Living al 40%", "prender Living
+/// y apagar la tele", "a, b y c", ">3 → N acciones".
+String _spokenActions(List<AutomationAction> acts, DevicesService devices) {
+  if (acts.isEmpty) return '(sin acciones todavía)';
+  final phrases = [
+    for (final a in acts) _lcFirst(actionPhrase(a, devices)),
+  ];
+  if (phrases.length == 1) return phrases.first;
+  if (phrases.length > 3) return '${phrases.length} acciones';
+  return '${phrases.sublist(0, phrases.length - 1).join(', ')} y ${phrases.last}';
+}
+
+/// La oración completa del wizard, con lo que hay en sus cuatro pantallas:
+/// "Cuando haya movimiento en Living, si está oscuro, prender Living al 40%,
+/// esperar 5 min y apagar Living."
+String wizardSummary(
+  Automation a,
+  DevicesService devices, {
+  required List<AutomationCondition> conditions,
+  required List<AutomationAction> actions,
+  int? waitSeconds,
+  List<AutomationAction> afterActions = const [],
+}) {
+  final buf = StringBuffer('Cuando ${triggerClause(a, devices)}');
+  final conds = disambiguatedConditions(
+      conditions, devices, (c) => conditionClause(c, devices));
+  switch (a.trigger.alarmCondition) {
+    case 'armed':
+      conds.add('la alarma está armada');
+    case 'disarmed':
+      conds.add('la alarma está desarmada');
+  }
+  if (conds.isNotEmpty) buf.write(', si ${conds.join(' y ')}');
+  buf.write(', ${_spokenActions(actions, devices)}');
+  if (waitSeconds != null && afterActions.isNotEmpty) {
+    buf.write(', ${waitPhrase(waitSeconds)} y '
+        '${_spokenActions(afterActions, devices)}');
+  }
+  buf.write('.');
+  return buf.toString();
+}
+
+/// La misma oración sobre lo que la automatización TIENE. Si el árbol entra
+/// en el molde del wizard sale entera (con la espera); si no, se narra el
+/// camino feliz y se avisa que hay más.
+String flowSummary(Automation a, DevicesService devices) {
   switch (a.source) {
     case 'scene':
     case 'hueScene':
-      entonces = 'activar la escena ${_sceneName(devices, a)}';
+      return 'Cuando ${triggerClause(a, devices)}, activar la escena '
+          '${_sceneName(devices, a)}.';
     case 'group':
-      entonces =
-          '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el grupo ${_groupName(devices, a.sourceId)}';
+      return 'Cuando ${triggerClause(a, devices)}, '
+          '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el grupo '
+          '${_groupName(devices, a.sourceId)}.';
     case 'hueRoom':
-      entonces =
-          '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el room ${_hueRoomName(devices, a.sourceId)}';
-    default:
-      entonces = a.actions.isEmpty
-          ? '(sin acciones todavía)'
-          : a.actions.length == 1
-              ? actionPhrase(a.actions.first, devices).toLowerCase()
-              : '${a.actions.length} acciones';
+      return 'Cuando ${triggerClause(a, devices)}, '
+          '${a.sourceAction == 'off' ? 'apagar' : 'prender'} el room '
+          '${_hueRoomName(devices, a.sourceId)}.';
+  }
+  final shape = a.raw['flow'] is List ? wizardShapeOf(a.flow) : null;
+  if (shape != null && a.hasOwnFlow) {
+    return wizardSummary(
+      a,
+      devices,
+      conditions: shape.conditions,
+      actions: [
+        for (final x in shape.actions)
+          AutomationAction.fromJson(flowActionToLegacy(x)),
+      ],
+      waitSeconds: shape.waitSeconds,
+      afterActions: [
+        for (final x in shape.afterActions)
+          AutomationAction.fromJson(flowActionToLegacy(x)),
+      ],
+    );
+  }
+  final summary = wizardSummary(
+    a,
+    devices,
+    conditions: a.effectiveConditions,
+    actions: a.effectiveActions,
+  );
+  if (a.hasOwnFlow && shape == null) {
+    return '$summary Y más: este flujo tiene ramas o esperas que se ven '
+        'en el Dashboard.';
+  }
+  return summary;
+}
+
+/// Alias histórico del banner del editor por bloques.
+String editorSummary(Automation a, DevicesService devices) =>
+    flowSummary(a, devices);
+
+// ── Narración de un árbol (solo lectura) ─────────────────────────────────────
+
+enum FlowLineKind { condition, branch, action, wait, stop, unknown }
+
+/// Una línea de la narración: qué es, a qué profundidad y qué dice.
+class FlowLine {
+  const FlowLine(this.kind, this.text, {this.depth = 0});
+
+  final FlowLineKind kind;
+  final String text;
+  final int depth;
+}
+
+/// El árbol entero, paso por paso, con la sangría de cada rama. Es lo que la
+/// app muestra de un flujo que NO entra en el molde: se lee todo, no se toca.
+List<FlowLine> flowNarration(List<FlowStep> flow, DevicesService devices) {
+  final out = <FlowLine>[];
+  void walk(List<FlowStep> steps, int depth) {
+    for (final s in steps) {
+      switch (s) {
+        case FlowDoStep():
+          for (final a in s.actions) {
+            final legacy = AutomationAction.fromJson(flowActionToLegacy(a));
+            out.add(FlowLine(FlowLineKind.action,
+                actionPhrase(legacy, devices),
+                depth: depth));
+          }
+        case FlowIfStep():
+          out.add(FlowLine(FlowLineKind.condition,
+              'Si ${condClause(s.cond, devices)}',
+              depth: depth));
+          walk(s.then, depth + 1);
+          if (s.hasElse) {
+            out.add(FlowLine(FlowLineKind.branch, 'Si no', depth: depth));
+            walk(s.otherwise!, depth + 1);
+          }
+        case FlowWaitStep():
+          out.add(FlowLine(FlowLineKind.wait,
+              _ucFirst(waitPhrase(s.seconds?.round() ?? 0)),
+              depth: depth));
+        case FlowWaitForStep():
+          final timeout = s.timeoutSeconds?.round();
+          out.add(FlowLine(
+            FlowLineKind.wait,
+            'Esperar hasta que ${condClause(s.cond, devices)}'
+            '${timeout != null ? ' (máximo ${durationLabel(timeout)})' : ''}',
+            depth: depth,
+          ));
+          final onTimeout = s.onTimeout;
+          if (onTimeout != null && onTimeout.isNotEmpty) {
+            out.add(FlowLine(
+              FlowLineKind.branch,
+              timeout != null
+                  ? 'Si no pasa en ${durationLabel(timeout)}'
+                  : 'Si no pasa',
+              depth: depth,
+            ));
+            walk(onTimeout, depth + 1);
+          }
+        case FlowStopStep():
+          out.add(FlowLine(FlowLineKind.stop, 'Fin', depth: depth));
+        case FlowUnknownStep():
+          out.add(FlowLine(FlowLineKind.unknown,
+              'Paso desconocido (${s.type.isEmpty ? '?' : s.type})',
+              depth: depth));
+      }
+    }
   }
 
-  final cond = conditionsPhrase(a, devices);
-  if (cond.isEmpty) return 'Cuando $cuando, $entonces.';
-  return 'Cuando $cuando, $cond, $entonces.';
+  walk(flow, 0);
+  return out;
 }
