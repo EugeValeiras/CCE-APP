@@ -43,6 +43,32 @@ class RunResult {
   final String? warning;
 }
 
+/// Reacomoda [list] según [orderedIds] sin tocar los elementos (CCE#79).
+///
+/// El orden de las automatizaciones ES la posición en el array del servidor:
+/// no hay campo `order`. Los ids de [orderedIds] ocupan, en ese orden, los
+/// lugares que hoy ocupan en [list]; todo lo demás queda donde estaba. Así un
+/// id que el servidor ya no tiene se ignora, y una automatización que el
+/// servidor tiene y el cliente no vio (la creó el Dashboard hace un segundo)
+/// conserva su lugar en vez de perderse en el PUT del array entero.
+List<T> applyAutomationOrder<T>(
+  List<T> list,
+  List<String> orderedIds,
+  String Function(T) idOf,
+) {
+  final byId = {for (final item in list) idOf(item): item};
+  final known = [
+    for (final id in orderedIds)
+      if (byId.containsKey(id)) id,
+  ];
+  final moving = known.toSet();
+  var next = 0;
+  return [
+    for (final item in list)
+      if (moving.contains(idOf(item))) byId[known[next++]] as T else item,
+  ];
+}
+
 /// Servicio de automatizaciones contra `GET/PUT /config/automations`.
 ///
 /// La API NO tiene endpoints granulares ni versionado: toda mutación es
@@ -141,7 +167,8 @@ class AutomationsService extends ChangeNotifier {
   }
 
   /// Automatizaciones que involucran a [device], ya sea porque lo usan como
-  /// disparador o porque actúan sobre él. Ordenadas por nombre.
+  /// disparador o porque actúan sobre él. En el orden del servidor — el que
+  /// el dueño armó arrastrando (CCE#79) —, igual que la lista general.
   ///
   /// Incluye las pausadas: que una automatización esté apagada no significa
   /// que no exista, y al mirar un dispositivo querés saber que está ahí.
@@ -149,8 +176,7 @@ class AutomationsService extends ChangeNotifier {
     final ids = _idsOf(device);
     return _automations
         .where((a) => _isTrigger(a, ids) || _isTarget(a, ids))
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        .toList();
   }
 
   /// Cuántas automatizaciones ACTIVAS involucran a [device]. Es lo que se
@@ -311,6 +337,32 @@ class AutomationsService extends ChangeNotifier {
         }
         return const SaveResult(SaveStatus.error,
             message: 'No se pudo cambiar el estado');
+      }
+    });
+  }
+
+  /// Reordena y persiste (CCE#79): optimista local + GET→orden→PUT encolado.
+  ///
+  /// El orden es la posición en el array, así que "guardar el orden" es
+  /// mandar el array FRESCO del servidor acomodado según [orderedIds] — no la
+  /// lista local, que puede ser vieja. Ver [applyAutomationOrder] para qué
+  /// pasa con los ids que difieren entre las dos.
+  Future<SaveResult> reorder(List<String> orderedIds) {
+    final before = _automations;
+    _automations = applyAutomationOrder(_automations, orderedIds, (a) => a.id);
+    notifyListeners();
+    return _enqueue(() async {
+      try {
+        final fresh = await _fetchRaw();
+        await _putRaw(applyAutomationOrder(
+            fresh, orderedIds, (m) => (m['id'] ?? '').toString()));
+        return const SaveResult(SaveStatus.ok);
+      } catch (e) {
+        debugPrint('AutomationsService reorder error: $e');
+        _automations = before;
+        notifyListeners();
+        return const SaveResult(SaveStatus.error,
+            message: 'No se pudo guardar el orden');
       }
     });
   }
