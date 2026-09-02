@@ -801,7 +801,26 @@ String editorSummary(Automation a, DevicesService devices) =>
 
 // ── Narración de un árbol (solo lectura) ─────────────────────────────────────
 
-enum FlowLineKind { condition, branch, action, wait, stop, unknown }
+enum FlowLineKind { condition, branch, action, wait, call, stop, unknown }
+
+/// Cómo se llama cada salida del «Llamar» en la narración (CCE#81). «Si no
+/// atienden» cubre también la que el otro lado rechazó: en una saliente el
+/// módem no distingue una de otra, y el motor las manda a la misma rama.
+const Map<String, String> kCallBranchPhrase = {
+  'onAnswered': 'Si atienden',
+  'onMissed': 'Si no atienden',
+  'onRejected': 'Si la rechazan',
+  'onFailed': 'Si no se pudo llamar',
+  'onTimeout': 'Si vence',
+};
+
+/// A quién llama un `call`: la app no tiene la libreta a mano para el nombre
+/// del contacto, igual que en los disparadores de llamada.
+String callTargetPhrase(FlowCallStep s) {
+  final number = s.number;
+  if (number != null && number.isNotEmpty) return 'al $number';
+  return s.contactId != null ? 'a un contacto' : 'a nadie todavía';
+}
 
 /// Una línea de la narración: qué es, a qué profundidad y qué dice.
 class FlowLine {
@@ -857,6 +876,27 @@ List<FlowLine> flowNarration(List<FlowStep> flow, DevicesService devices) {
               depth: depth,
             ));
             walk(onTimeout, depth + 1);
+          }
+        case FlowCallStep():
+          // CCE#81 — «Llamar al …, esperar a que termine (máximo N)» y una
+          // rama por salida presente: las ausentes caen en el paso siguiente
+          // y no se cuentan.
+          final timeout = s.timeoutSeconds?.round();
+          out.add(FlowLine(
+            FlowLineKind.call,
+            'Llamar ${callTargetPhrase(s)} y esperar a que termine'
+            '${timeout != null ? ' (máximo ${durationLabel(timeout)})' : ''}',
+            depth: depth,
+          ));
+          for (final kind in kCallBranches) {
+            final steps = s.branches[kind];
+            if (steps == null || steps.isEmpty) continue;
+            var title = kCallBranchPhrase[kind] ?? kind;
+            if (kind == 'onTimeout' && timeout != null) {
+              title = 'Si no termina en ${durationLabel(timeout)}';
+            }
+            out.add(FlowLine(FlowLineKind.branch, title, depth: depth));
+            walk(steps, depth + 1);
           }
         case FlowStopStep():
           out.add(FlowLine(FlowLineKind.stop, 'Fin', depth: depth));

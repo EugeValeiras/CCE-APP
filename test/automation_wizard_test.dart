@@ -74,6 +74,56 @@ void main() {
     expect(find.text('Fin'), findsOneWidget);
   });
 
+  // CCE#81 — el «Llamar» con salidas: narrado, con el aviso del Dashboard y
+  // sin Guardar. El flujo se arma sobre una real para que el resto (nombre,
+  // disparador) sea el de la casa.
+  testWidgets('un flujo con «Llamar» abre narrado y sin Guardar',
+      (tester) async {
+    final base = _byId(prod, 'auto_mq872o2ekqh47vglzq');
+    final json = {
+      ...base,
+      'flowDerived': false,
+      'flow': [
+        {
+          'type': 'call',
+          'contactId': 'c_porton',
+          'timeoutSeconds': 60,
+          'onAnswered': [
+            {
+              'type': 'do',
+              'actions': [
+                {'kind': 'alarm', 'action': 'disarm'},
+              ],
+            },
+          ],
+          'onMissed': [
+            {
+              'type': 'do',
+              'actions': [
+                {'kind': 'notification', 'message': 'nadie atendió'},
+              ],
+            },
+            {'type': 'stop'},
+          ],
+        },
+      ],
+    };
+    await _pumpWizard(tester, json, isNew: false);
+    expect(find.text('Solo lectura'), findsOneWidget);
+    expect(find.text('Este flujo se edita desde el Dashboard'), findsOneWidget);
+    expect(find.textContaining('cómo termine la llamada'), findsOneWidget);
+    expect(find.text('Guardar'), findsNothing);
+    // Narrado: la llamada con su tope, y una rama por salida presente.
+    expect(
+      find.text('Llamar a un contacto y esperar a que termine (máximo 1 min)'),
+      findsOneWidget,
+    );
+    expect(find.text('Si atienden'), findsOneWidget);
+    expect(find.text('Si no atienden'), findsOneWidget);
+    expect(find.text('Si la rechazan'), findsNothing);
+    expect(find.text('Fin'), findsOneWidget);
+  });
+
   testWidgets('un disparador de llamada también queda en solo lectura',
       (tester) async {
     await _pumpWizard(tester, _byId(prod, 'auto_mtarjfciexy6pl7u9v'),
