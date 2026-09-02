@@ -9,6 +9,7 @@ import '../../utils/time_format.dart';
 import '../../utils/vacuum_state.dart';
 import '../../utils/verb_labels.dart';
 import '../telephony/call_history_screen.dart' show formatCallDuration;
+import 'cause_grouping.dart';
 import 'event_grouping.dart';
 import 'phone_events.dart';
 
@@ -585,4 +586,193 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
     title: base.title,
     subtitle: since ?? base.subtitle,
   );
+}
+
+/// Humaniza un HECHO (CCE#75): los cambios que comparten causa, en una sola
+/// frase. Es la diferencia entre leer doce filas y leer «el Hall se encendió
+/// al 56%».
+///
+/// Tres formas, según lo que el hecho abarque:
+///
+///  - un aparato y una sola semántica → exactamente lo de antes ([presentGroup]);
+///  - un aparato y varias semánticas → una línea: `Hall 4: se encendió · 56% ·
+///    temp. de color` (las tres filas que hoy se ven separadas);
+///  - varios aparatos → el sujeto común y el hecho: `Hall se encendió`, con el
+///    brillo resultante como metadato. El «4 luces» lo pone la fila.
+EventPresentation presentCause(CauseGroup c, DevicesService devices) {
+  if (c.runs.length == 1 && c.deviceCount == 1) {
+    return presentGroup(c.runs.first, devices);
+  }
+
+  // El evento que manda es el que trae el hecho principal (`on`); si ninguno
+  // lo trae, el más reciente. Sirve para el ícono y el color, que ya saben
+  // distinguir luz de robot, de TV y de sensor.
+  final events = c.events;
+  final principal = events.firstWhere(
+    (e) {
+      final s = e.payload?['state'];
+      return s is Map && s['on'] != null;
+    },
+    orElse: () => c.latest,
+  );
+  final base = presentEvent(principal, devices);
+  final f = _causeFacts(c);
+  final hechos = f.labels;
+
+  if (c.deviceCount == 1) {
+    // Las tres filas de «Hall 4» (encendido, brillo, temperatura de color) en
+    // una línea, que es la forma que pide el issue para el fallback.
+    final name = _deviceName(principal, devices);
+    if (hechos.isEmpty) return presentGroup(c.runs.first, devices);
+    return EventPresentation(
+      icon: base.icon,
+      color: base.color,
+      title: '$name: ${hechos.join(' · ')}',
+    );
+  }
+
+  final sujeto = causeSubject(c, devices);
+  if (hechos.isEmpty) {
+    return EventPresentation(
+      icon: base.icon,
+      color: base.color,
+      title: '${sujeto.text} '
+          '${sujeto.plural ? 'cambiaron' : 'cambió'} de estado',
+    );
+  }
+  // Con varios aparatos el hecho va en el título y SÓLO el brillo como
+  // metadato: «Hall se encendió» + «al 56%». Que además haya cambiado la
+  // temperatura de color al encenderse es detalle, y el detalle está a un
+  // toque (la fila despliega los cambios individuales) — la columna de la
+  // derecha es angosta y una lista ahí se corta a la mitad.
+  if (f.on != null) {
+    // Concordancia: «Hall se encendió» pero «5 luces se encendieron». Un
+    // sujeto contado es plural, y el historial lo lee gente, no un parser.
+    final verbo = f.on!
+        ? (sujeto.plural ? 'se encendieron' : 'se encendió')
+        : (sujeto.plural ? 'se apagaron' : 'se apagó');
+    return EventPresentation(
+      icon: base.icon,
+      color: base.color,
+      title: '${sujeto.text} $verbo',
+      subtitle: f.brightnessLabel,
+    );
+  }
+  return EventPresentation(
+    icon: base.icon,
+    color: base.color,
+    title: '${sujeto.text}: ${hechos.join(' · ')}',
+  );
+}
+
+/// El SUJETO de un hecho que abarca varios aparatos, con su número gramatical:
+/// el nombre del grupo configurado si el hecho cae justo sobre él, si no el
+/// prefijo común de los nombres («Hall 1..4» → «Hall»), y si tampoco hay,
+/// cuántos son y de qué («5 luces») — que es plural y arrastra el verbo.
+({String text, bool plural}) causeSubject(
+  CauseGroup c,
+  DevicesService devices,
+) {
+  for (final g in devices.groups) {
+    final miembros = g.lightIds.toSet();
+    if (miembros.length == c.deviceIds.length &&
+        miembros.containsAll(c.deviceIds)) {
+      return (text: g.name, plural: false);
+    }
+  }
+  final nombres = <String>[];
+  for (final id in c.deviceIds) {
+    final d = devices.byId(id);
+    nombres.add(d != null ? devices.displayName(d) : id);
+  }
+  final prefijo = _commonPrefix(nombres);
+  if (prefijo != null) return (text: prefijo, plural: false);
+  return (text: causeCountLabel(c, devices), plural: true);
+}
+
+/// «4 luces» / «4 dispositivos»: cuántos aparatos abarca el hecho, dicho por
+/// lo que son. Un apagado de cinco luces no son «5 dispositivos».
+String causeCountLabel(CauseGroup c, DevicesService devices) {
+  final todasLuces = c.deviceIds.every((id) {
+    final d = devices.byId(id);
+    return d != null && d.isLight;
+  });
+  return '${c.deviceCount} ${todasLuces ? 'luces' : 'dispositivos'}';
+}
+
+/// Prefijo común POR PALABRAS de los nombres, o null si no hay uno que sirva.
+/// Por palabras y no por caracteres: «Living» y «Livingston» no comparten
+/// sujeto aunque compartan letras.
+String? _commonPrefix(List<String> nombres) {
+  if (nombres.length < 2) return nombres.isEmpty ? null : nombres.first;
+  final partes = [
+    for (final n in nombres) n.trim().split(RegExp(r'\s+')),
+  ];
+  final out = <String>[];
+  for (var i = 0;; i++) {
+    if (partes.any((p) => i >= p.length)) break;
+    final primero = partes.first[i];
+    if (!partes.every((p) => p[i].toLowerCase() == primero.toLowerCase())) {
+      break;
+    }
+    out.add(primero);
+  }
+  if (out.isEmpty) return null;
+  // Un prefijo que ya es el nombre entero de alguno no distingue nada.
+  if (partes.any((p) => p.length == out.length)) return null;
+  return out.join(' ');
+}
+
+/// Los hechos del grupo, en orden de importancia y sin repetir: primero el
+/// encendido/apagado, después el brillo resultante, después el color. Los
+/// valores son los del evento MÁS RECIENTE que los trae — un drag de brillo
+/// deja el valor final, no el del camino.
+_Facts _causeFacts(CauseGroup c) {
+  bool? on;
+  num? bri;
+  var ct = false;
+  var color = false;
+  final otras = <String>[];
+
+  // Del más reciente al más viejo: el primero que aparece gana.
+  for (final e in c.events) {
+    final state = e.payload?['state'];
+    if (state is! Map) continue;
+    if (on == null && state['on'] is bool) on = state['on'] as bool;
+    if (bri == null && state['bri'] is num) bri = state['bri'] as num;
+    if (state['ct'] != null) ct = true;
+    if (state['hue'] != null || state['sat'] != null || state['xy'] != null) {
+      color = true;
+    }
+    for (final k in state.keys.map((k) => k.toString())) {
+      if (const {'on', 'bri', 'ct', 'hue', 'sat', 'xy'}.contains(k)) continue;
+      if (_telemetryKeys.contains(k)) continue;
+      final label = _stateKeyLabel(k);
+      if (!otras.contains(label)) otras.add(label);
+    }
+  }
+
+  // El brillo de un apagado es el del fade a cero: no es un hecho, es el
+  // camino. Sólo cuenta cuando la luz quedó prendida.
+  final briUtil = on == false ? null : bri;
+  final out = <String>[];
+  if (on != null) out.add(on ? 'se encendió' : 'se apagó');
+  if (briUtil != null) out.add('al ${(briUtil / 254 * 100).round()}%');
+  if (ct) out.add('temp. de color');
+  if (color) out.add('color');
+  out.addAll(otras);
+  return _Facts(on: on, bri: briUtil, labels: out);
+}
+
+/// Lo que cambió en un hecho, ya resuelto: el encendido, el brillo final y
+/// las frases en el orden en que se leen.
+class _Facts {
+  const _Facts({this.on, this.bri, required this.labels});
+
+  final bool? on;
+  final num? bri;
+  final List<String> labels;
+
+  String? get brightnessLabel =>
+      bri == null ? null : 'al ${(bri! / 254 * 100).round()}%';
 }

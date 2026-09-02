@@ -237,6 +237,20 @@ class DevicesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// SOLO TESTS: siembra los nombres de las automatizaciones y los grupos de
+  /// luces, que en producción llegan con el config. Los necesita el historial
+  /// (CCE#75) para traducir el actor de un cambio (`automation:<id>` → nombre)
+  /// y para nombrar un hecho que cae justo sobre un grupo.
+  @visibleForTesting
+  void debugSeedConfigNames({
+    Map<String, String>? automationNames,
+    List<LightGroup>? groups,
+  }) {
+    if (automationNames != null) _automationNames = {...automationNames};
+    if (groups != null) _groups = List.of(groups);
+    notifyListeners();
+  }
+
   /// SOLO TESTS: siembra los planos y las posiciones para poder montar el
   /// canvas del plano sin red. Complemento de [debugSeedDevices], que sólo
   /// siembra el inventario.
