@@ -11,6 +11,7 @@ import '../../theme/cce_tokens.dart';
 import '../../theme/components/section_header.dart';
 import 'automation_card.dart';
 import 'automation_wizard_page.dart';
+import 'automations_order_page.dart';
 
 /// Vista de Automatizaciones (destino del rail, índice 1).
 ///
@@ -196,12 +197,36 @@ class _AutomationsViewState extends State<AutomationsView> {
     }
   }
 
-  /// Orden dentro de cada sección: ALFABÉTICO estable. Antes era lastExecuted
-  /// desc, y como cada evento automation:executed notifica, las cards se
-  /// reordenaban en vivo bajo el dedo del usuario (en una casa con sensores
-  /// activos, constantemente). "Hace N min" sigue visible como metadato.
-  int _compare(Automation a, Automation b) =>
-      a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  /// Reordenar (CCE#79): la lista plana en el orden del servidor, con un asa
+  /// por fila. Secundario, al lado de «Nueva».
+  Widget _orderPill() {
+    return Tooltip(
+      message: 'Reordenar',
+      child: InkWell(
+        onTap: _openOrderPage,
+        borderRadius: BorderRadius.circular(CceRadii.pill),
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: CceColors.surfaceHigh,
+            borderRadius: BorderRadius.circular(CceRadii.pill),
+          ),
+          child: const Icon(Icons.swap_vert_rounded,
+              size: 22, color: CceColors.textPrimary),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openOrderPage() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AutomationsOrderPage(service: _service),
+      ),
+    );
+  }
 
   Widget _newPill() {
     return InkWell(
@@ -358,23 +383,23 @@ class _AutomationsViewState extends State<AutomationsView> {
     return ListenableBuilder(
       listenable: _service,
       builder: (context, _) {
+        // Dentro de cada sección, el ORDEN DEL SERVIDOR (CCE#79): el que el
+        // dueño armó arrastrando, el mismo que muestra el Dashboard. Antes se
+        // ordenaba por nombre, y por eso los nombres llevaban número
+        // («1 - Relax», «33. Volumen 10»): era la única forma de mandar en el
+        // teléfono. Sigue sin ser lastExecuted, que reordenaba las cards en
+        // vivo bajo el dedo.
         final all = _service.automations;
         final enabled = all.where((a) => a.enabled).toList();
-        final disabled = all.where((a) => !a.enabled).toList()
-          ..sort(_compare);
-        final bySensor = enabled
-            .where((a) => a.trigger.type == 'sensor')
-            .toList()
-          ..sort(_compare);
-        final bySchedule = enabled
-            .where((a) => a.trigger.type == 'schedule')
-            .toList()
-          ..sort(_compare);
+        final disabled = all.where((a) => !a.enabled).toList();
+        final bySensor =
+            enabled.where((a) => a.trigger.type == 'sensor').toList();
+        final bySchedule =
+            enabled.where((a) => a.trigger.type == 'schedule').toList();
         final byManual = enabled
             .where((a) =>
                 a.trigger.type != 'sensor' && a.trigger.type != 'schedule')
-            .toList()
-          ..sort(_compare);
+            .toList();
 
         Widget body;
         if (all.isEmpty && _service.loading) {
@@ -449,6 +474,10 @@ class _AutomationsViewState extends State<AutomationsView> {
                         ),
                       ),
                       SizedBox(width: CceSpace.md),
+                      if (all.length > 1) ...[
+                        _orderPill(),
+                        SizedBox(width: CceSpace.sm),
+                      ],
                       _newPill(),
                     ],
                   ),
