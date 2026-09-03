@@ -23,7 +23,9 @@ import '../widgets/temp_sparkline.dart';
 ///    rango). Dentro solo el número OBJETIVO + rótulo "Objetivo".
 ///  - READOUT en cápsula HUNDIDA: temp ACTUAL destacada (🌡 + número + "actual")
 ///    a la izq, rango (min–max°) a la der.
-///  - Estado del sistema: "Encendido" cuando calienta (chip hundido + glow).
+///  - Actividad del relé (CCE#101): «Calentando» con la llama cuando
+///    `state.heating` (DP102), «En temperatura» prendido sin calentar,
+///    «Apagado»; y «Falla del termostato (código N)» si `fault` ≠ 0.
 ///  - Modo Manual / Program = chips convexos sin borde (activo = color de marca
 ///    + glow, sin borde ni inset).
 ///
@@ -198,6 +200,28 @@ class ThermostatScreen extends StatelessWidget {
             ),
           ),
         ),
+
+        // Actividad del relé (CCE#101): qué está HACIENDO, no el modo. Fuera
+        // del bloque atenuado: «Apagado» se lee a pleno.
+        const SizedBox(height: 14),
+        Center(
+          child: _ActivityChip(
+            on: on,
+            heating: on && s.heating == true,
+          ),
+        ),
+        if (s.fault != null && s.fault != 0) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: Text(
+              'Falla del termostato (código ${s.fault})',
+              style: CceText.caption.copyWith(
+                color: CceColors.danger,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
 
         // Sparkline del historial de temperatura ambiente (últimos 7 días).
         // El widget maneja su propio espaciado (sin gap colgado si no hay datos).
@@ -643,7 +667,62 @@ class _Readout extends StatelessWidget {
   }
 }
 
-// ── Estado del sistema (heat / idle) ────────────────────────────────────────
+// ── Actividad del relé (CCE#101): Calentando / En temperatura / Apagado ─────
+
+/// Píldora convexa con la actividad del termostato. Calentando = llama en el
+/// cálido de marca con glow; en temperatura = tilde en ok; apagado = power
+/// atenuado. Réplica de la `.th-activity` del dashboard.
+class _ActivityChip extends StatelessWidget {
+  const _ActivityChip({required this.on, required this.heating});
+
+  final bool on;
+  final bool heating;
+
+  /// «Calentando» / «En temperatura» / «Apagado» (también para los tests).
+  static String labelFor({required bool on, required bool heating}) {
+    if (!on) return 'Apagado';
+    return heating ? 'Calentando' : 'En temperatura';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = labelFor(on: on, heating: heating);
+    final Color color = !on
+        ? CceColors.neoTextSub
+        : (heating ? CceColors.warm : CceColors.ok);
+    final String svg =
+        !on ? CceIcons.power : (heating ? CceIcons.flame : CceIcons.check);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF22252E), Color(0xFF16181D)],
+        ),
+        borderRadius: BorderRadius.circular(999),
+        boxShadow: _convexShadow(),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CceIcon(svg, size: 16, color: color, emboss: false),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+              shadows: heating ? _glowTextShadows(color) : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ── Modo (Manual / Program) = chips convexos ────────────────────────────────
 

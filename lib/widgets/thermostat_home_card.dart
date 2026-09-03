@@ -81,6 +81,12 @@ class ThermostatHomeCard extends StatelessWidget {
 
         final target = s.targetTemp;
         final current = s.currentTemp;
+        // CCE#101 — la actividad del relé (state.heating) delante de las
+        // temperaturas: «Calentando · 18.3° → 19.5°». null si la API no la
+        // manda: entonces, lo de siempre.
+        final String? activity = s.heating == null
+            ? null
+            : (s.heating == true ? 'Calentando' : 'En temperatura');
         final String sub;
         if (!online) {
           sub = 'Fuera de línea';
@@ -89,14 +95,15 @@ class ThermostatHomeCard extends StatelessWidget {
         } else if (target != null) {
           // En el tile: "20.7° → 20°" (actual → objetivo) entra en una línea
           // de 179 px; "Objetivo 20° · actual 20.7°" no.
-          sub = tile
+          final temps = tile
               ? (current != null
                   ? '${_fmt(current)}° → ${_fmt(target)}°'
                   : 'Objetivo ${_fmt(target)}°')
               : 'Objetivo ${_fmt(target)}°'
                   '${current != null ? ' · actual ${_fmt(current)}°' : ''}';
+          sub = activity != null ? '$activity · $temps' : temps;
         } else {
-          sub = 'Encendido';
+          sub = activity ?? 'Encendido';
         }
 
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.

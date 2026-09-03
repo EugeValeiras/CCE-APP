@@ -47,8 +47,16 @@ ArgRange? argRangeFor(CatalogArgSpec arg, DeviceState state) {
 /// (el setpoint de ahora, el volumen de ahora). Un slider de temperatura que
 /// nace en el mínimo propone 5°, que no es lo que nadie quiere pedir.
 num initialArgValue(CatalogActionSpec spec, ArgRange range, DeviceState state) {
-  final current =
-      state.numField(spec.affects.isNotEmpty ? spec.affects.first : null);
+  // El PRIMER campo de `affects` que el device reporta como número: para
+  // `setTargetTemp` es `targetTemp`; para `startHeating` (CCE#101), que
+  // afecta `on` y `targetTemp`, `on` no es numérico y el slider arranca en el
+  // objetivo vigente, no en el mínimo del rango (5 °C se leía como «calentar
+  // a 5°»).
+  num? current;
+  for (final field in spec.affects) {
+    current = state.numField(field);
+    if (current != null) break;
+  }
   return range.asArg(current?.toDouble() ?? range.min);
 }
 

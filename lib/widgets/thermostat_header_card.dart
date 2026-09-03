@@ -58,8 +58,13 @@ class ThermostatHeaderCard extends StatelessWidget {
     final s = device.state;
     final cool = _isCool(s);
     final on = s.on;
-    final Color color =
-        on ? (cool ? CceColors.info : CceColors.warm) : CceColors.textSecondary;
+    // CCE#101 — la llama a pleno sólo cuando el relé da calor (state.heating);
+    // prendido en temperatura, verde. Sin el dato, el color del modo.
+    final Color color = !on
+        ? CceColors.textSecondary
+        : (s.heating == false
+            ? CceColors.ok
+            : (cool ? CceColors.info : CceColors.warm));
     final String svg = cool ? CceIcons.snowflake : CceIcons.flame;
 
     final current = s.currentTemp;

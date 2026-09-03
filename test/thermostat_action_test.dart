@@ -17,6 +17,7 @@ import 'package:cce_app/services/devices_service.dart';
 import 'package:cce_app/models/server_config.dart';
 import 'package:cce_app/services/socket_service.dart';
 import 'package:cce_app/utils/arg_controls.dart';
+import 'package:cce_app/utils/verb_labels.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
 
 /// El CCE Thermostat de la casa (Tuya cat 'wk'), con la calefacción prendida.
@@ -96,6 +97,25 @@ const catalogJson = <String, dynamic>{
           ],
           'affects': ['tempMode'],
         },
+        // CCE#101 — los dos verbos de conveniencia.
+        {
+          'verb': 'startHeating',
+          'args': [
+            {
+              'name': 'targetTemp',
+              'type': 'number',
+              'required': false,
+              'min': 5,
+              'max': 45,
+              'minFrom': 'minTemp',
+              'maxFrom': 'maxTemp',
+              'step': 0.5,
+              'unit': '°C',
+            }
+          ],
+          'affects': ['on', 'targetTemp'],
+        },
+        {'verb': 'stopHeating', 'affects': ['on']},
       ],
     },
   },
@@ -123,12 +143,34 @@ void main() {
       expect(isActionable(thermostat, catalog), isTrue);
     });
 
-    test('los tres verbos son los que el provider sabe ejecutar', () {
+    test('los cinco verbos son los que el provider sabe ejecutar', () {
       final spec = catalog.specFor('thermostat')!;
-      expect(spec.actions.map((a) => a.verb),
-          containsAll(['setTargetTemp', 'setPower', 'setTempMode']));
+      expect(
+          spec.actions.map((a) => a.verb),
+          containsAll([
+            'setTargetTemp',
+            'setPower',
+            'setTempMode',
+            'startHeating',
+            'stopHeating',
+          ]));
       expect(spec.actions.any((a) => a.isSensitive), isFalse);
       expect(spec.isVerbDriven, isTrue);
+    });
+
+    // CCE#101 — «Calentar» toma un objetivo OPCIONAL: sin él la API elige un
+    // grado más que el ambiente, así que el sheet lo ofrece como slider pero
+    // no lo exige para guardar.
+    test('startHeating tiene un targetTemp opcional y stopHeating ninguno', () {
+      final spec = catalog.specFor('thermostat')!;
+      final start = spec.actions.firstWhere((a) => a.verb == 'startHeating');
+      expect(start.args.single.name, 'targetTemp');
+      expect(start.args.single.required, isFalse);
+      expect(start.args.single.step, 0.5);
+      final stop = spec.actions.firstWhere((a) => a.verb == 'stopHeating');
+      expect(stop.args, isEmpty);
+      expect(verbLabel('startHeating'), 'Calentar');
+      expect(verbLabel('stopHeating'), 'Dejar de calentar');
     });
 
     test('un device sin acciones sigue afuera (switch a secas)', () {
@@ -194,6 +236,17 @@ void main() {
       expect(range.asArg(21.5), 21.5);
     });
 
+    // CCE#101 — startHeating afecta `on` y `targetTemp`: el slider del objetivo
+    // opcional arranca igual en el setpoint vigente (19,5), no en 5 °C.
+    test('el objetivo opcional de startHeating también arranca en el setpoint', () {
+      final start = catalog
+          .specFor('thermostat')!
+          .actions
+          .firstWhere((a) => a.verb == 'startHeating');
+      final range = argRangeFor(start.args.single, thermostat.state)!;
+      expect(initialArgValue(start, range, thermostat.state), 19.5);
+    });
+
     test('arranca en el setpoint vigente, no en el mínimo', () {
       final range = argRangeFor(arg, thermostat.state)!;
       expect(initialArgValue(spec, range, thermostat.state), 19.5);
@@ -241,6 +294,17 @@ void main() {
       final medio = AutomationAction.device(
           'dev_8b2bfaeba4a3', 'setTargetTemp', {'targetTemp': 21.5});
       expect(actionPhrase(medio, devices), endsWith('en 21.5°'));
+    });
+
+    // CCE#101 — los dos verbos nuevos, como el dueño piensa la acción.
+    test('calentar y dejar de calentar se dicen como tales', () {
+      final start = AutomationAction.device('dev_8b2bfaeba4a3', 'startHeating', {});
+      expect(actionPhrase(start, devices), 'Calentar dev_8b2bfaeba4a3');
+      final startTo = AutomationAction.device(
+          'dev_8b2bfaeba4a3', 'startHeating', {'targetTemp': 21.5});
+      expect(actionPhrase(startTo, devices), 'Calentar dev_8b2bfaeba4a3 a 21.5°');
+      final stop = AutomationAction.device('dev_8b2bfaeba4a3', 'stopHeating', {});
+      expect(actionPhrase(stop, devices), 'Dejar de calentar dev_8b2bfaeba4a3');
     });
 
     test('prender y apagar se dicen como tales', () {

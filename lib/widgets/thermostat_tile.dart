@@ -10,10 +10,27 @@ import '../views/thermostat_screen.dart';
 import '../views/unified_device_screen.dart';
 import 'pulse_on_update.dart';
 
-/// Tile de termostato (Tuya cat 'wk'). Muestra el setpoint grande + la temp
-/// ambiente en la franja inferior; el acento sale del modo de sistema
-/// (calor = cálido/llama, frío = info/copo). Tap abre [ThermostatScreen].
-/// Mismo lenguaje visual que [SensorTile] (glyph extruido + franja de estado).
+/// Tile de termostato (Tuya cat 'wk'). Muestra el setpoint grande + la
+/// ACTIVIDAD en la franja inferior: «Calentando» (el relé dando calor,
+/// `state.heating`, CCE#101) / «En temperatura» / «Apagado», con la temp
+/// ambiente al lado. El acento sale del modo de sistema (calor = cálido/llama,
+/// frío = info/copo) y se atenúa cuando está prendido sin calentar. Tap abre
+/// [ThermostatScreen]. Mismo lenguaje visual que [SensorTile] (glyph extruido
+/// + franja de estado).
+/// Franja de estado del termostato (CCE#101): «Calentando» / «En temperatura»
+/// / «Apagado», con la temperatura ambiente cuando está prendido; «Sin
+/// conexión» manda sobre todo. Compartida por el tile y sus tests.
+String thermostatStateLabel(DeviceState s, {required bool heating}) {
+  if (!s.reachable) return 'Sin conexión';
+  if (!s.on) return 'Apagado';
+  final current = s.currentTemp;
+  final actual = current != null ? ' · ${current.toStringAsFixed(1)}°' : '';
+  if (heating) return 'Calentando$actual';
+  if (s.heating == false) return 'En temperatura$actual';
+  // API vieja (sin heating): lo de siempre.
+  return current != null ? 'Actual ${current.toStringAsFixed(1)}°' : 'Encendido';
+}
+
 class ThermostatTile extends StatelessWidget {
   final Device device;
   final DevicesService service;
@@ -45,22 +62,21 @@ class ThermostatTile extends StatelessWidget {
     final s = device.state;
     final on = s.on;
     final cool = _isCool(s);
-    // Acento semántico: ON usa el color del modo; OFF gris neutro.
-    final Color color =
-        on ? (cool ? CceColors.info : CceColors.warm) : CceColors.textSecondary;
+    final heating = on && s.heating == true;
+    // Acento semántico: calentando usa el color del modo a pleno; prendido en
+    // temperatura, verde (ok); OFF gris neutro. Sin el dato de heating (API
+    // vieja) el prendido conserva el color del modo.
+    final Color color = !on
+        ? CceColors.textSecondary
+        : (s.heating == false
+            ? CceColors.ok
+            : (cool ? CceColors.info : CceColors.warm));
     final String svg = cool ? CceIcons.snowflake : CceIcons.flame;
 
     final target = s.targetTemp;
-    final current = s.currentTemp;
     final String targetLabel =
         target != null ? '${target.toStringAsFixed(1)}°' : '—';
-    final String stateLabel = !s.reachable
-        ? 'Sin conexión'
-        : (on
-            ? (current != null
-                ? 'Actual ${current.toStringAsFixed(1)}°'
-                : 'Encendido')
-            : 'Apagado');
+    final String stateLabel = thermostatStateLabel(s, heating: heating);
 
     final double glyphSize = size.iconSize + 8;
     final Color glyphColor = on ? color : CceColors.textTertiary;

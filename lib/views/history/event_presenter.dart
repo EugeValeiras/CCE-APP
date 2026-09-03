@@ -86,6 +86,9 @@ String _stateKeyLabel(String key) {
     'targetTemp': 'objetivo',
     'currentTemp': 'temperatura',
     'systemMode': 'modo',
+    'heating': 'calentando',
+    'fault': 'falla',
+    'childLock': 'bloqueo de teclas',
     'callState': 'llamada',
     'signalBars': 'señal',
     'lineActive': 'línea',
@@ -278,6 +281,18 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       }
     }
 
+    // Termostato (CCE#101): la actividad del relé (heating), la falla, el
+    // objetivo y la temperatura, en castellano. Antes caía a la rama de luces
+    // («se encendió» con lamparita) o al fallback genérico. Se reconoce por
+    // el device o por las claves propias del clima, como el robot.
+    if ((device != null && device.hasCapability('thermostat')) ||
+        state.containsKey('heating') ||
+        state.containsKey('targetTemp') ||
+        state.containsKey('currentTemp')) {
+      final t = _presentThermostat(name, state);
+      if (t != null) return t;
+    }
+
     // Media (dev_tv/dev_jbl vía /merged): rama PROPIA antes de la de luces —
     // sin esto "Samsung TV: encendido" salía con lamparita y los eventos de
     // volumen/mediaState caían al fallback genérico ("todos son dispositivos":
@@ -376,6 +391,64 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     color: CceColors.textTertiary,
     title: raw.isEmpty ? 'Actividad de la casa' : '$name cambió de estado',
   );
+}
+
+/// El termostato en el historial (CCE#101). Una falla manda sobre todo;
+/// apagarse es apagarse (el `heating: false` que viene con el mismo push es
+/// consecuencia); después la actividad del relé, que ahora viaja sola en el
+/// push; después prenderse, el objetivo y la temperatura. null si el estado
+/// no trae nada de eso (cae al fallback genérico).
+EventPresentation? _presentThermostat(String name, Map state) {
+  final fault = state['fault'];
+  if (fault is num && fault != 0) {
+    return EventPresentation(
+      icon: _ic(CceIcons.alarmShield),
+      color: CceColors.danger,
+      title: 'Falla del termostato (código ${fault.round()})',
+      subtitle: name,
+    );
+  }
+  if (state['on'] == false) {
+    return EventPresentation(
+      icon: _ic(CceIcons.thermometer),
+      color: CceColors.textTertiary,
+      title: '$name: apagado',
+    );
+  }
+  final heating = state['heating'];
+  if (heating is bool) {
+    return EventPresentation(
+      icon: _ic(heating ? CceIcons.flame : CceIcons.thermometer),
+      color: heating ? CceColors.warm : CceColors.textTertiary,
+      title: heating ? '$name empezó a calentar' : '$name dejó de calentar',
+    );
+  }
+  if (state['on'] == true) {
+    return EventPresentation(
+      icon: _ic(CceIcons.thermometer),
+      color: CceColors.warm,
+      title: '$name: encendido',
+    );
+  }
+  final target = state['targetTemp'];
+  if (target is num) {
+    return EventPresentation(
+      icon: _ic(CceIcons.thermometer),
+      color: CceColors.info,
+      title: '$name: objetivo',
+      subtitle: 'a ${target.toStringAsFixed(1)}°',
+    );
+  }
+  final current = state['currentTemp'];
+  if (current is num) {
+    return EventPresentation(
+      icon: _ic(CceIcons.thermometer),
+      color: CceColors.contact,
+      title: name,
+      subtitle: '${current.toStringAsFixed(1)}°',
+    );
+  }
+  return null;
 }
 
 /// Cambio de estado sin frase propia: "X cambió de estado" con las claves que
