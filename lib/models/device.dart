@@ -637,6 +637,27 @@ class Device {
   bool get isButtonRelay =>
       capabilities.contains('switch') && capabilities.contains('button');
 
+  /// Área MotionAware de Hue (EugeValeiras/CCE#96): un sensor de movimiento
+  /// que el bridge arma con las señales de radio de los bombillos y que se
+  /// prende y apaga. Es el ÚNICO sensor cuyo `state.on` significa algo y se
+  /// escribe: `on` = el área detecta (el `enabled` del bridge). Por eso el
+  /// toggle se rotula «MotionAware» y no «Encendido»: no hay ninguna luz que
+  /// encender. Espejo de isHueMotionArea del dashboard: capabilities y
+  /// proveedor, nunca el `type` (llega como 'Hue Motion Sensor', igual que un
+  /// sensor PIR).
+  bool get isHueMotionArea =>
+      capabilities.contains('motion') &&
+      capabilities.contains('switch') &&
+      (source == 'hue' || bindingIds.any((b) => b.startsWith('hue_')));
+
+  /// ¿`state.on` es un encendido de verdad que se puede mandar? Es el guard
+  /// del `on` polisémico del catálogo (lock = trabada, alarm = armada)
+  /// aplicado a la pregunta «¿se puede prender y apagar?».
+  bool get hasRealOnOff =>
+      capabilities.contains('switch') &&
+      !capabilities.contains('lock') &&
+      !capabilities.contains('alarm');
+
   /// Relé cuya tecla física se puede desacoplar de la carga (CCE#39). Sólo lo
   /// declaran los devices cuyo firmware expone el modo, así que alcanza para
   /// decidir si mostrar el interruptor.

@@ -180,11 +180,13 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
 
   // ── Renderers de estado (PUT /state) ────────────────────────────────────
 
+  // Que el toggle diga lo que hace: en el área MotionAware de Hue `on` no
+  // enciende ninguna luz, prende y apaga la detección del área (CCE#96).
   Widget _onoff(Device d) => Row(
         children: [
-          const Expanded(
-            child: Text('Encendido',
-                style: TextStyle(
+          Expanded(
+            child: Text(d.isHueMotionArea ? 'MotionAware' : 'Encendido',
+                style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: CceColors.textPrimary)),

@@ -845,6 +845,13 @@ class _LightActionEditorState extends State<_LightActionEditor> {
     return Colors.amber;
   }
 
+  /// ¿El elegido se puede dimear? Un device on/off a secas (el área MotionAware
+  /// de Hue, un enchufe) no tiene brillo ni color: se le manda sólo `on`.
+  bool get _dimmable {
+    final d = widget.devices.byId(_lightId);
+    return d == null || d.supportsBrightness;
+  }
+
   void _apply() {
     dynamic on;
     int? bri;
@@ -854,8 +861,10 @@ class _LightActionEditorState extends State<_LightActionEditor> {
     if (_mode == 'on') {
       on = true;
       // % de la UI → bri 1..254.
-      bri = (_briPct * 253).round() + 1;
-      if (_colorMode == 'color') {
+      if (_dimmable) bri = (_briPct * 253).round() + 1;
+      if (!_dimmable) {
+        // sin brillo tampoco hay color que mandar
+      } else if (_colorMode == 'color') {
         final hsv = HSVColor.fromColor(_color);
         hue = ((hsv.hue / 360) * 65535).round().clamp(0, 65535);
         sat = (hsv.saturation * 254).round().clamp(1, 254);
@@ -873,7 +882,9 @@ class _LightActionEditorState extends State<_LightActionEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final lights = widget.devices.lights;
+    // Luces y todo lo que tenga un `on` de verdad (CCE#96: el área MotionAware
+    // de Hue se prende y apaga desde acá como cualquier switch).
+    final lights = widget.devices.onOffTargets;
     final valid = _lightId.isNotEmpty;
     return _EditorScaffold(
       title: 'Acción de luz',
@@ -904,7 +915,7 @@ class _LightActionEditorState extends State<_LightActionEditor> {
           ],
           onChanged: (v) => setState(() => _mode = v),
         ),
-        if (_mode == 'on') ...[
+        if (_mode == 'on' && _dimmable) ...[
           _editorLabel('Brillo'),
           CceBrightnessSlider(
             value: _briPct,

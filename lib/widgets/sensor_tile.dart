@@ -57,6 +57,11 @@ class SensorTile extends StatelessWidget {
       stateLabel = open ? 'Abierta' : 'Cerrada';
       color = open ? CceColors.contact : CceColors.textSecondary;
       alert = open;
+    } else if (device.isHueMotionArea && !device.state.on) {
+      // Área MotionAware apagada (CCE#96): no detecta nada, y decir «Sin
+      // movimiento» sería confundir «no hay nadie» con «no está mirando».
+      stateLabel = 'MotionAware apagado';
+      color = CceColors.textTertiary;
     } else if (device.isMotionSensor) {
       final motion = s?.motion == true;
       stateLabel = motion ? 'Movimiento' : 'Sin movimiento';
