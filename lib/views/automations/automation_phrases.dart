@@ -362,6 +362,14 @@ String _devicePhrase(String name, AutomationAction act, {bool short = false}) {
       if (mode is! String || mode.isEmpty) break;
       final label = tempModeLabel(mode);
       return short ? '$name modo $label' : 'Poner $name en modo $label';
+    // CCE#101 — «Calentar X (a N°)» / «Dejar de calentar X». El objetivo es
+    // opcional: sin él la API elige un grado más que el ambiente.
+    case 'startHeating':
+      final temp = args['targetTemp'];
+      final to = temp is num ? ' a ${_fmtNum(temp)}°' : '';
+      return short ? 'Calentar $name$to' : 'Calentar $name$to';
+    case 'stopHeating':
+      return 'Dejar de calentar $name';
   }
   return short ? '$name ${verbLabel(act.verb)}' : '$name: ${verbLabel(act.verb)}';
 }

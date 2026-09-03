@@ -80,6 +80,14 @@ class DeviceState {
   final String? systemMode; // ej 'heat' (DP28)
   final double? minTemp; // mínimo del setpoint (DP113)
   final double? maxTemp; // máximo del setpoint (DP112)
+  /// true mientras el relé está dando calor (DP102, CCE#101). `systemMode:
+  /// 'heat'` es el MODO configurado; esto es la actividad de ahora. null si
+  /// la API no lo manda.
+  final bool? heating;
+  /// Código de falla del equipo (DP12); 0 = sin falla. null si no vino.
+  final int? fault;
+  /// Bloqueo de teclas del panel (DP6). null si no vino.
+  final bool? childLock;
 
   // ── Bloque MEDIA (F8/F13) — dispositivos AV: JBL Bar (dev_jbl), Samsung TV
   // (dev_tv). Escala del backend: volume 0-100 (NO 0-31; la vista JBL reescala).
@@ -179,6 +187,9 @@ class DeviceState {
     this.systemMode,
     this.minTemp,
     this.maxTemp,
+    this.heating,
+    this.fault,
+    this.childLock,
     this.volume,
     this.muted,
     this.mediaInput,
@@ -263,6 +274,9 @@ class DeviceState {
       systemMode: json['systemMode'] as String?,
       minTemp: (json['minTemp'] as num?)?.toDouble(),
       maxTemp: (json['maxTemp'] as num?)?.toDouble(),
+      heating: json['heating'] is bool ? json['heating'] as bool : null,
+      fault: (json['fault'] as num?)?.toInt(),
+      childLock: json['childLock'] is bool ? json['childLock'] as bool : null,
       volume: (json['volume'] as num?)?.toInt(),
       muted: json['muted'] is bool ? json['muted'] as bool : null,
       mediaInput: json['mediaInput'] as String?,
@@ -340,6 +354,9 @@ class DeviceState {
     String? systemMode,
     double? minTemp,
     double? maxTemp,
+    bool? heating,
+    int? fault,
+    bool? childLock,
     int? volume,
     bool? muted,
     String? mediaInput,
@@ -388,6 +405,9 @@ class DeviceState {
       systemMode: systemMode ?? this.systemMode,
       minTemp: minTemp ?? this.minTemp,
       maxTemp: maxTemp ?? this.maxTemp,
+      heating: heating ?? this.heating,
+      fault: fault ?? this.fault,
+      childLock: childLock ?? this.childLock,
       volume: volume ?? this.volume,
       muted: muted ?? this.muted,
       mediaInput: mediaInput ?? this.mediaInput,

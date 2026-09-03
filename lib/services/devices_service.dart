@@ -1303,6 +1303,12 @@ class DevicesService extends ChangeNotifier {
         'systemMode': ev.state!['systemMode'] ?? d.state.systemMode,
         'minTemp': ev.state!['minTemp'] ?? d.state.minTemp,
         'maxTemp': ev.state!['maxTemp'] ?? d.state.maxTemp,
+        // CCE#101 — la actividad del relé viaja SOLA en el push (el DP102
+        // cambia después que el DP1); sin estos tres el `heating: true` se
+        // perdería en el re-armado y la tarjeta nunca diría «Calentando».
+        'heating': ev.state!['heating'] ?? d.state.heating,
+        'fault': ev.state!['fault'] ?? d.state.fault,
+        'childLock': ev.state!['childLock'] ?? d.state.childLock,
         // Vacuum (Roborock): ídem — el push de Matter trae vacuumState/battery
         // y sin estos campos el estado en vivo del robot se pisaría con null.
         'vacuumState': ev.state!['vacuumState'] ?? d.state.vacuumState,

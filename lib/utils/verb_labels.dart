@@ -24,6 +24,10 @@ const Map<String, String> kVerbLabels = {
   'setTargetTemp': 'Temperatura',
   'setPower': 'Encendido',
   'setTempMode': 'Modo',
+  // CCE#101 — como el dueño piensa la acción: prender + objetivo que caliente,
+  // y apagar.
+  'startHeating': 'Calentar',
+  'stopHeating': 'Dejar de calentar',
   'setVolume': 'Volumen',
   'volumeUp': 'Volumen +',
   'volumeDown': 'Volumen -',

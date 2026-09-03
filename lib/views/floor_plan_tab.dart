@@ -1528,13 +1528,15 @@ class _DeviceDotState extends State<_DeviceDot> with TickerProviderStateMixin {
     );
   }
 
-  /// Acento del termostato por systemMode (frío → info, resto → cálido),
-  /// espejando ThermostatScreen._accentFor.
+  /// Acento del termostato: frío → info; calentando (el relé dando calor,
+  /// `state.heating`, CCE#101) → cálido; prendido en temperatura → ok. Sin el
+  /// dato de heating, cálido como siempre.
   static Color _thermostatAccent(DeviceState s) {
     final mode = (s.systemMode ?? '').toLowerCase();
     if (mode.contains('cool') || mode.contains('frio') || mode.contains('frío')) {
       return CceColors.info;
     }
+    if (s.on && s.heating == false) return CceColors.ok;
     return CceColors.warm;
   }
 
