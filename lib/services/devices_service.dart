@@ -155,6 +155,24 @@ class DevicesService extends ChangeNotifier {
   // de UI (su control lo renderiza Jbl/TvService), de ahí el !isMediaDevice.
   List<Device> get lights =>
       all.where((d) => d.isLight && !d.isSensorDevice && !d.isThermostat && !d.isMediaDevice).toList();
+
+  /// Lo que una acción «Prender / Apagar / Alternar» puede apuntar: las luces
+  /// y, además, los devices que NO son luces pero tienen un `on` de verdad
+  /// que se escribe — el área MotionAware de Hue (EugeValeiras/CCE#96) y el
+  /// relé-pulsador. Se excluye lo que tiene acción propia en el wizard (media,
+  /// termostato, cerradura, robot, teléfono). Mismo criterio que el picker del
+  /// Dashboard, que ofrece por capability `switch`.
+  List<Device> get onOffTargets => [
+        ...lights,
+        ...all.where((d) =>
+            !d.isLight &&
+            d.hasRealOnOff &&
+            !d.isMediaDevice &&
+            !d.isThermostat &&
+            !d.isLock &&
+            !d.isVacuum &&
+            !d.isPhone),
+      ];
   List<Device> get sensors =>
       all.where((d) => (d.isSensorDevice || d.isSwitch) && !d.isThermostat && !d.isLock && !d.isMediaDevice && !d.isVacuum && !d.isPhone).toList();
   List<Device> get thermostats => all.where((d) => d.isThermostat).toList();

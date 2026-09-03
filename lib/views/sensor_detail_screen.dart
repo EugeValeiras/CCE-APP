@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/device.dart';
 import '../models/event_record.dart';
@@ -7,6 +8,7 @@ import '../services/automations_service.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_switch.dart';
 import '../utils/alarm_triggers.dart';
 import '../utils/time_format.dart';
 import '../widgets/device_automations_sheet.dart';
@@ -222,6 +224,10 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _buildState(),
+                if (_device.isHueMotionArea) ...[
+                  const SizedBox(height: 22),
+                  _buildMotionAware(),
+                ],
                 const SizedBox(height: 22),
                 _buildMetrics(),
                 const SizedBox(height: 22),
@@ -340,6 +346,61 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   }
 
   // ── Métricas: batería · ambiente · último evento · automatizaciones ───────
+
+  // ── MotionAware (EugeValeiras/CCE#96): el área se prende y apaga ─────────
+  //
+  // Es el único sensor con switch: `on` es el `enabled` del área en el bridge,
+  // no una luz. El toggle va por el mismo camino que cualquier switch
+  // (PUT /devices/:id/state { on }) y el rótulo dice lo que hace. Vive acá y no
+  // sólo en la Vista unificada porque ESTA es la pantalla a la que llega el tap
+  // sobre un sensor de movimiento.
+  Widget _buildMotionAware() {
+    final d = _device;
+    final on = d.state.on;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+      decoration: BoxDecoration(
+        color: CceColors.neoBase,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: CceShadows.neo(blur: 12, offset: 4),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'MotionAware',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: CceColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  on
+                      ? 'Prendido: el área detecta movimiento con las luces Hue.'
+                      : 'Apagado: el área no detecta movimiento.',
+                  style: CceText.caption.copyWith(color: CceColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          CceSwitch(
+            value: on,
+            onChanged: (v) {
+              HapticFeedback.selectionClick();
+              widget.service.applyCapabilityState(
+                  d, d.state.copyWith(on: v), {'on': v});
+            },
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildMetrics() {
     final sensor = _device.sensor;
