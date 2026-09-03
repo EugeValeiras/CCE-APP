@@ -236,6 +236,17 @@ void main() {
       expect(range.asArg(21.5), 21.5);
     });
 
+    // CCE#101 — startHeating afecta `on` y `targetTemp`: el slider del objetivo
+    // opcional arranca igual en el setpoint vigente (19,5), no en 5 °C.
+    test('el objetivo opcional de startHeating también arranca en el setpoint', () {
+      final start = catalog
+          .specFor('thermostat')!
+          .actions
+          .firstWhere((a) => a.verb == 'startHeating');
+      final range = argRangeFor(start.args.single, thermostat.state)!;
+      expect(initialArgValue(start, range, thermostat.state), 19.5);
+    });
+
     test('arranca en el setpoint vigente, no en el mínimo', () {
       final range = argRangeFor(arg, thermostat.state)!;
       expect(initialArgValue(spec, range, thermostat.state), 19.5);
