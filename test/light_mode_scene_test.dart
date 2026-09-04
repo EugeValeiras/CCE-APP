@@ -133,7 +133,8 @@ const _catalog = CapabilityCatalog(
 
 /// Service de test SIEMPRE contra un backend inalcanzable.
 ///
-/// El `ServerConfig()` por default apunta a la CASA REAL, y estos tests usan
+/// El ServerConfig por default (sin host ni port) apunta a la CASA REAL, y
+/// estos tests usan
 /// los ids reales de los dos Hexagon: un test que mande un comando por ese
 /// config le escribe a la luz del living de una persona. El puerto 1 de
 /// loopback rechaza la conexión al instante, así que además el revert se
