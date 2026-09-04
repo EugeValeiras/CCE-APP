@@ -255,6 +255,26 @@ class DevicesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// SOLO TESTS: aplica un evento del socket como si hubiera llegado por el WS.
+  ///
+  /// El mismo helper que ya tiene `TvService`. Es lo que permite testear el
+  /// re-armado de `DeviceState` en `_applyDeviceEvent`, donde ya se perdieron
+  /// campos tres veces (el teléfono en CCE#19, el termostato en CCE#101, el
+  /// robot) y una cuarta en CCE#100: la whitelist no incluía los campos de la
+  /// luz con modos, así que el primer push borraba la feature entera.
+  @visibleForTesting
+  void debugApplyDeviceEvent(DeviceStateEvent ev) => _applyDeviceEvent(ev);
+
+  /// SOLO TESTS: siembra el catálogo de capabilities, que en producción llega
+  /// con `GET /api/capabilities` en el primer refresh. Sin él la vista
+  /// unificada no puede resolver los verbos de una capability y renderiza el
+  /// aviso genérico en vez del control.
+  @visibleForTesting
+  void debugSeedCapabilityCatalog(CapabilityCatalog catalog) {
+    _capabilityCatalog = catalog;
+    notifyListeners();
+  }
+
   /// SOLO TESTS: siembra los nombres de las automatizaciones y los grupos de
   /// luces, que en producción llegan con el config. Los necesita el historial
   /// (CCE#75) para traducir el actor de un cambio (`automation:<id>` → nombre)
@@ -700,6 +720,67 @@ class DevicesService extends ChangeNotifier {
     Map<String, dynamic>? args,
   ]) async {
     await _api.invokeAction(d.id, verb, args);
+  }
+
+  /// CCE#100 — Cambia el MODO de la luz (`work_mode`). Optimista con revert: el
+  /// eco real llega por WS, pero el chip tiene que moverse al toque.
+  ///
+  /// El revert restaura el SNAPSHOT completo, como `toggleLight`: `copyWith`
+  /// no puede volver un campo a null (su parámetro nulo significa «no lo
+  /// toques»), así que revertir con `copyWith(mode: prev)` sobre un device que
+  /// no tenía modo dejaba el modo puesto igual — el chip se quedaba marcado
+  /// después de un comando que falló.
+  Future<void> setLightMode(Device d, String mode) async {
+    if (mode == d.state.mode) return;
+    final prev = d.state;
+    d.state = d.state.copyWith(mode: mode);
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setMode', {'mode': mode});
+    } catch (e) {
+      debugPrint('setLightMode error: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// CCE#100 — Activa una escena de CCE en la luz.
+  ///
+  /// Mismo snapshot que arriba, y por una razón de más: el optimismo mueve DOS
+  /// campos (`sceneId` y `mode` → 'scene'), y el revert con
+  /// `copyWith(sceneId: prev)` no restauraba NINGUNO de los dos cuando el
+  /// device venía sin escena — dejaba la luz reportando modo escena con una
+  /// escena que nunca se activó.
+  Future<void> setLightScene(Device d, String sceneId) async {
+    final prev = d.state;
+    d.state = d.state.copyWith(sceneId: sceneId, mode: 'scene');
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setScene', {'sceneId': sceneId});
+    } catch (e) {
+      debugPrint('setLightScene error: $e');
+      d.state = prev;
+      notifyListeners();
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// CCE#100 — Guarda el estado ACTUAL de la luz como escena de CCE.
+  ///
+  /// Es lo que devuelve al dueño las escenas que ya tenía puestas: las elige en
+  /// la app del fabricante y acá quedan con nombre, para poder volver a ellas.
+  /// Necesita el binding TUYA porque el payload es del protocolo del aparato.
+  /// Relanza con el motivo del backend: el caller lo muestra.
+  Future<void> captureLightScene(Device d, String name) async {
+    final tuya = d.bindingIds.where((b) => b.startsWith('tuya_')).firstOrNull;
+    if (tuya == null) {
+      throw Exception('Esta luz no tiene un binding Tuya');
+    }
+    await _api.captureLightScene(tuya, name);
+    // La escena nueva llega en el próximo refresh del device (viaja en
+    // state.lightScenes, que lo arma el backend desde la config).
+    await refresh();
   }
 
   /// Prende/apaga el grupo con UNA llamada al endpoint atómico
@@ -1293,6 +1374,25 @@ class DevicesService extends ChangeNotifier {
         'ct': ev.state!['ct'] ?? d.state.ct,
         'reachable': ev.state!['reachable'] ?? d.state.reachable,
         'mode': ev.state!['mode'] ?? d.state.mode,
+        // CCE#100 — Luz con modos y escenas (Hexagon). Sin estos el PRIMER
+        // evento WS borraba la feature entera: un push trivial `{'on': false}`
+        // dejaba lightModes en null y el bloque MODO desaparecía justo después
+        // de tocar un chip, cuando el backend confirmaba el cambio. Es la
+        // misma trampa que este archivo ya documenta para el teléfono (CCE#19),
+        // el termostato (CCE#101) y el robot.
+        'lightModes': ev.state!['lightModes'] ?? d.state.lightModes,
+        // La escena ACTIVA muere con el modo: si la luz ya no está en `scene`,
+        // conservar el sceneId anterior dejaría un chip marcado que no
+        // corresponde (el mismo criterio que el peer de una llamada terminada).
+        'sceneId': ev.state!['sceneId'] ??
+            (((ev.state!['mode'] ?? d.state.mode) == 'scene')
+                ? d.state.sceneId
+                : null),
+        // OJO: lightScenes NO lleva fallback acá — sería una List<LightScene>
+        // ya parseada y `fromJson` la descartaría (espera List<Map>), dejando
+        // la lista VACÍA, que es peor que null: la UI diría «todavía no hay
+        // ninguna guardada». Se preserva con copyWith abajo, como `rooms`.
+        'lightScenes': ev.state!['lightScenes'],
         'colormode': ev.state!['colormode'] ?? d.state.colormode,
         'xy': ev.state!['xy'] ?? d.state.xy,
         // Termostato: sin estos campos los updates en vivo del setpoint /
@@ -1343,6 +1443,14 @@ class DevicesService extends ChangeNotifier {
       var next = partial;
       if (partial.rooms == null && d.state.rooms != null) {
         next = next.copyWith(rooms: d.state.rooms);
+      }
+      // CCE#100 — Las escenas guardadas sobreviven a cualquier evento: son
+      // config, no estado que un push pueda cambiar. `isEmpty` y no `== null`
+      // porque `fromJson` de una lista ya parseada devuelve [], no null.
+      if ((partial.lightScenes?.isEmpty ?? true) &&
+          (d.state.lightScenes?.isNotEmpty ?? false) &&
+          !ev.state!.containsKey('lightScenes')) {
+        next = next.copyWith(lightScenes: d.state.lightScenes);
       }
       // A diferencia de rooms, estos dos SÍ se limpian cuando el evento manda
       // la clave explícita: el sidecar publica `vacuumPosition: null` al dejar

@@ -1377,12 +1377,24 @@
     "modelid": "f8hcheiefv1nhejd",
     "capabilities": [
       "switch",
-      "brightness"
+      "brightness",
+      "color_hsv",
+      "light_mode",
+      "scene"
     ],
     "state": {
       "on": false,
       "bri": 1,
-      "reachable": true
+      "hue": 54066,
+      "sat": 231,
+      "reachable": true,
+      "mode": "scene",
+      "lightModes": [
+        "white",
+        "colour",
+        "scene",
+        "music"
+      ]
     },
     "bindings": [
       {
@@ -1391,7 +1403,10 @@
         "identifier": null,
         "capabilities": [
           "switch",
-          "brightness"
+          "brightness",
+          "color_hsv",
+          "light_mode",
+          "scene"
         ],
         "available": true,
         "lastSeen": 0,
@@ -1409,12 +1424,24 @@
     "modelid": "f8hcheiefv1nhejd",
     "capabilities": [
       "switch",
-      "brightness"
+      "brightness",
+      "color_hsv",
+      "light_mode",
+      "scene"
     ],
     "state": {
       "on": false,
-      "bri": 1,
-      "reachable": true
+      "bri": 254,
+      "hue": 64261,
+      "sat": 225,
+      "reachable": true,
+      "mode": "colour",
+      "lightModes": [
+        "white",
+        "colour",
+        "scene",
+        "music"
+      ]
     },
     "bindings": [
       {
@@ -1423,7 +1450,10 @@
         "identifier": null,
         "capabilities": [
           "switch",
-          "brightness"
+          "brightness",
+          "color_hsv",
+          "light_mode",
+          "scene"
         ],
         "available": true,
         "lastSeen": 0,

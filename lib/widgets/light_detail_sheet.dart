@@ -9,6 +9,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/brightness_slider.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
+import 'light_mode_scenes.dart';
 
 class LightDetailSheet extends StatefulWidget {
   final Device device;
@@ -192,7 +193,14 @@ class _LightDetailSheetState extends State<LightDetailSheet> {
                       initialCt: d.state.ct ?? 350,
                       onCommit: (v) => widget.service.setCt(d, v),
                     ),
+                    const SizedBox(height: 20),
                   ],
+                  // CCE#100 — MODO y ESCENAS propias de la luz. El bloque
+                  // vive en un widget compartido con LightColorScreen (el
+                  // camino normal para abrir una luz): duplicarlo dejaba dos
+                  // copias que se desincronizan. Se colapsa a nada en una luz
+                  // sin modos ni escenas.
+                  LightModeScenesSection(device: d, service: widget.service),
                 ],
               ),
             );

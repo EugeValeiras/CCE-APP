@@ -9,6 +9,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_switch.dart';
 import '../utils/capability_renderers.dart';
 import '../widgets/detach_tile.dart';
+import '../utils/enum_options.dart';
 import '../utils/verb_labels.dart';
 
 /// Vista unificada por capabilities: renderiza los controles de CUALQUIER
@@ -142,6 +143,11 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
       case CapabilityRendererKind.inputSelect:
       case CapabilityRendererKind.appLauncher:
       case CapabilityRendererKind.channel:
+      // CCE#100 — modo y escenas de la luz: chips de verbo, igual que los modos
+      // de limpieza del robot. Las opciones salen del ESTADO del device, no del
+      // catálogo (que las manda vacías a propósito).
+      case CapabilityRendererKind.lightMode:
+      case CapabilityRendererKind.scene:
         return _verbs(d, e, spec);
       case CapabilityRendererKind.colorHsv:
       case CapabilityRendererKind.alarm:
@@ -472,6 +478,11 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
       if (arg.enumRef != null) {
         final opts = _resolveEnum(arg.enumRef!, d);
         if (opts.isEmpty) return null;
+        // Cuál está PUESTO ahora: sale de `affects` del catálogo (setMode
+        // afecta `mode`, setScene afecta `sceneId`), así que no hace falta un
+        // if por verbo. Marcar el activo es lo que convierte los chips en un
+        // selector y no en una fila de botones.
+        final actual = _currentEnumValue(a, d);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -485,8 +496,9 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
               children: [
                 for (final o in opts)
                   _ActionChip(
-                    label: o,
-                    onTap: () => _invoke(a.verb, {arg.name: o}),
+                    label: o.label,
+                    selected: o.value == actual,
+                    onTap: () => _invoke(a.verb, {arg.name: o.value}),
                   ),
               ],
             ),
@@ -505,17 +517,33 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
     return null; // multi-arg / no resoluble → omitido
   }
 
-  List<String> _resolveEnum(String ref, Device d) {
-    switch (ref) {
-      case 'VACUUM_CLEAN_MODES':
-        return d.state.cleanModes ?? const [];
-      case 'VACUUM_FAN_SPEEDS':
-        return d.state.fanSpeeds ?? const [];
-      case 'VACUUM_ROOMS':
-        return (d.state.rooms ?? const []).map((r) => r.name).toList();
-      default:
-        return widget.service.capabilityCatalog.enumValues(ref);
+  /// Las opciones de un enum del catálogo, con su valor y su etiqueta
+  /// separados. La lógica vive en `utils/enum_options.dart`, compartida con el
+  /// sheet de acciones de las automatizaciones.
+  List<EnumOption> _resolveEnum(String ref, Device d) => resolveEnumOptions(
+        ref,
+        d.state,
+        widget.service.capabilityCatalog.enumValues,
+      );
+
+  /// El valor vigente del enum de una acción, leído del campo que declara
+  /// afectar (`affects`). null si el device no lo reporta.
+  String? _currentEnumValue(CatalogActionSpec a, Device d) {
+    for (final field in a.affects) {
+      switch (field) {
+        case 'mode':
+          if (d.state.mode != null) return d.state.mode;
+        case 'sceneId':
+          if (d.state.sceneId != null) return d.state.sceneId;
+        case 'cleanMode':
+          if (d.state.cleanMode != null) return d.state.cleanMode;
+        case 'fanSpeed':
+          if (d.state.fanSpeed != null) return d.state.fanSpeed;
+        case 'mediaInput':
+          if (d.state.mediaInput != null) return d.state.mediaInput;
+      }
     }
+    return null;
   }
 
   Widget _bespokeHint(CapabilityRendererKind kind) => Row(
@@ -548,6 +576,10 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
         return 'Canal';
       case CapabilityRendererKind.colorHsv:
         return 'Color';
+      case CapabilityRendererKind.lightMode:
+        return 'Modo de la luz';
+      case CapabilityRendererKind.scene:
+        return 'Escenas';
       case CapabilityRendererKind.alarm:
         return 'Alarma';
       case CapabilityRendererKind.button:
@@ -642,23 +674,37 @@ class _NumberVerbState extends State<_NumberVerb> {
 }
 
 class _ActionChip extends StatelessWidget {
-  const _ActionChip({required this.label, required this.onTap});
+  const _ActionChip({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
   final String label;
   final VoidCallback onTap;
+
+  /// CCE#100 — marca el valor PUESTO en un enum. Sin esto los chips de un
+  /// selector (modo, escena) se ven todos iguales y no se sabe dónde está.
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: CceColors.surfaceHigh,
+      color: selected ? CceColors.accent.withValues(alpha: 0.18) : CceColors.surfaceHigh,
       borderRadius: BorderRadius.circular(10),
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: selected
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: CceColors.accent),
+                )
+              : null,
           child: Text(label,
-              style: const TextStyle(
-                  color: CceColors.textPrimary,
+              style: TextStyle(
+                  color: selected ? CceColors.accent : CceColors.textPrimary,
                   fontWeight: FontWeight.w600,
                   fontSize: 13)),
         ),

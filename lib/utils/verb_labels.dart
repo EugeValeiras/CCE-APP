@@ -28,6 +28,9 @@ const Map<String, String> kVerbLabels = {
   // y apagar.
   'startHeating': 'Calentar',
   'stopHeating': 'Dejar de calentar',
+  // CCE#100 — la luz con modos y escenas propias (Hexagon).
+  'setMode': 'Modo',
+  'setScene': 'Escena',
   'setVolume': 'Volumen',
   'volumeUp': 'Volumen +',
   'volumeDown': 'Volumen -',
@@ -43,3 +46,27 @@ const Map<String, String> kTempModeLabels = {
 };
 
 String tempModeLabel(String mode) => kTempModeLabels[mode] ?? mode;
+
+/// Etiquetas (ES) de los modos de una luz con `light_mode` (Tuya `work_mode`).
+///
+/// El valor que VIAJA es el del aparato (`white`/`colour`/…); esto es sólo cómo
+/// se lee. Un modo que no esté acá se muestra crudo: un producto con un modo
+/// que todavía no vimos no puede quedar con el chip vacío.
+const Map<String, String> kLightModeLabels = {
+  'white': 'Blanco',
+  'colour': 'Color',
+  'scene': 'Escena',
+  'music': 'Música',
+};
+
+String lightModeLabel(String mode) => kLightModeLabels[mode] ?? mode;
+
+/// Ícono de un modo de luz (o una lámpara genérica para uno que no conocemos).
+const Map<String, String> kLightModeIcons = {
+  'white': '⚪',
+  'colour': '🎨',
+  'scene': '✨',
+  'music': '🎵',
+};
+
+String lightModeIcon(String mode) => kLightModeIcons[mode] ?? '💡';

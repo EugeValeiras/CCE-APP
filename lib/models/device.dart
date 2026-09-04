@@ -2,6 +2,26 @@ import 'vacuum_map.dart';
 
 /// Habitación reportada por el sidecar Roborock (capability vacuum_rooms).
 /// `segmentId` es el id numérico que consume el verbo cleanRooms.
+/// Una escena de CCE aplicable a una luz con capability `scene` (CCE#100).
+///
+/// El `id` es de la config de CCE, NO un índice del firmware: el aparato no
+/// expone un catálogo de escenas — la escena es el payload de un DP, que CCE
+/// captura tal como está puesto y guarda con un nombre. Que el id sea estable es
+/// lo que permite renombrar la escena sin romper las automatizaciones.
+class LightScene {
+  final String id;
+  final String name;
+  final String? icon;
+
+  const LightScene({required this.id, required this.name, this.icon});
+
+  factory LightScene.fromJson(Map<String, dynamic> json) => LightScene(
+        id: (json['id'] ?? '').toString(),
+        name: (json['name'] ?? '').toString(),
+        icon: json['icon'] as String?,
+      );
+}
+
 class VacuumRoom {
   final String id;
   final String name;
@@ -88,6 +108,18 @@ class DeviceState {
   final int? fault;
   /// Bloqueo de teclas del panel (DP6). null si no vino.
   final bool? childLock;
+
+  // ── Luz con MODOS y ESCENAS propias (capabilities light_mode / scene) ──────
+  // CCE#100 — El Hexagon Tuya: `mode` es el modo ACTIVO (campo base, ya estaba)
+  // y estos tres son el abanico. Los modos son del PRODUCTO (specs del cloud) y
+  // las escenas, de la config de CCE: el firmware no tiene catálogo de escenas
+  // —la escena es el payload de un DP—, así que CCE lo captura del aparato y lo
+  // guarda con un nombre. Enums DINÁMICOS por-device, como `cleanModes`.
+  final List<String>? lightModes;
+  final List<LightScene>? lightScenes;
+  /// Id de la escena de CCE que coincide con el payload puesto AHORA. null
+  /// cuando la luz no está en escena, o cuando tiene una que CCE no capturó.
+  final String? sceneId;
 
   // ── Bloque MEDIA (F8/F13) — dispositivos AV: JBL Bar (dev_jbl), Samsung TV
   // (dev_tv). Escala del backend: volume 0-100 (NO 0-31; la vista JBL reescala).
@@ -178,6 +210,9 @@ class DeviceState {
     this.ct,
     this.reachable = true,
     this.mode,
+    this.lightModes,
+    this.lightScenes,
+    this.sceneId,
     this.colormode,
     this.xy,
     this.detached,
@@ -263,6 +298,16 @@ class DeviceState {
       ct: (json['ct'] as num?)?.toInt(),
       reachable: json['reachable'] != false,
       mode: json['mode'] as String?,
+      lightModes: (json['lightModes'] is List)
+          ? (json['lightModes'] as List).map((m) => m.toString()).toList()
+          : null,
+      lightScenes: (json['lightScenes'] is List)
+          ? (json['lightScenes'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map(LightScene.fromJson)
+              .toList()
+          : null,
+      sceneId: json['sceneId'] as String?,
       colormode: json['colormode'] as String?,
       detached: json['detached'] is bool ? json['detached'] as bool : null,
       xy: (json['xy'] is List && (json['xy'] as List).length >= 2)
@@ -346,6 +391,9 @@ class DeviceState {
     int? ct,
     bool? reachable,
     String? mode,
+    List<String>? lightModes,
+    List<LightScene>? lightScenes,
+    String? sceneId,
     String? colormode,
     List<double>? xy,
     double? currentTemp,
@@ -397,6 +445,9 @@ class DeviceState {
       ct: ct ?? this.ct,
       reachable: reachable ?? this.reachable,
       mode: mode ?? this.mode,
+      lightModes: lightModes ?? this.lightModes,
+      lightScenes: lightScenes ?? this.lightScenes,
+      sceneId: sceneId ?? this.sceneId,
       colormode: colormode ?? this.colormode,
       xy: xy ?? this.xy,
       currentTemp: currentTemp ?? this.currentTemp,

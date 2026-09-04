@@ -20,6 +20,7 @@ import '../../../theme/cce_tokens.dart';
 import '../../../theme/components/brightness_slider.dart';
 import '../../../theme/components/cce_segmented.dart';
 import '../../../theme/components/status_pill.dart';
+import '../../../utils/enum_options.dart';
 import '../automation_phrases.dart';
 
 /// Sheet ENTONCES: EL editor de acciones combinables (lista reordenable).
@@ -1219,18 +1220,12 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
     return null;
   }
 
-  List<String> _resolveEnum(String ref, Device d) {
-    switch (ref) {
-      case 'VACUUM_CLEAN_MODES':
-        return d.state.cleanModes ?? const [];
-      case 'VACUUM_FAN_SPEEDS':
-        return d.state.fanSpeeds ?? const [];
-      case 'VACUUM_ROOMS':
-        return (d.state.rooms ?? const []).map((r) => r.name).toList();
-      default:
-        return _cat.enumValues(ref);
-    }
-  }
+  /// Opciones de un enum del catálogo, con valor y etiqueta SEPARADOS: la
+  /// escena viaja por su id (estable, para que renombrarla no rompa la
+  /// automatización) y se lee por su nombre. Lógica compartida con la vista
+  /// unificada en `utils/enum_options.dart`.
+  List<EnumOption> _resolveEnum(String ref, Device d) =>
+      resolveEnumOptions(ref, d.state, _cat.enumValues);
 
   bool get _argsComplete {
     final spec = _verbSpec;
@@ -1323,7 +1318,7 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
         out[a.name] = initialArgValue(spec, range, device.state);
       } else if (a.enumRef != null) {
         final opts = _resolveEnum(a.enumRef!, device);
-        if (opts.isNotEmpty) out[a.name] = opts.first;
+        if (opts.isNotEmpty) out[a.name] = opts.first.value;
       }
     }
     return out;
@@ -1354,10 +1349,10 @@ class _DeviceActionEditorState extends State<_DeviceActionEditor> {
           children: [
             for (final o in opts)
               ChoiceChip(
-                label: Text(o),
-                selected: _args[arg.name] == o,
+                label: Text(o.label),
+                selected: _args[arg.name] == o.value,
                 showCheckmark: false,
-                onSelected: (_) => setState(() => _args[arg.name] = o),
+                onSelected: (_) => setState(() => _args[arg.name] = o.value),
               ),
           ],
         ));
