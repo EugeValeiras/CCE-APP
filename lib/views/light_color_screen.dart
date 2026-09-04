@@ -11,6 +11,7 @@ import '../theme/cce_tokens.dart';
 import '../theme/components/cce_segmented.dart';
 import '../utils/icon_resolver.dart';
 import '../utils/light_color.dart';
+import '../widgets/light_mode_scenes.dart';
 
 /// Pantalla full-screen de color/temperatura estilo Hue, con MULTI-SELECCIÓN:
 /// cada luz seleccionada tiene su propio marcador en el disco; al solaparlos
@@ -563,6 +564,18 @@ class _LightColorScreenState extends State<LightColorScreen>
                 _modeRow(),
                 SizedBox(height: CceSpace.xl),
                 _brightnessRow(),
+                // El bloque de modo/escenas puede crecer (varias escenas
+                // guardadas), así que va en un área con techo y scroll propio:
+                // el disco de arriba ya se lleva el espacio con Expanded y sin
+                // esto un Hexagon con muchas escenas desbordaría el Column.
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: EdgeInsets.only(top: CceSpace.lg),
+                      child: _modeScenesRow(),
+                    ),
+                  ),
+                ),
                 SizedBox(height: CceSpace.xl),
                 _deviceStrip(),
                 SizedBox(height: CceSpace.lg),
@@ -793,6 +806,33 @@ class _LightColorScreenState extends State<LightColorScreen>
         count: focus.length,
         onChanged: _onBrightness,
         onEnd: _commitBrightness,
+      ),
+    );
+  }
+
+  /// CCE#100 — El MODO y las ESCENAS de la luz enfocada.
+  ///
+  /// Va acá porque ÉSTE es el camino normal para abrir una luz (la lista, una
+  /// card destacada, el tap en el floor plan de tablet): el UI se había
+  /// agregado sólo al sheet del long-press, así que en la práctica la feature
+  /// estaba muerta en producción.
+  ///
+  /// Sólo con UN device en foco: los modos son por-producto y las escenas por
+  /// device, así que ofrecerlos sobre un grupo mezclaría aparatos distintos y
+  /// el chip marcado no significaría nada. El widget se colapsa solo en una luz
+  /// que no tiene ni modos ni escenas, así que para una Hue no cuesta nada.
+  Widget _modeScenesRow() {
+    final ids = _membersOf(_focus);
+    final id = ids.length == 1 ? ids.first : null;
+    final d = id != null ? widget.service.byId(id) : null;
+    if (d == null) return const SizedBox.shrink();
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: CceSpace.xl),
+      child: LightModeScenesSection(
+        device: d,
+        service: widget.service,
+        // Pantalla apretada: el disco es el protagonista y se lleva el alto.
+        compact: true,
       ),
     );
   }

@@ -60,3 +60,13 @@ const Map<String, String> kLightModeLabels = {
 };
 
 String lightModeLabel(String mode) => kLightModeLabels[mode] ?? mode;
+
+/// Ícono de un modo de luz (o una lámpara genérica para uno que no conocemos).
+const Map<String, String> kLightModeIcons = {
+  'white': '⚪',
+  'colour': '🎨',
+  'scene': '✨',
+  'music': '🎵',
+};
+
+String lightModeIcon(String mode) => kLightModeIcons[mode] ?? '💡';

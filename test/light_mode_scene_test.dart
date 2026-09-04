@@ -22,6 +22,7 @@ import 'package:cce_app/models/device.dart';
 import 'package:cce_app/models/server_config.dart';
 import 'package:cce_app/services/devices_service.dart';
 import 'package:cce_app/services/socket_service.dart';
+import 'package:cce_app/views/light_color_screen.dart';
 import 'package:cce_app/views/unified_device_screen.dart';
 import 'package:cce_app/widgets/light_detail_sheet.dart';
 import 'package:cce_app/utils/capability_renderers.dart';
@@ -130,8 +131,18 @@ const _catalog = CapabilityCatalog(
   enums: {'LIGHT_MODES': [], 'LIGHT_SCENES': []},
 );
 
+/// Service de test SIEMPRE contra un backend inalcanzable.
+///
+/// El `ServerConfig()` por default apunta a la CASA REAL, y estos tests usan
+/// los ids reales de los dos Hexagon: un test que mande un comando por ese
+/// config le escribe a la luz del living de una persona. El puerto 1 de
+/// loopback rechaza la conexión al instante, así que además el revert se
+/// ejercita en milisegundos (sin esperar el timeout de 10 s del cliente).
 DevicesService _service(List<Device> devices) {
-  final s = DevicesService(config: ServerConfig(), socket: SocketService());
+  final s = DevicesService(
+    config: ServerConfig(host: '127.0.0.1', port: 1),
+    socket: SocketService(),
+  );
   s.debugSeedDevices(devices);
   s.debugSeedCapabilityCatalog(_catalog);
   return s;
@@ -429,6 +440,176 @@ void main() {
       expect(find.text('MODO'), findsNothing);
       expect(find.text('ESCENAS'), findsNothing);
       expect(find.text('Guardar como escena'), findsNothing);
+    });
+  });
+
+  // ── Bloqueantes del code-review ─────────────────────────────────────────
+  group('review #1 — un evento WS no borra la feature', () {
+    // ÉSTE es el que rompía el happy path: `_applyDeviceEvent` re-arma el
+    // DeviceState desde una whitelist de campos, y sin los tres nuevos un push
+    // trivial los dejaba en null. O sea: tocabas un chip de modo, el backend
+    // confirmaba por WS, y el selector que acabás de usar desaparecía.
+    DevicesService conElLeft() => _service([
+          Device.fromJson(Map<String, dynamic>.from(leftJson)),
+        ]);
+
+    test('un push trivial {on:false} conserva los modos', () {
+      final s = conElLeft();
+      s.debugApplyDeviceEvent(
+        DeviceStateEvent(deviceId: left.id, state: const {'on': false}),
+      );
+      final d = s.byId(left.id)!;
+      expect(d.state.lightModes, _modes, reason: 'los modos sobreviven');
+      expect(d.state.lightScenes?.length, 2, reason: 'y las escenas guardadas');
+      expect(d.state.mode, 'scene', reason: 'y el modo activo');
+      expect(d.state.sceneId, 'tuyascene_a', reason: 'y cuál está puesta');
+    });
+
+    test('el eco del propio setMode no borra el selector', () {
+      // La secuencia real: el usuario toca «Color», el backend lo aplica y
+      // ecoa `{mode: 'colour'}`.
+      final s = conElLeft();
+      s.debugApplyDeviceEvent(
+        DeviceStateEvent(deviceId: left.id, state: const {'mode': 'colour'}),
+      );
+      final d = s.byId(left.id)!;
+      expect(d.state.mode, 'colour', reason: 'el modo nuevo se aplica');
+      expect(d.state.lightModes, _modes, reason: 'y el selector SIGUE ahí');
+      expect(d.state.lightScenes?.length, 2);
+    });
+
+    test('al salir de escena, el sceneId se limpia', () {
+      // Conservarlo dejaría un chip de escena marcado con la luz en color.
+      final s = conElLeft();
+      s.debugApplyDeviceEvent(
+        DeviceStateEvent(deviceId: left.id, state: const {'mode': 'colour'}),
+      );
+      expect(s.byId(left.id)!.state.sceneId, isNull);
+    });
+
+    test('y en modo escena se conserva', () {
+      final s = conElLeft();
+      s.debugApplyDeviceEvent(
+        DeviceStateEvent(deviceId: left.id, state: const {'bri': 100}),
+      );
+      expect(s.byId(left.id)!.state.sceneId, 'tuyascene_a');
+    });
+
+    test('un evento que TRAE los campos los aplica', () {
+      final s = conElLeft();
+      s.debugApplyDeviceEvent(DeviceStateEvent(
+        deviceId: left.id,
+        state: const {
+          'mode': 'scene',
+          'sceneId': 'tuyascene_b',
+          'lightModes': ['white', 'colour'],
+        },
+      ));
+      final d = s.byId(left.id)!;
+      expect(d.state.sceneId, 'tuyascene_b');
+      expect(d.state.lightModes, ['white', 'colour']);
+    });
+
+    test('varios eventos seguidos no la degradan', () {
+      // El bug se veía al PRIMER evento; esto fija que tampoco se pierda de a
+      // poco (el copyWith de lightScenes es el que lo sostiene).
+      final s = conElLeft();
+      for (var i = 0; i < 5; i++) {
+        s.debugApplyDeviceEvent(
+          DeviceStateEvent(deviceId: left.id, state: {'bri': 10 + i}),
+        );
+      }
+      final d = s.byId(left.id)!;
+      expect(d.state.lightModes, _modes);
+      expect(d.state.lightScenes?.length, 2);
+    });
+
+    test('una luz sin la feature no gana campos de la nada', () {
+      final s = _service([Device.fromJson(Map<String, dynamic>.from(hueJson))]);
+      s.debugApplyDeviceEvent(
+        DeviceStateEvent(deviceId: 'dev_hue', state: const {'on': false}),
+      );
+      final d = s.byId('dev_hue')!;
+      expect(d.state.lightModes, isNull);
+      expect(d.state.lightScenes, isNull);
+    });
+  });
+
+  group('review #2 — la feature se alcanza por el camino NORMAL', () {
+    // El UI estaba sólo en LightDetailSheet, que se abre ÚNICAMENTE con
+    // long-press en el floor plan del teléfono. Tocar la luz en la lista, en
+    // una card o en el floor plan de tablet abre LightColorScreen: por ahí la
+    // feature no existía.
+    Future<void> abrirColorScreen(WidgetTester tester, Device d) async {
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final service = _service([d]);
+      await tester.pumpWidget(MaterialApp(
+        home: LightColorScreen(device: d, service: service),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('LightColorScreen muestra el modo y las escenas',
+        (tester) async {
+      await abrirColorScreen(tester, left);
+      expect(find.text('MODO'), findsOneWidget);
+      expect(find.text('ESCENAS'), findsOneWidget);
+      // Las escenas por NOMBRE, no por id.
+      expect(find.text('Aurora'), findsWidgets);
+      expect(find.text('tuyascene_a'), findsNothing);
+      expect(find.text('Guardar como escena'), findsOneWidget);
+    });
+
+    testWidgets('y una luz común no ve nada de eso', (tester) async {
+      await abrirColorScreen(tester, hue);
+      expect(find.text('MODO'), findsNothing);
+      expect(find.text('ESCENAS'), findsNothing);
+      expect(find.text('Guardar como escena'), findsNothing);
+    });
+  });
+
+  group('review #3 — el revert de un comando fallido restaura', () {
+    // `copyWith` no puede volver un campo a null (su parámetro nulo significa
+    // «no lo toques»), así que revertir con copyWith sobre un device que no
+    // tenía modo dejaba el modo puesto igual. El idioma correcto es el
+    // snapshot completo, como en toggleLight.
+    test('setLightMode sobre una luz sin modo previo revierte a sin modo',
+        () async {
+      final sinModo = Device.fromJson({
+        ...Map<String, dynamic>.from(rightJson),
+        'state': {'on': true, 'bri': 254, 'reachable': true},
+      });
+      final s = _service([sinModo]);
+      await s.setLightMode(sinModo, 'colour');
+      expect(sinModo.state.mode, isNull,
+          reason: 'el modo optimista se DESHACE (copyWith no podía)');
+    });
+
+    test('setLightScene revierte el sceneId Y el modo', () async {
+      // El optimismo mueve DOS campos; el revert viejo no restauraba ninguno y
+      // dejaba la luz diciendo «modo escena» con una escena que nunca se activó.
+      final enColor = Device.fromJson({
+        ...Map<String, dynamic>.from(rightJson),
+        'state': {'on': true, 'bri': 254, 'reachable': true, 'mode': 'colour'},
+      });
+      final s = _service([enColor]);
+      await s.setLightScene(enColor, 'tuyascene_a');
+      expect(enColor.state.sceneId, isNull, reason: 'la escena se deshace');
+      expect(enColor.state.mode, 'colour', reason: 'y el modo vuelve a color');
+    });
+
+    test('el estado optimista se aplica ANTES de la respuesta', () async {
+      // El chip tiene que moverse al toque, no cuando el backend contesta.
+      final d = Device.fromJson(Map<String, dynamic>.from(rightJson));
+      final s = _service([d]);
+      final pendiente = s.setLightMode(d, 'scene');
+      expect(d.state.mode, 'scene', reason: 'optimista, ya aplicado');
+      expect(d.state.lightModes, _modes, reason: 'y sin perder el selector');
+      await pendiente; // el backend no existe → revierte
+      expect(d.state.mode, 'colour', reason: 'y al fallar vuelve a lo que era');
+      expect(d.state.lightModes, _modes, reason: 'el revert no borra el selector');
     });
   });
 
