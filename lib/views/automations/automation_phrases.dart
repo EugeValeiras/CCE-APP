@@ -1,7 +1,9 @@
 import '../../models/automation.dart';
 import '../../models/automation_flow.dart';
 import '../../services/devices_service.dart';
+import '../../models/device.dart';
 import '../../utils/button_events.dart';
+import '../../utils/enum_options.dart';
 import '../../utils/verb_labels.dart';
 
 /// Frases humanas en español para automatizaciones (cards, wizard, filas,
@@ -279,7 +281,11 @@ String actionPhrase(AutomationAction act, DevicesService devices) {
     case AutomationActionKind.hueScene:
       return 'Escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
-      return _devicePhrase(_deviceName(devices, act.deviceId), act);
+      return _devicePhrase(
+        _deviceName(devices, act.deviceId),
+        act,
+        state: devices.byId(act.deviceId)?.state,
+      );
     case AutomationActionKind.notification:
       return 'Aviso: "${act.notificationMessage}"';
     case AutomationActionKind.alarm:
@@ -346,7 +352,12 @@ String _fmtNum(num n) => n == n.roundToDouble()
 /// VALOR ("Poner el termostato en 21°"): "CCE Thermostat: setTargetTemp" no
 /// dice a cuánto queda la calefacción, que es justo lo que se quiere revisar
 /// de un vistazo. Los verbos sin caso propio conservan "Device: Verbo".
-String _devicePhrase(String name, AutomationAction act, {bool short = false}) {
+String _devicePhrase(
+  String name,
+  AutomationAction act, {
+  bool short = false,
+  DeviceState? state,
+}) {
   final args = act.args;
   switch (act.verb) {
     case 'setTargetTemp':
@@ -370,6 +381,22 @@ String _devicePhrase(String name, AutomationAction act, {bool short = false}) {
       return short ? 'Calentar $name$to' : 'Calentar $name$to';
     case 'stopHeating':
       return 'Dejar de calentar $name';
+    // CCE#100 — la luz con modos y escenas propias (Hexagon). El modo se lee en
+    // castellano y la escena por el NOMBRE que le puso el dueño: el arg guarda
+    // el id de la escena (`tuyascene_a`), que no le dice nada a nadie.
+    case 'setMode':
+      final mode = args['mode'];
+      if (mode is! String || mode.isEmpty) break;
+      final label = lightModeLabel(mode);
+      return short ? '$name modo $label' : 'Poner $name en modo $label';
+    case 'setScene':
+      final id = args['sceneId'];
+      if (id is! String || id.isEmpty) break;
+      // Sin el estado del device no se puede resolver el nombre; el id crudo
+      // es mejor que nada, y es lo que pasa con un device desconectado.
+      final label =
+          state == null ? id : enumOptionLabel('LIGHT_SCENES', id, state);
+      return short ? '$name «$label»' : 'Poner $name en la escena «$label»';
   }
   return short ? '$name ${verbLabel(act.verb)}' : '$name: ${verbLabel(act.verb)}';
 }
@@ -393,6 +420,7 @@ String _actionFragment(AutomationAction act, DevicesService devices) {
       return 'escena ${_hueSceneName(devices, act.hueSceneId)}';
     case AutomationActionKind.device:
       return _devicePhrase(_deviceName(devices, act.deviceId), act,
+          state: devices.byId(act.deviceId)?.state,
               short: true)
           .toLowerCase();
     case AutomationActionKind.notification:

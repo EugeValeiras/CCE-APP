@@ -285,6 +285,55 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
   }
 
+  /// CCE#100 — Guarda lo que la luz tiene puesto AHORA como escena de CCE.
+  ///
+  /// Va por el binding TUYA y no por el device canónico: el payload de la
+  /// escena es un dato del protocolo del aparato (el DP crudo), no del modelo
+  /// unificado, y sólo el provider que lo lee puede capturarlo. El backend
+  /// decide si guarda ese payload (si la luz está en modo escena) o el color
+  /// vigente — la app no conoce el formato, y no debería.
+  ///
+  /// Alta ITEM-LEVEL: nunca manda el array de escenas, así que no puede borrar
+  /// ninguna.
+  Future<void> captureLightScene(
+    String tuyaBindingId,
+    String name, {
+    String? icon,
+  }) async {
+    final raw = tuyaBindingId.startsWith('tuya_')
+        ? tuyaBindingId.substring(5)
+        : tuyaBindingId;
+    final response = await http
+        .post(
+          Uri.parse(
+            '${config.baseUrl}/tuya/devices/${Uri.encodeComponent(raw)}/light-scenes',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'name': name, 'icon': ?icon}),
+        )
+        .timeout(const Duration(seconds: 10));
+    Map<String, dynamic>? body;
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) body = decoded;
+    } catch (_) {
+      /* body no-JSON: lo cubre el status */
+    }
+    final ok = response.statusCode >= 200 &&
+        response.statusCode < 300 &&
+        body?['success'] != false;
+    if (!ok) {
+      // El backend da el motivo real (no hay estado local del device, la luz no
+      // reporta ni escena ni color): decirlo es mejor que «no se pudo».
+      final msg =
+          body?['error'] ?? body?['message'] ?? 'HTTP ${response.statusCode}';
+      throw Exception('$msg');
+    }
+  }
+
   /// Invoca una acción de capability sobre un device (POST
   /// /devices/:id/actions/:verb) — el mismo endpoint que usa el Dashboard.
   /// clean/pause/resume/dock van sin args; setCleanMode {mode},

@@ -255,6 +255,16 @@ class DevicesService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// SOLO TESTS: siembra el catálogo de capabilities, que en producción llega
+  /// con `GET /api/capabilities` en el primer refresh. Sin él la vista
+  /// unificada no puede resolver los verbos de una capability y renderiza el
+  /// aviso genérico en vez del control.
+  @visibleForTesting
+  void debugSeedCapabilityCatalog(CapabilityCatalog catalog) {
+    _capabilityCatalog = catalog;
+    notifyListeners();
+  }
+
   /// SOLO TESTS: siembra los nombres de las automatizaciones y los grupos de
   /// luces, que en producción llegan con el config. Los necesita el historial
   /// (CCE#75) para traducir el actor de un cambio (`automation:<id>` → nombre)
@@ -700,6 +710,55 @@ class DevicesService extends ChangeNotifier {
     Map<String, dynamic>? args,
   ]) async {
     await _api.invokeAction(d.id, verb, args);
+  }
+
+  /// CCE#100 — Cambia el MODO de la luz (`work_mode`). Optimista con revert: el
+  /// eco real llega por WS, pero el chip tiene que moverse al toque.
+  Future<void> setLightMode(Device d, String mode) async {
+    final prev = d.state.mode;
+    if (mode == prev) return;
+    d.state = d.state.copyWith(mode: mode);
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setMode', {'mode': mode});
+    } catch (e) {
+      debugPrint('setLightMode error: $e');
+      d.state = d.state.copyWith(mode: prev);
+      notifyListeners();
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// CCE#100 — Activa una escena de CCE en la luz.
+  Future<void> setLightScene(Device d, String sceneId) async {
+    final prev = d.state.sceneId;
+    d.state = d.state.copyWith(sceneId: sceneId, mode: 'scene');
+    notifyListeners();
+    try {
+      await _api.invokeAction(d.id, 'setScene', {'sceneId': sceneId});
+    } catch (e) {
+      debugPrint('setLightScene error: $e');
+      d.state = d.state.copyWith(sceneId: prev);
+      notifyListeners();
+      _notifyCommandError(displayName(d));
+    }
+  }
+
+  /// CCE#100 — Guarda el estado ACTUAL de la luz como escena de CCE.
+  ///
+  /// Es lo que devuelve al dueño las escenas que ya tenía puestas: las elige en
+  /// la app del fabricante y acá quedan con nombre, para poder volver a ellas.
+  /// Necesita el binding TUYA porque el payload es del protocolo del aparato.
+  /// Relanza con el motivo del backend: el caller lo muestra.
+  Future<void> captureLightScene(Device d, String name) async {
+    final tuya = d.bindingIds.where((b) => b.startsWith('tuya_')).firstOrNull;
+    if (tuya == null) {
+      throw Exception('Esta luz no tiene un binding Tuya');
+    }
+    await _api.captureLightScene(tuya, name);
+    // La escena nueva llega en el próximo refresh del device (viaja en
+    // state.lightScenes, que lo arma el backend desde la config).
+    await refresh();
   }
 
   /// Prende/apaga el grupo con UNA llamada al endpoint atómico

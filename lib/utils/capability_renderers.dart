@@ -28,6 +28,11 @@ enum CapabilityRendererKind {
   dial,
   sensor,
   detach,
+  // CCE#100 — la luz con MODOS (Tuya work_mode) y con ESCENAS propias. Van
+  // juntos y justo después del color: elegir «escena» es lo que hace que el
+  // color deje de mandar.
+  lightMode,
+  scene,
 }
 
 class CapabilityRendererEntry {
@@ -60,6 +65,8 @@ const Map<String, CapabilityRendererKind> _kindByCapability = {
   'button': CapabilityRendererKind.button,
   'dial': CapabilityRendererKind.dial,
   'detach_relay': CapabilityRendererKind.detach,
+  'light_mode': CapabilityRendererKind.lightMode,
+  'scene': CapabilityRendererKind.scene,
 };
 
 /// Orden canónico de aparición: estado primario arriba, sensores al final.
@@ -73,6 +80,9 @@ const List<CapabilityRendererKind> _renderOrder = [
   CapabilityRendererKind.brightness,
   CapabilityRendererKind.colorTemperature,
   CapabilityRendererKind.colorHsv,
+  // El modo primero: es lo que decide si el color o la escena mandan.
+  CapabilityRendererKind.lightMode,
+  CapabilityRendererKind.scene,
   CapabilityRendererKind.volume,
   CapabilityRendererKind.soundMode,
   CapabilityRendererKind.mediaPlayback,
