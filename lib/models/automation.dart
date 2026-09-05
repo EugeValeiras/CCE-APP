@@ -362,7 +362,7 @@ class SensorTrigger {
       );
 
   String sensorId; // ID canónico dev_*
-  String sensorField; // 'motion'|'contact'|'lastKey'|'temperature'|'humidity'
+  String sensorField; // 'motion'|'contact'|'lastKey'|'temperature'|'humidity'|'lux'
   dynamic sensorValue; // bool | num | String
   String? sensorOperator; // 'eq'|'gt'|'lt'|'gte'|'lte' (ausente = igualdad)
   int? sensorOutlet; // botones multi-outlet

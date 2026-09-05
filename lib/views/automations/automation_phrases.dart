@@ -143,6 +143,16 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
         return 'Humedad de $name sube de $v%';
       }
       return 'Humedad de $name a $v%';
+    // CCE#112 — el lux numérico de los SNZB-03PR2.
+    case 'lux':
+      final v = _num(t.sensorValue);
+      if (t.sensorOperator == 'lt' || t.sensorOperator == 'lte') {
+        return 'Luz de $name baja de $v lx';
+      }
+      if (t.sensorOperator == 'gt' || t.sensorOperator == 'gte') {
+        return 'Luz de $name sube de $v lx';
+      }
+      return 'Luz de $name a $v lx';
     case 'lockActor':
       return 'Entra ${t.sensorValue}';
     case 'lockEventKind':
@@ -526,6 +536,10 @@ String conditionPhrase(AutomationCondition c, DevicesService devices) {
   if (c.field == 'brightness') {
     return c.value == 'brighter' ? 'si hay luz' : 'si está oscuro';
   }
+  // CCE#112 — «si luz < 30 lx», con el símbolo: es como se lee un umbral.
+  if (c.field == 'lux') {
+    return 'si luz ${_opSymbol(c.operator)} ${_num(c.value)} lx';
+  }
   if (c.field == 'lockOpenWay') {
     return _lockWays[c.value] ?? 'con ${c.value}';
   }
@@ -572,9 +586,27 @@ String conditionClause(AutomationCondition c, DevicesService devices) {
         return '$name está por encima de $v°';
       }
       return '$name está a $v°';
+    case 'lux':
+      final v = _num(c.value);
+      if (c.operator == 'lt' || c.operator == 'lte') {
+        return 'la luz de $name está por debajo de $v lx';
+      }
+      if (c.operator == 'gt' || c.operator == 'gte') {
+        return 'la luz de $name está por encima de $v lx';
+      }
+      return 'la luz de $name está en $v lx';
   }
   return '$name tiene ${c.field ?? '?'} en ${_num(c.value)}';
 }
+
+/// El operador de una condición numérica como símbolo («<», «≥»); igualdad si falta.
+String _opSymbol(String? op) => switch (op) {
+      'lt' => '<',
+      'lte' => '≤',
+      'gt' => '>',
+      'gte' => '≥',
+      _ => '=',
+    };
 
 /// Las frases de VARIAS condiciones, desambiguadas: dos «está oscuro» de dos
 /// sensores distintos se leen como una sola si no se dice quién mide, así que
@@ -687,6 +719,10 @@ String triggerClause(Automation a, DevicesService devices) {
           s = (first.sensorOperator == 'lt' || first.sensorOperator == 'lte')
               ? 'la humedad de $name baje de ${_num(first.sensorValue)}%'
               : 'la humedad de $name supere el ${_num(first.sensorValue)}%';
+        case 'lux':
+          s = (first.sensorOperator == 'lt' || first.sensorOperator == 'lte')
+              ? 'la luz de $name baje de ${_num(first.sensorValue)} lx'
+              : 'la luz de $name supere los ${_num(first.sensorValue)} lx';
         case 'lockActor':
           s = 'entre ${first.sensorValue}';
         case 'lockEventKind':

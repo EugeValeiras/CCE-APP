@@ -228,6 +228,15 @@ class _RunKey {
           maxGap: const Duration(minutes: 30),
         );
       }
+      // CCE#112 — las lecturas de luz solas (sin movimiento) también son un run.
+      if (sensor['lux'] != null) {
+        return _RunKey(
+          kind: 'lux',
+          deviceId: deviceId,
+          collapsible: true,
+          maxGap: const Duration(minutes: 30),
+        );
+      }
     }
 
     if (state is Map) {

@@ -406,6 +406,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     final sensor = _device.sensor;
     final battery = sensor?.battery;
     final brightness = sensor?.brightness;
+    final lux = sensor?.lux;
 
     final metrics = <Widget>[
       _Metric(
@@ -414,7 +415,19 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         value: battery != null ? '$battery%' : '—',
         label: 'BATERÍA',
       ),
-      if (brightness != null)
+      // CCE#112 — con el número cuando el sensor lo mide (SNZB-03PR2): el valor
+      // es el lux y el rótulo dice si eso es oscuro o con luz. El 03P viejo
+      // sigue mostrando sólo el binario.
+      if (lux != null)
+        _Metric(
+          svg: CceIcons.sunMedium,
+          iconColor: brightness == 'brighter'
+              ? CceColors.warm
+              : CceColors.textSecondary,
+          value: '$lux lx',
+          label: brightness == 'brighter' ? 'CON LUZ' : 'OSCURO',
+        )
+      else if (brightness != null)
         _Metric(
           svg: CceIcons.sunMedium,
           iconColor: brightness == 'brighter'

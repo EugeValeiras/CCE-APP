@@ -238,6 +238,15 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
         subtitle: '${h.toStringAsFixed(0)}%',
       );
     }
+    // CCE#112 — una lectura de luz sola (sin movimiento en el mismo evento).
+    if (sensor['lux'] is num) {
+      return EventPresentation(
+        icon: _ic(CceIcons.sunMedium),
+        color: CceColors.warm,
+        title: name,
+        subtitle: '${(sensor['lux'] as num).round()} lx',
+      );
+    }
   }
 
   if (state is Map) {

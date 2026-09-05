@@ -518,8 +518,10 @@ class _TriggerSheetState extends State<_TriggerSheet> {
         );
       case 'temperature':
       case 'humidity':
+      case 'lux': // CCE#112 — mismo editor de umbral, en lx y de a 5
         final isTemp = t.sensorField == 'temperature';
-        final unit = isTemp ? '°' : '%';
+        final isLux = t.sensorField == 'lux';
+        final unit = isTemp ? '°' : (isLux ? ' lx' : '%');
         final step = isTemp ? 0.5 : 5.0;
         final value = (t.sensorValue as num?)?.toDouble() ?? 0;
         controls = Column(
@@ -554,6 +556,47 @@ class _TriggerSheetState extends State<_TriggerSheet> {
           '${t.sensorField} = ${t.sensorValue}',
           style: CceText.caption,
         );
+    }
+
+    // CCE#112 — un sensor de movimiento que ADEMÁS mide lux (SNZB-03PR2)
+    // dispara por cualquiera de las dos cosas: el chip cambia el campo. El
+    // 03P viejo no mide y no ve los chips.
+    if (d != null &&
+        d.isMotionSensor &&
+        d.sensor?.lux != null &&
+        (t.sensorField == 'motion' || t.sensorField == 'lux')) {
+      controls = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Movimiento'),
+                selected: t.sensorField == 'motion',
+                showCheckmark: false,
+                onSelected: (_) => setState(() {
+                  t.sensorField = 'motion';
+                  t.sensorValue = true;
+                  t.sensorOperator = null;
+                }),
+              ),
+              ChoiceChip(
+                label: const Text('Luz'),
+                selected: t.sensorField == 'lux',
+                showCheckmark: false,
+                onSelected: (_) => setState(() {
+                  t.sensorField = 'lux';
+                  t.sensorValue = 30;
+                  t.sensorOperator = 'lt';
+                }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          controls,
+        ],
+      );
     }
 
     return Container(
