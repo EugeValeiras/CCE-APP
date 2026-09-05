@@ -315,6 +315,29 @@ class ApiService {
           body: jsonEncode({'name': name, 'icon': ?icon}),
         )
         .timeout(const Duration(seconds: 10));
+    _lightSceneOk(response);
+  }
+
+  /// CCE#110 — Baja de UNA escena de CCE (`DELETE /tuya/light-scenes/:id`).
+  /// Item-level, como el alta: nunca manda el array. Lanza Exception con el
+  /// motivo del backend (404: «Escena X no encontrada») si la baja no ocurrió.
+  Future<void> removeLightScene(String sceneId) async {
+    final response = await http
+        .delete(
+          Uri.parse(
+            '${config.baseUrl}/tuya/light-scenes/${Uri.encodeComponent(sceneId)}',
+          ),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 10));
+    _lightSceneOk(response);
+  }
+
+  /// Un 2xx sin `success: false` es éxito; cualquier otra cosa lanza con el
+  /// motivo que dio el backend (no hay estado local del device, la luz no
+  /// reporta ni escena ni color, la escena ya no existe): decirlo es mejor
+  /// que «no se pudo».
+  void _lightSceneOk(http.Response response) {
     Map<String, dynamic>? body;
     try {
       final decoded = jsonDecode(response.body);
@@ -326,8 +349,6 @@ class ApiService {
         response.statusCode < 300 &&
         body?['success'] != false;
     if (!ok) {
-      // El backend da el motivo real (no hay estado local del device, la luz no
-      // reporta ni escena ni color): decirlo es mejor que «no se pudo».
       final msg =
           body?['error'] ?? body?['message'] ?? 'HTTP ${response.statusCode}';
       throw Exception('$msg');

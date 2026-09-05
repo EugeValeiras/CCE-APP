@@ -783,6 +783,41 @@ class DevicesService extends ChangeNotifier {
     await refresh();
   }
 
+  /// CCE#110 — Borra una escena de CCE y la SACA del estado local en el acto.
+  ///
+  /// Sin `refresh()`: reconstruye los objetos Device y deja huérfano el
+  /// `widget.device` del sheet (review de #43). Y sin `refreshDevice()`:
+  /// `state.lightScenes` lo arma el backend al reconstruir su store merged, y
+  /// ese rebuild es por eventos de los devices (más una red de seguridad cada
+  /// 60 s) — borrar de la config NO lo dispara, así que un GET inmediato la
+  /// traería de vuelta. Se quita del estado de TODOS los devices que la
+  /// ofrecían (una escena se comparte por producto: los dos Hexagon muestran
+  /// la misma) EN EL LUGAR, `d.state = …` sobre el mismo objeto, que es lo que
+  /// mantiene vivo al del sheet.
+  ///
+  /// `sceneId` se deja: si la borrada era la puesta, el widget la lee como
+  /// «Sin guardar», que es la verdad (la luz sigue en esa escena y CCE ya no
+  /// la conoce) y lo que el backend va a reportar en su próximo rebuild.
+  ///
+  /// Sólo se toca el estado si el backend confirmó. El fallo se propaga tal
+  /// cual: el widget lo muestra, no reporta éxito.
+  Future<void> removeLightScene(String sceneId) async {
+    await _api.removeLightScene(sceneId);
+    var changed = false;
+    for (final d in _byId.values) {
+      final scenes = d.state.lightScenes;
+      if (scenes == null || !scenes.any((sc) => sc.id == sceneId)) continue;
+      d.state = d.state.copyWith(
+        lightScenes: [
+          for (final sc in scenes)
+            if (sc.id != sceneId) sc,
+        ],
+      );
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   /// Prende/apaga el grupo con UNA llamada al endpoint atómico
   /// (PUT /groups/{id}/state): el backend compila los miembros Hue a un solo
   /// groupcast, así las luces cambian sincronizadas (adiós efecto pochoclo del

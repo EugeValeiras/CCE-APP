@@ -40,6 +40,9 @@ class LightModeScenesSection extends StatefulWidget {
 class _LightModeScenesSectionState extends State<LightModeScenesSection> {
   bool _saving = false;
 
+  /// La escena que se está borrando ahora (su chip se atenúa), o null.
+  String? _removingId;
+
   Device get _d => widget.device;
 
   List<String> get _modes => _d.state.lightModes ?? const [];
@@ -104,6 +107,60 @@ class _LightModeScenesSectionState extends State<LightModeScenesSection> {
       );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// CCE#110 — Borra una escena capturada. Siempre pregunta: es irreversible
+  /// (la captura depende de cómo estaba la luz en ese momento) y una
+  /// automatización que la ponga va a fallar al ejecutarse.
+  ///
+  /// Cancelar no llama a la API. El service quita la escena del estado del
+  /// device EN EL LUGAR (sin `refresh()`, que dejaría huérfano a
+  /// `widget.device`), así que la grilla se redibuja sola. Un fallo se muestra
+  /// con el motivo del backend; no hay aviso de éxito sobre un borrado que no
+  /// ocurrió.
+  Future<void> _confirmRemove(LightScene sc) async {
+    HapticFeedback.mediumImpact();
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: CceColors.surface,
+        title: Text('Borrar «${sc.name}»'),
+        content: const Text(
+          'No se puede deshacer: la captura depende de cómo estaba la luz en '
+          'ese momento. Si una automatización pone esta escena, va a fallar '
+          'al ejecutarse.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: CceColors.danger),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+
+    setState(() => _removingId = sc.id);
+    try {
+      await widget.service.removeLightScene(sc.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Escena «${sc.name}» borrada')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      // El motivo real del backend («Escena X no encontrada»).
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    } finally {
+      if (mounted) setState(() => _removingId = null);
     }
   }
 
@@ -172,17 +229,28 @@ class _LightModeScenesSectionState extends State<LightModeScenesSection> {
                   runSpacing: 8,
                   children: [
                     for (final sc in _scenes)
-                      LightChoiceChip(
-                        label: sc.name,
-                        // El ícono que le puso el dueño; el default sólo si no
-                        // hay (antes se parseaba y no se renderizaba nunca).
-                        icon: sc.icon ?? '🎨',
-                        selected: _d.state.sceneId == sc.id,
-                        compact: widget.compact,
-                        onTap: () {
-                          HapticFeedback.selectionClick();
-                          widget.service.setLightScene(_d, sc.id);
-                        },
+                      Opacity(
+                        opacity: _removingId == sc.id ? 0.4 : 1,
+                        child: LightChoiceChip(
+                          label: sc.name,
+                          // El ícono que le puso el dueño; el default sólo si
+                          // no hay (antes se parseaba y no se renderizaba
+                          // nunca).
+                          icon: sc.icon ?? '🎨',
+                          selected: _d.state.sceneId == sc.id,
+                          compact: widget.compact,
+                          onTap: () {
+                            if (_removingId != null) return;
+                            HapticFeedback.selectionClick();
+                            widget.service.setLightScene(_d, sc.id);
+                          },
+                          // CCE#110 — mantener apretado borra (con
+                          // confirmación). El chip no tiene lugar para una
+                          // cruz y es el gesto de la app para lo destructivo.
+                          onLongPress: _removingId == null
+                              ? () => _confirmRemove(sc)
+                              : null,
+                        ),
                       ),
                   ],
                 )
@@ -197,6 +265,17 @@ class _LightModeScenesSectionState extends State<LightModeScenesSection> {
                       color: CceColors.textTertiary,
                       fontSize: 12,
                       height: 1.35),
+                ),
+              if (_scenes.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Mantené apretada una escena para borrarla.',
+                    style: TextStyle(
+                        color: CceColors.textTertiary,
+                        fontSize: widget.compact ? 11 : 12,
+                        height: 1.35),
+                  ),
                 ),
               SizedBox(height: widget.compact ? 4 : 12),
               Align(
@@ -258,6 +337,10 @@ class LightChoiceChip extends StatelessWidget {
   final bool compact;
   final VoidCallback onTap;
 
+  /// CCE#110 — opcional: qué hacer al mantener apretado (borrar, en las
+  /// escenas). Sin él, el chip sólo responde al toque.
+  final VoidCallback? onLongPress;
+
   const LightChoiceChip({
     super.key,
     required this.label,
@@ -265,6 +348,7 @@ class LightChoiceChip extends StatelessWidget {
     required this.onTap,
     this.icon,
     this.compact = false,
+    this.onLongPress,
   });
 
   @override
@@ -279,6 +363,7 @@ class LightChoiceChip extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(CceRadii.control),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           padding: EdgeInsets.symmetric(horizontal: w, vertical: h),
           decoration: selected
