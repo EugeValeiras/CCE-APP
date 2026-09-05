@@ -105,12 +105,32 @@ void main() {
       expect(device.sensor?.brightness, 'darker');
     });
 
-    test('un update de sólo luz (el WS de eWeLink, SIN la clave motion) actualiza lux y brightness', () async {
+    test('el bloque ACUMULADO que la API emite —motion, battery, lux y brightness juntos— se aplica entero', () async {
+      // Es la forma real del evento: los providers mandan el bloque sensor
+      // acumulado, no un delta (review de CCE#112).
+      await send({'motion': false, 'battery': '100', 'lux': 120, 'brightness': 'brighter'});
+      expect(device.sensor?.lux, 120);
+      expect(device.sensor?.brightness, 'brighter');
+      expect(device.sensor?.motion, isFalse);
+      expect(device.sensor?.battery, '100');
+    });
+
+    test('y un delta de sólo luz también: lo que no vino se conserva', () async {
       await send({'lux': 120, 'brightness': 'brighter'});
       expect(device.sensor?.lux, 120);
       expect(device.sensor?.brightness, 'brighter');
       expect(device.sensor?.motion, isFalse, reason: 'lo que no vino se conserva');
       expect(device.sensor?.battery, '100');
+    });
+
+    test('REST y WS dan el MISMO sensor para el bloque acumulado con lux (el golden de producción todavía no lo trae)', () {
+      final raw = {'motion': false, 'battery': '100', 'lux': 17, 'brightness': 'darker', 'trigTime': 1788580804437};
+      final rest = DeviceSensor.fromJson(raw);
+      final ws = DeviceSensor.merge(null, raw);
+      expect(ws.lux, rest.lux);
+      expect(ws.lux, 17);
+      expect(ws.brightness, rest.brightness);
+      expect(ws.motion, rest.motion);
     });
 
     test('un lux inconvertible conserva el anterior y aplica el resto', () async {
@@ -152,7 +172,7 @@ void main() {
         value: 30,
         operator: 'lt',
       );
-      expect(conditionPhrase(c, devices), 'si luz < 30 lx');
+      expect(conditionPhrase(c, devices), 'si la luz de Movimiento pasillo < 30 lx');
       expect(conditionClause(c, devices),
           'la luz de Movimiento pasillo está por debajo de 30 lx');
     });

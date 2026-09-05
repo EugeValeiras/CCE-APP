@@ -536,9 +536,11 @@ String conditionPhrase(AutomationCondition c, DevicesService devices) {
   if (c.field == 'brightness') {
     return c.value == 'brighter' ? 'si hay luz' : 'si está oscuro';
   }
-  // CCE#112 — «si luz < 30 lx», con el símbolo: es como se lee un umbral.
+  // CCE#112 — «si la luz de Pasillo < 30 lx», con el símbolo y el sensor: dos
+  // condiciones de lux en sensores distintos tienen que poder distinguirse.
   if (c.field == 'lux') {
-    return 'si luz ${_opSymbol(c.operator)} ${_num(c.value)} lx';
+    final name = _deviceName(devices, c.sensorId);
+    return 'si la luz de $name ${_opSymbol(c.operator)} ${_num(c.value)} lx';
   }
   if (c.field == 'lockOpenWay') {
     return _lockWays[c.value] ?? 'con ${c.value}';

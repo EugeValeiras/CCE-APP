@@ -494,6 +494,10 @@ class DeviceState {
   }
 }
 
+/// Umbral con el que el backend deriva `brightness` de `lux`
+/// (BRIGHTNESS_LUX_THRESHOLD en el API, CCE#112): menos de 50 lx es oscuro.
+const int kBrightnessLuxThreshold = 50;
+
 class DeviceSensor {
   final double? temperature;
   final double? humidity;
@@ -505,6 +509,14 @@ class DeviceSensor {
   /// Iluminancia en lux, entera (CCE#112). Sólo en los sensores que la miden
   /// (SNZB-03PR2); el SNZB-03P viejo trae [brightness] y nada más.
   final int? lux;
+
+  /// ¿Hay luz? El binario si vino; si no, el número contra el mismo umbral que
+  /// usa el backend. null sin ninguna de las dos lecturas.
+  bool? get isBright {
+    if (brightness != null) return brightness == 'brighter';
+    if (lux != null) return lux! >= kBrightnessLuxThreshold;
+    return null;
+  }
   // Switches multi-botón (Hue Tap Dial / remotes): cantidad de botones y la
   // última tecla pulsada (0=click, 1=doble, 2=long).
   final int? outlets;

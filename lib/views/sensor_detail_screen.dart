@@ -421,7 +421,9 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
       if (lux != null)
         _Metric(
           svg: CceIcons.sunMedium,
-          iconColor: brightness == 'brighter'
+          // El color sale del mismo umbral que el backend (50 lx): sin el
+          // binario, un sol gris sobre 800 lx mentía.
+          iconColor: (sensor?.isBright ?? false)
               ? CceColors.warm
               : CceColors.textSecondary,
           value: '$lux lx',
@@ -617,11 +619,19 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
   Widget _buildEventRow(EventRecord ev, {required bool last}) {
     final spec = _spec;
     final active = _activeOf(ev);
+    final lux = _luxOf(ev);
+    // El bloque viene ACUMULADO (CCE#112): un cambio de luz del SNZB-03PR2
+    // trae también motion. La fila dice las dos cosas —«Sin movimiento ·
+    // 17 lx»— y una lectura de luz sola lleva su propio glifo, no las huellas.
     final label = active == null
-        ? (_luxOf(ev) ?? 'Actualización')
-        : (active ? spec.activeLabel : spec.idleLabel);
+        ? (lux ?? 'Actualización')
+        : [active ? spec.activeLabel : spec.idleLabel, lux]
+            .whereType<String>()
+            .join(' · ');
     final color = active == true ? spec.activeColor : CceColors.textTertiary;
-    final glyph = active == true ? spec.activeGlyph : spec.idleGlyph;
+    final glyph = active == true
+        ? spec.activeGlyph
+        : (active == null && lux != null ? CceIcons.sunMedium : spec.idleGlyph);
     final ts = ev.timestamp;
 
     return Container(

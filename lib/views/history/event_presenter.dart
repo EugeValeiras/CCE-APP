@@ -10,6 +10,7 @@ import '../../utils/vacuum_state.dart';
 import '../../utils/verb_labels.dart';
 import '../telephony/call_history_screen.dart' show formatCallDuration;
 import 'cause_grouping.dart';
+import 'numeric_readings.dart';
 import 'event_grouping.dart';
 import 'phone_events.dart';
 
@@ -204,10 +205,13 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     }
     if (sensor['motion'] != null) {
       final motion = sensor['motion'] == true;
+      // CCE#112 — el bloque viene ACUMULADO: el movimiento de un SNZB-03PR2
+      // trae su lux (y el de un Hue, su temperatura). Se muestran al lado.
       return EventPresentation(
         icon: _ic(motion ? CceIcons.personStanding : CceIcons.footprints),
         color: motion ? CceColors.motion : CceColors.textSecondary,
         title: motion ? 'Movimiento en $name' : 'Sin movimiento en $name',
+        subtitle: numericReadingsLine(sensor),
       );
     }
     if (sensor['lastKey'] != null) {
@@ -221,14 +225,15 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
       );
     }
     // Lecturas numéricas (temperatura, humedad, luz): una sola tabla, la
-    // misma que usa la fila colapsada (CCE#112).
-    final reading = _numericReadingOf(sensor);
-    if (reading != null) {
+    // misma que usa la fila colapsada (CCE#112). TODAS las que vengan: un
+    // sensor combinado trae temperatura y luz en el mismo bloque.
+    final readings = numericReadingsOf(sensor);
+    if (readings.isNotEmpty) {
       return EventPresentation(
-        icon: _ic(reading.$1.icon),
-        color: reading.$1.color,
+        icon: _ic(readings.first.$1.icon),
+        color: readings.first.$1.color,
         title: name,
-        subtitle: reading.$1.format(reading.$2),
+        subtitle: readings.map((r) => r.$1.format(r.$2)).join(' · '),
       );
     }
   }
@@ -570,35 +575,6 @@ String? _callPeerFromPayload(Map<String, dynamic>? p) {
   return number.isEmpty ? null : number;
 }
 
-/// Una lectura numérica del bloque sensor: cómo se dibuja y cómo se escribe.
-class _NumericReading {
-  const _NumericReading(this.key, this.icon, this.color, this.format);
-  final String key;
-  final String icon;
-  final Color color;
-  final String Function(double) format;
-}
-
-/// Las lecturas numéricas que el historial sabe leer, en orden de prioridad.
-/// UNA tabla para la lectura suelta y para la corrida colapsada (CCE#112).
-final List<_NumericReading> _numericReadings = [
-  _NumericReading('temperature', CceIcons.thermometer, CceColors.contact,
-      (v) => '${v.toStringAsFixed(1)}°'),
-  _NumericReading('humidity', CceIcons.droplet, CceColors.info,
-      (v) => '${v.toStringAsFixed(0)}%'),
-  _NumericReading(
-      'lux', CceIcons.sunMedium, CceColors.warm, (v) => '${v.round()} lx'),
-];
-
-/// La primera lectura numérica presente en [sensor], con su valor.
-(_NumericReading, double)? _numericReadingOf(Map sensor) {
-  for (final r in _numericReadings) {
-    final v = sensor[r.key];
-    if (v is num) return (r, v.toDouble());
-  }
-  return null;
-}
-
 /// Humaniza un grupo: usa el evento más reciente como base y, en el
 /// subtítulo, desde cuándo viene repitiéndose ("desde 11:31"). El conteo ×N
 /// lo dibuja la fila como pill aparte (no se duplica en el título).
@@ -617,11 +593,16 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
 
   if (sensor is Map) {
     if (sensor['motion'] != null) {
+      // El título dice lo que pasó de verdad: una corrida de motion:false es
+      // «Sin movimiento», no «Movimiento» (review de CCE#112: en un historial
+      // que se lee al lado de la alarma, inventar movimiento no es un detalle).
+      final motion = sensor['motion'] == true;
+      final readings = numericReadingsLine(sensor);
       return EventPresentation(
         icon: base.icon,
         color: base.color,
-        title: 'Movimiento en $name',
-        subtitle: since,
+        title: motion ? 'Movimiento en $name' : 'Sin movimiento en $name',
+        subtitle: [since, readings].whereType<String>().join(' · ').nullIfEmpty,
       );
     }
     if (sensor['lastKey'] != null) {
@@ -632,22 +613,26 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
         subtitle: since,
       );
     }
-    // Una corrida de lecturas numéricas se lee como «de → a». La tabla es la
-    // misma que la de la lectura suelta: sin esto la rama de lux quedó sin
-    // escribir y dos lecturas en 30 min perdían el número (review de CCE#112).
-    final reading = _numericReadingOf(sensor);
-    if (reading != null) {
-      final spec = reading.$1;
+    // Una corrida de lecturas numéricas se lee como «de → a», lectura por
+    // lectura. La tabla es la misma que la de la lectura suelta: sin esto la
+    // rama de lux quedó sin escribir y dos lecturas en 30 min perdían el
+    // número (review de CCE#112).
+    final readings = numericReadingsOf(sensor);
+    if (readings.isNotEmpty) {
       final oldSensor = g.events.last.payload?['sensor'];
-      final prevRaw = oldSensor is Map ? oldSensor[spec.key] : null;
-      final prev = prevRaw is num ? prevRaw.toDouble() : null;
+      final parts = <String>[];
+      for (final (spec, value) in readings) {
+        final prevRaw = oldSensor is Map ? oldSensor[spec.key] : null;
+        final prev = prevRaw is num ? prevRaw.toDouble() : null;
+        parts.add(prev != null && prev != value
+            ? '${spec.format(prev)} → ${spec.format(value)}'
+            : spec.format(value));
+      }
       return EventPresentation(
         icon: base.icon,
         color: base.color,
         title: name,
-        subtitle: prev != null
-            ? '${spec.format(prev)} → ${spec.format(reading.$2)}'
-            : spec.format(reading.$2),
+        subtitle: parts.join(' · '),
       );
     }
   }
@@ -858,4 +843,9 @@ class _Facts {
 
   String? get brightnessLabel =>
       bri == null ? null : 'al ${(bri! / 254 * 100).round()}%';
+}
+
+extension on String {
+  /// null cuando está vacío: para un subtítulo que no dice nada.
+  String? get nullIfEmpty => isEmpty ? null : this;
 }
