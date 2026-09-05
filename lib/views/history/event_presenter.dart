@@ -220,31 +220,15 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
         subtitle: outlet != null ? 'outlet $outlet' : null,
       );
     }
-    if (sensor['temperature'] is num) {
-      final t = (sensor['temperature'] as num).toDouble();
+    // Lecturas numéricas (temperatura, humedad, luz): una sola tabla, la
+    // misma que usa la fila colapsada (CCE#112).
+    final reading = _numericReadingOf(sensor);
+    if (reading != null) {
       return EventPresentation(
-        icon: _ic(CceIcons.thermometer),
-        color: CceColors.contact,
+        icon: _ic(reading.$1.icon),
+        color: reading.$1.color,
         title: name,
-        subtitle: '${t.toStringAsFixed(1)}°',
-      );
-    }
-    if (sensor['humidity'] is num) {
-      final h = (sensor['humidity'] as num).toDouble();
-      return EventPresentation(
-        icon: _ic(CceIcons.droplet),
-        color: CceColors.info,
-        title: name,
-        subtitle: '${h.toStringAsFixed(0)}%',
-      );
-    }
-    // CCE#112 — una lectura de luz sola (sin movimiento en el mismo evento).
-    if (sensor['lux'] is num) {
-      return EventPresentation(
-        icon: _ic(CceIcons.sunMedium),
-        color: CceColors.warm,
-        title: name,
-        subtitle: '${(sensor['lux'] as num).round()} lx',
+        subtitle: reading.$1.format(reading.$2),
       );
     }
   }
@@ -586,6 +570,35 @@ String? _callPeerFromPayload(Map<String, dynamic>? p) {
   return number.isEmpty ? null : number;
 }
 
+/// Una lectura numérica del bloque sensor: cómo se dibuja y cómo se escribe.
+class _NumericReading {
+  const _NumericReading(this.key, this.icon, this.color, this.format);
+  final String key;
+  final String icon;
+  final Color color;
+  final String Function(double) format;
+}
+
+/// Las lecturas numéricas que el historial sabe leer, en orden de prioridad.
+/// UNA tabla para la lectura suelta y para la corrida colapsada (CCE#112).
+final List<_NumericReading> _numericReadings = [
+  _NumericReading('temperature', CceIcons.thermometer, CceColors.contact,
+      (v) => '${v.toStringAsFixed(1)}°'),
+  _NumericReading('humidity', CceIcons.droplet, CceColors.info,
+      (v) => '${v.toStringAsFixed(0)}%'),
+  _NumericReading(
+      'lux', CceIcons.sunMedium, CceColors.warm, (v) => '${v.round()} lx'),
+];
+
+/// La primera lectura numérica presente en [sensor], con su valor.
+(_NumericReading, double)? _numericReadingOf(Map sensor) {
+  for (final r in _numericReadings) {
+    final v = sensor[r.key];
+    if (v is num) return (r, v.toDouble());
+  }
+  return null;
+}
+
 /// Humaniza un grupo: usa el evento más reciente como base y, en el
 /// subtítulo, desde cuándo viene repitiéndose ("desde 11:31"). El conteo ×N
 /// lo dibuja la fila como pill aparte (no se duplica en el título).
@@ -619,34 +632,22 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
         subtitle: since,
       );
     }
-    if (sensor['temperature'] is num) {
-      final t = (sensor['temperature'] as num).toDouble();
+    // Una corrida de lecturas numéricas se lee como «de → a». La tabla es la
+    // misma que la de la lectura suelta: sin esto la rama de lux quedó sin
+    // escribir y dos lecturas en 30 min perdían el número (review de CCE#112).
+    final reading = _numericReadingOf(sensor);
+    if (reading != null) {
+      final spec = reading.$1;
       final oldSensor = g.events.last.payload?['sensor'];
-      final prev = oldSensor is Map
-          ? (oldSensor['temperature'] as num?)?.toDouble()
-          : null;
+      final prevRaw = oldSensor is Map ? oldSensor[spec.key] : null;
+      final prev = prevRaw is num ? prevRaw.toDouble() : null;
       return EventPresentation(
         icon: base.icon,
         color: base.color,
         title: name,
         subtitle: prev != null
-            ? '${prev.toStringAsFixed(1)}° → ${t.toStringAsFixed(1)}°'
-            : '${t.toStringAsFixed(1)}°',
-      );
-    }
-    if (sensor['humidity'] is num) {
-      final h = (sensor['humidity'] as num).toDouble();
-      final oldSensor = g.events.last.payload?['sensor'];
-      final prev = oldSensor is Map
-          ? (oldSensor['humidity'] as num?)?.toDouble()
-          : null;
-      return EventPresentation(
-        icon: base.icon,
-        color: base.color,
-        title: name,
-        subtitle: prev != null
-            ? '${prev.toStringAsFixed(0)}% → ${h.toStringAsFixed(0)}%'
-            : '${h.toStringAsFixed(0)}%',
+            ? '${spec.format(prev)} → ${spec.format(reading.$2)}'
+            : spec.format(reading.$2),
       );
     }
   }

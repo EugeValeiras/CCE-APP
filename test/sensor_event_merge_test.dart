@@ -228,6 +228,7 @@ void main() {
         expect(ws.humidity, rest.humidity, reason: 'humidity de $id');
         expect(ws.battery, rest.battery, reason: 'battery de $id');
         expect(ws.brightness, rest.brightness, reason: 'brightness de $id');
+        expect(ws.lux, rest.lux, reason: 'lux de $id');
         expect(ws.lastKey, rest.lastKey, reason: 'lastKey de $id');
         expect(ws.outlet, rest.outlet, reason: 'outlet de $id');
         expect(ws.outlets, rest.outlets, reason: 'outlets de $id');

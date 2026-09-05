@@ -523,7 +523,19 @@ class _TriggerSheetState extends State<_TriggerSheet> {
         final isLux = t.sensorField == 'lux';
         final unit = isTemp ? '°' : (isLux ? ' lx' : '%');
         final step = isTemp ? 0.5 : 5.0;
-        final value = (t.sensorValue as num?)?.toDouble() ?? 0;
+        // La API acepta el umbral como String (el motor hace Number()): una
+        // automatización escrita por CLI trae "30" y un cast `as num?` la
+        // hacía pantalla roja al abrirla.
+        final value = num.tryParse('${t.sensorValue}')?.toDouble() ?? 0;
+        // Tope inferior: la API define lux como entero >= 0 y la humedad va de
+        // 0 a 100; un «baja de -5 lx» nunca dispara y se guardaba igual.
+        final double? minValue = isTemp ? null : 0;
+        final double? maxValue = isLux || isTemp ? null : 100;
+        double clamp(double v) {
+          if (minValue != null && v < minValue) return minValue;
+          if (maxValue != null && v > maxValue) return maxValue;
+          return v;
+        }
         controls = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -541,8 +553,8 @@ class _TriggerSheetState extends State<_TriggerSheet> {
             _Stepper(
               valueText:
                   '${value == value.roundToDouble() ? value.round() : value}$unit',
-              onMinus: () => setState(() => t.sensorValue = value - step),
-              onPlus: () => setState(() => t.sensorValue = value + step),
+              onMinus: () => setState(() => t.sensorValue = clamp(value - step)),
+              onPlus: () => setState(() => t.sensorValue = clamp(value + step)),
             ),
             const SizedBox(height: 6),
             const Text(
@@ -559,11 +571,18 @@ class _TriggerSheetState extends State<_TriggerSheet> {
     }
 
     // CCE#112 — un sensor de movimiento que ADEMÁS mide lux (SNZB-03PR2)
-    // dispara por cualquiera de las dos cosas: el chip cambia el campo. El
-    // 03P viejo no mide y no ve los chips.
+    // dispara por cualquiera de las dos cosas: el chip cambia el campo. Se
+    // decide por la CAPABILITY, no por la lectura viva: tras un arranque del
+    // API el sensor declara `illuminance` sin tener lux todavía, y sin chips
+    // no había forma de crear el disparador de luz ni de volver a Movimiento
+    // en uno existente. El 03P viejo no declara nada y no ve los chips.
+    final measuresLux = d != null &&
+        (d.hasCapability('illuminance') ||
+            d.sensor?.lux != null ||
+            t.sensorField == 'lux');
     if (d != null &&
         d.isMotionSensor &&
-        d.sensor?.lux != null &&
+        measuresLux &&
         (t.sensorField == 'motion' || t.sensorField == 'lux')) {
       controls = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1199,6 +1218,16 @@ SensorTrigger defaultTriggerFor(Device d) {
       sensorField: 'humidity',
       sensorValue: 60,
       sensorOperator: 'gt',
+    );
+  }
+  // CCE#112 — un sensor de iluminancia SIN movimiento (Z2M/Matter): «luz < 30
+  // lx». Antes caía a `motion: true`, que ese device nunca puede cumplir.
+  if (d.hasCapability('illuminance') || d.sensor?.lux != null) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'lux',
+      sensorValue: 30,
+      sensorOperator: 'lt',
     );
   }
   return SensorTrigger(

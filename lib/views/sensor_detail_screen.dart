@@ -425,7 +425,11 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
               ? CceColors.warm
               : CceColors.textSecondary,
           value: '$lux lx',
-          label: brightness == 'brighter' ? 'CON LUZ' : 'OSCURO',
+          // Sin el binario no se afirma «oscuro» sobre 800 lx: el rótulo
+          // queda neutro y el número habla solo.
+          label: brightness == null
+              ? 'LUZ'
+              : (brightness == 'brighter' ? 'CON LUZ' : 'OSCURO'),
         )
       else if (brightness != null)
         _Metric(
@@ -601,11 +605,20 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     return v is bool ? v : null;
   }
 
+  /// CCE#112 — la lectura de luz de un evento (los del PR2 sin movimiento son
+  /// frecuentes); sin esto cada uno decía «Actualización» y tapaba el historial.
+  String? _luxOf(EventRecord ev) {
+    final sensor = ev.payload?['sensor'];
+    if (sensor is! Map) return null;
+    final v = sensor['lux'];
+    return v is num ? '${v.round()} lx' : null;
+  }
+
   Widget _buildEventRow(EventRecord ev, {required bool last}) {
     final spec = _spec;
     final active = _activeOf(ev);
     final label = active == null
-        ? 'Actualización'
+        ? (_luxOf(ev) ?? 'Actualización')
         : (active ? spec.activeLabel : spec.idleLabel);
     final color = active == true ? spec.activeColor : CceColors.textTertiary;
     final glyph = active == true ? spec.activeGlyph : spec.idleGlyph;

@@ -105,10 +105,11 @@ void main() {
       expect(device.sensor?.brightness, 'darker');
     });
 
-    test('un update de sólo luz (el WS de eWeLink) actualiza lux y brightness', () async {
-      await send({'motion': false, 'battery': '100', 'lux': 120, 'brightness': 'brighter'});
+    test('un update de sólo luz (el WS de eWeLink, SIN la clave motion) actualiza lux y brightness', () async {
+      await send({'lux': 120, 'brightness': 'brighter'});
       expect(device.sensor?.lux, 120);
       expect(device.sensor?.brightness, 'brighter');
+      expect(device.sensor?.motion, isFalse, reason: 'lo que no vino se conserva');
       expect(device.sensor?.battery, '100');
     });
 
