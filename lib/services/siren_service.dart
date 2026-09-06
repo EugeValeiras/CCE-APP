@@ -1,7 +1,13 @@
 import 'package:audioplayers/audioplayers.dart';
 
 class SirenService {
-  final AudioPlayer _player = AudioPlayer();
+  /// El `AudioPlayer` se crea al primer uso, NO en el constructor: construirlo
+  /// habla con el plugin nativo, y eso hacía imposible montar la pantalla de
+  /// la alarma en un test (CCE#122). Con esto, una sirena de mentira que
+  /// sobreescriba los métodos de abajo nunca llega a tocar el plugin.
+  AudioPlayer? _lazyPlayer;
+  AudioPlayer get _player => _lazyPlayer ??= AudioPlayer();
+
   bool _isPlaying = false;
 
   bool get isPlaying => _isPlaying;
@@ -54,6 +60,7 @@ class SirenService {
   }
 
   void dispose() {
-    _player.dispose();
+    // Sin `??=`: si nunca sonó, no hay nada que liberar (ni que construir).
+    _lazyPlayer?.dispose();
   }
 }

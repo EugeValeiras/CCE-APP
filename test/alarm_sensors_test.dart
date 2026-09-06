@@ -58,7 +58,7 @@ Device _motion(
 /// de movimiento sin marcar.
 DevicesService _devices(List<Device> devices) {
   final service =
-      DevicesService(config: ServerConfig(), socket: SocketService());
+      DevicesService(config: _nowhere(), socket: SocketService());
   service.debugSeedDevices(devices);
   return service;
 }
@@ -67,6 +67,13 @@ class _FakeApi extends ApiService {
   _FakeApi(super.config, {this.triggers = const {}});
 
   Map<String, bool> triggers;
+
+  /// La pantalla también lee el modo prueba (CCE#122). Sin este override, el
+  /// GET saldría de verdad — y el `ServerConfig` por default apunta a la casa
+  /// del dueño.
+  @override
+  Future<({bool armed, bool testMode})> getAlarmStatus() async =>
+      (armed: false, testMode: false);
   int reads = 0;
   final List<String> puts = [];
   bool failPut = false;
@@ -96,6 +103,10 @@ class _FakeApi extends ApiService {
     triggers = next;
   }
 }
+
+/// Puerto muerto en loopback: el `ServerConfig` por default apunta a la casa
+/// REAL del dueño, y un test que se escape del doble le hablaría al aparato.
+ServerConfig _nowhere() => ServerConfig(host: '127.0.0.1', port: 1);
 
 Widget _app(Widget home) => MaterialApp(theme: CceTheme.dark(), home: home);
 
@@ -129,7 +140,7 @@ void main() {
     });
 
     test('apagar borra la clave LEGACY, no sólo la canónica', () async {
-      final api = _FakeApi(ServerConfig(), triggers: {'ewelink_acc4': true});
+      final api = _FakeApi(_nowhere(), triggers: {'ewelink_acc4': true});
       final d = _contact('dev_a', bindings: ['ewelink_acc4']);
 
       final next =
@@ -143,7 +154,7 @@ void main() {
 
     test('prender escribe el id canónico, que es el que lee el backend',
         () async {
-      final api = _FakeApi(ServerConfig());
+      final api = _FakeApi(_nowhere());
       final d = _contact('dev_a', bindings: ['ewelink_acc4']);
 
       final next = await writeFiresAlarm(api, d, api.triggers, fires: true);
@@ -271,7 +282,7 @@ void main() {
 
     setUp(() {
       devices = _devices([legacy, suelta, mov]);
-      api = _FakeApi(ServerConfig());
+      api = _FakeApi(_nowhere());
     });
 
     tearDown(() => devices.dispose());
@@ -336,22 +347,22 @@ void main() {
           _app(AlarmSensorsScreen(devices: devices, api: api)));
       await tester.pump();
 
-      expect(
-        tester.widgetList<CceSwitch>(find.byType(CceSwitch)),
-        everyElement(isA<CceSwitch>().having((s) => s.onChanged, 'onChanged', isNull)),
-        reason: 'un switch en "no" que nadie leyó miente sobre la alarma',
-      );
+      // Los de SENSORES: el del modo prueba (CCE#122) se lee por otro camino
+      // y no depende de este mapa, así que no entra en esta cuenta.
+      final sensores = ['Puerta legacy', 'Puerta suelta', 'Movimiento pasillo'];
+      for (final nombre in sensores) {
+        expect(switchOf(tester, nombre).onChanged, isNull,
+            reason: 'un switch en "no" que nadie leyó miente sobre la alarma');
+      }
 
       api.gate!.complete();
       await tester.pump();
       await tester.pump();
 
-      expect(
-        tester.widgetList<CceSwitch>(find.byType(CceSwitch)),
-        everyElement(
-            isA<CceSwitch>().having((s) => s.onChanged, 'onChanged', isNotNull)),
-        reason: 'con el mapa leído, los switches se habilitan',
-      );
+      for (final nombre in sensores) {
+        expect(switchOf(tester, nombre).onChanged, isNotNull,
+            reason: 'con el mapa leído, los switches se habilitan');
+      }
     });
 
     testWidgets('prender un sensor escribe su id canónico', (tester) async {
