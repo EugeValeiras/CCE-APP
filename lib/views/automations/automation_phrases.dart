@@ -3,6 +3,7 @@ import '../../models/automation_flow.dart';
 import '../../services/devices_service.dart';
 import '../../models/device.dart';
 import '../../utils/button_events.dart';
+import '../../utils/contact_words.dart';
 import '../../utils/enum_options.dart';
 import '../../utils/verb_labels.dart';
 
@@ -578,7 +579,7 @@ String conditionClause(AutomationCondition c, DevicesService devices) {
           ? 'hay movimiento en $name'
           : 'no hay movimiento en $name';
     case 'contact':
-      return c.value == true ? '$name está abierto' : '$name está cerrado';
+      return '$name está ${ContactWords.masculine(c.value == true)}';
     case 'temperature':
       final v = _num(c.value);
       if (c.operator == 'lt' || c.operator == 'lte') {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../utils/contact_words.dart';
 import '../cce_icons.dart';
 import '../cce_tokens.dart';
 import 'brightness_slider.dart';
@@ -179,9 +180,9 @@ class _RoomCardState extends State<RoomCard> {
       if (widget.contactOpen)
         const StatusBadgeData(
           glyph: CceIcons.doorOpen,
-          label: 'Abierta',
+          label: ContactWords.open,
           color: CceColors.contact,
-          semanticLabel: 'Puerta abierta',
+          semanticLabel: ContactWords.openSemantics,
           live: true,
         ),
       if (widget.motion)

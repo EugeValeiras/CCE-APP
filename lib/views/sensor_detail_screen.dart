@@ -11,6 +11,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_switch.dart';
 import '../utils/alarm_triggers.dart';
+import '../utils/contact_words.dart';
 import '../utils/time_format.dart';
 import '../widgets/device_automations_sheet.dart';
 
@@ -68,8 +69,8 @@ class _SensorKindSpec {
   );
 
   static const contact = _SensorKindSpec(
-    activeLabel: 'Abierta',
-    idleLabel: 'Cerrada',
+    activeLabel: ContactWords.open,
+    idleLabel: ContactWords.closed,
     activeGlyph: CceIcons.doorOpen,
     idleGlyph: CceIcons.doorClosed,
     activeColor: CceColors.contact, // naranja #FF9F43

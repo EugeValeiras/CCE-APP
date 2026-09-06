@@ -5,6 +5,7 @@ import '../../models/phone_sms.dart';
 import '../../services/devices_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
+import '../../utils/contact_words.dart';
 import '../../utils/time_format.dart';
 import '../../utils/vacuum_state.dart';
 import '../../utils/verb_labels.dart';
@@ -193,7 +194,7 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
   if (sensor is Map) {
     if (sensor['contact'] != null) {
       final open = sensor['contact'] == true;
-      final estado = open ? 'abierta' : 'cerrada';
+      final estado = ContactWords.feminine(open);
       final title = name.toLowerCase().contains('puerta')
           ? '$name $estado'
           : 'Puerta de $name $estado';

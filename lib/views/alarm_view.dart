@@ -15,6 +15,7 @@ import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/section_header.dart';
 import '../utils/alarm_triggers.dart';
+import '../utils/contact_words.dart';
 import '../utils/time_format.dart';
 import 'active_alarm_view.dart';
 import 'alarm_sensors_screen.dart';
@@ -1078,7 +1079,7 @@ class ProtectedList extends StatelessWidget {
               title: 'Qué protege',
               counter: open == 0
                   ? null
-                  : (open == 1 ? '1 abierta' : '$open abiertas'),
+                  : ContactWords.openCount(open),
             ),
             if (sensors.isEmpty)
               _emptyRow(context)
@@ -1145,7 +1146,7 @@ class ProtectedList extends StatelessWidget {
       iconColor = isOpen ? CceColors.contact : CceColors.textTertiary;
       // La abierta va en su color: es la que va a disparar la alarma.
       trailing = Text(
-        isOpen ? 'Abierta' : 'Cerrada',
+        ContactWords.label(isOpen),
         style: isOpen
             ? CceText.label.copyWith(color: CceColors.contact)
             : CceText.caption.copyWith(color: CceColors.textTertiary),
