@@ -177,15 +177,31 @@ void main() {
           (e['id'] as String, Map<String, dynamic>.from(e['sensor'] as Map)),
     ];
 
-    test('el fixture tiene trigTime de los DOS tipos', () {
+    test('el fixture trae lux en algún sensor (CCE#112): si no, la aserción de abajo compara null contra null', () {
+      // El golden se recaptura de producción con `npm run contract:capture`
+      // (CCE-API). Hasta que el API con lux esté deployado, los cuatro
+      // SNZB-03PR2 llevan el lux del journal de eWeLink de la hora de la
+      // captura (05/09/2026: 21, 19, 17 y 17 lx) y la capability
+      // `illuminance`, agregados a mano y marcados acá; la próxima recaptura
+      // real los reemplaza.
+      expect(sensors.where((s) => s.$2['lux'] is num), isNotEmpty,
+          reason: 'recapturá el golden con el API que expone lux');
+    });
+
+    test('el fixture trae trigTime, y numérico', () {
+      // Desde CCE#56 el API emite trigTime SIEMPRE como número, venga como
+      // venga de eWeLink; el golden anterior a ese fix traía 4 String y por
+      // eso este test pedía los dos tipos. La tolerancia a String la sigue
+      // probando el rig sintético de arriba (`trigTime: '222'`).
       final tipos = sensors
           .map((s) => s.$2['trigTime'])
           .where((v) => v != null)
           .map((v) => v is String ? 'String' : 'num')
           .toSet();
-      expect(tipos, containsAll(<String>{'String', 'num'}),
-          reason: 'si el fixture pierde uno de los dos, este test no prueba '
-              'nada: recapturalo con `npm run contract:capture`');
+      expect(tipos, equals(<String>{'num'}),
+          reason: 'si el fixture trae trigTime String, el API dejó de '
+              'normalizarlo (CCE#56); si no trae ninguno, recapturalo con '
+              '`npm run contract:capture`');
     });
 
     test('cada sensor del fixture entra por el WS sin romper', () async {

@@ -585,8 +585,10 @@ class _TriggerSheetState extends State<_TriggerSheet> {
         (d.hasCapability('illuminance') ||
             d.sensor?.lux != null ||
             t.sensorField == 'lux');
+    // Movimiento por CAPABILITY (igual que la luz), con el type como red de
+    // seguridad para los devices legacy sin capabilities.
     if (d != null &&
-        d.isMotionSensor &&
+        (d.hasCapability('motion') || d.isMotionSensor) &&
         luxChipApplies &&
         (t.sensorField == 'motion' || t.sensorField == 'lux')) {
       controls = Column(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sensor_event_row.dart';
 import 'package:flutter/services.dart';
 
 import '../models/device.dart';
@@ -598,40 +599,24 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  /// Lee el estado del sensor DEL EVENTO (no del device): cada fila cuenta
-  /// qué pasó en ese instante.
-  bool? _activeOf(EventRecord ev) {
-    final sensor = ev.payload?['sensor'];
-    if (sensor is! Map) return null;
-    final v = _isContact ? sensor['contact'] : sensor['motion'];
-    return v is bool ? v : null;
-  }
-
-  /// CCE#112 — la lectura de luz de un evento (los del PR2 sin movimiento son
-  /// frecuentes); sin esto cada uno decía «Actualización» y tapaba el historial.
-  String? _luxOf(EventRecord ev) {
-    final sensor = ev.payload?['sensor'];
-    if (sensor is! Map) return null;
-    final v = sensor['lux'];
-    return v is num ? '${v.round()} lx' : null;
-  }
-
   Widget _buildEventRow(EventRecord ev, {required bool last}) {
     final spec = _spec;
-    final active = _activeOf(ev);
-    final lux = _luxOf(ev);
-    // El bloque viene ACUMULADO (CCE#112): un cambio de luz del SNZB-03PR2
-    // trae también motion. La fila dice las dos cosas —«Sin movimiento ·
-    // 17 lx»— y una lectura de luz sola lleva su propio glifo, no las huellas.
-    final label = active == null
-        ? (lux ?? 'Actualización')
-        : [active ? spec.activeLabel : spec.idleLabel, lux]
-            .whereType<String>()
-            .join(' · ');
-    final color = active == true ? spec.activeColor : CceColors.textTertiary;
-    final glyph = active == true
-        ? spec.activeGlyph
-        : (active == null && lux != null ? CceIcons.sunMedium : spec.idleGlyph);
+    // La lógica de la fila es pura y está testeada aparte (sensor_event_row.dart).
+    final row = sensorEventRow(
+      ev,
+      isContact: _isContact,
+      spec: SensorEventRowSpec(
+        activeLabel: spec.activeLabel,
+        idleLabel: spec.idleLabel,
+        activeGlyph: spec.activeGlyph,
+        idleGlyph: spec.idleGlyph,
+        activeColor: spec.activeColor,
+      ),
+    );
+    final active = row.active;
+    final label = row.label;
+    final color = row.color;
+    final glyph = row.glyph;
     final ts = ev.timestamp;
 
     return Container(

@@ -38,12 +38,21 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
   AutomationTrigger get trigger => widget.draft.trigger;
 
   /// Sensores candidatos para "Está oscuro" (reportan brightness o motion —
-  /// los Hue de movimiento traen lectura de luz ambiente).
+  /// los Hue de movimiento traen lectura de luz ambiente— o miden lux).
   List<Device> _brightnessSensors() {
     return widget.devices.sensors
-        .where((d) => d.sensor?.brightness != null || d.isMotionSensor)
+        .where((d) =>
+            d.sensor?.brightness != null ||
+            d.isMotionSensor ||
+            _measuresLux(d))
         .toList();
   }
+
+  /// CCE#112 — ¿mide lux? Por capability (o por lectura, para un device que
+  /// todavía no declara). Un sensor de sólo iluminancia no reporta jamás el
+  /// binario `brightness` en el evento: su condición tiene que ser numérica.
+  bool _measuresLux(Device d) =>
+      d.hasCapability('illuminance') || d.sensor?.lux != null;
 
   Future<void> _addDarkCondition() async {
     final candidates = _brightnessSensors();
@@ -90,12 +99,23 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
     if (chosen == null) return;
     setState(() {
       // Condiciones nuevas SIEMPRE a conditions[] (nunca al legacy
-      // sensorBrightness).
-      trigger.conditions.add(AutomationCondition.sensor(
-        sensorId: chosen!.id,
-        field: 'brightness',
-        value: 'darker',
-      ));
+      // sensorBrightness). Un sensor que mide lux escribe el umbral real
+      // («luz < 30 lx», el del pasillo); el binario queda para los que sólo
+      // tienen brightness (CCE#112).
+      trigger.conditions.add(
+        _measuresLux(chosen!)
+            ? AutomationCondition.sensor(
+                sensorId: chosen.id,
+                field: 'lux',
+                value: 30,
+                operator: 'lt',
+              )
+            : AutomationCondition.sensor(
+                sensorId: chosen.id,
+                field: 'brightness',
+                value: 'darker',
+              ),
+      );
     });
   }
 
