@@ -125,7 +125,7 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
           ? 'Movimiento en $name'
           : 'Sin movimiento en $name';
     case 'contact':
-      return t.sensorValue == true ? 'Se abre $name' : 'Se cierra $name';
+      return '${ContactWords.verb(t.sensorValue == true)} $name';
     case 'temperature':
       final v = _num(t.sensorValue);
       if (t.sensorOperator == 'lt' || t.sensorOperator == 'lte') {
@@ -701,7 +701,7 @@ String triggerClause(Automation a, DevicesService devices) {
               ? 'haya movimiento en $name'
               : 'deje de haber movimiento en $name';
         case 'contact':
-          s = first.sensorValue == true ? 'se abra $name' : 'se cierre $name';
+          s = '${ContactWords.verbSubjunctive(first.sensorValue == true)} $name';
         case 'lastKey':
           // lastKey es el TIPO de pulsación (0 click, 1 doble, 2 mantenido);
           // el botón físico lo dice sensorOutlet (0-based, se muestra +1).

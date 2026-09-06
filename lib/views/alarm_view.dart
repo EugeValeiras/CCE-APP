@@ -1077,9 +1077,7 @@ class ProtectedList extends StatelessWidget {
             SizedBox(height: CceSpace.lg),
             SectionHeader(
               title: 'Qué protege',
-              counter: open == 0
-                  ? null
-                  : ContactWords.openCount(open),
+              counter: ContactWords.openCount(open),
             ),
             if (sensors.isEmpty)
               _emptyRow(context)

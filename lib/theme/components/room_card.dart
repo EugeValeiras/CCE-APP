@@ -3,6 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// El único import de esta carpeta que sale de `theme/`, y es a propósito:
+// `ContactWords` es Dart puro (sin Flutter, sin services, sin ciclos) y esta
+// card ya narra el dominio —dice «Movimiento», dibuja una puerta—. La
+// alternativa era que los dos llamadores repitieran la palabra, que es
+// justamente cómo se rompió CCE#115.
 import '../../utils/contact_words.dart';
 import '../cce_icons.dart';
 import '../cce_tokens.dart';

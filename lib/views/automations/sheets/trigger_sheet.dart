@@ -8,6 +8,7 @@ import '../../../models/device.dart';
 import '../../../services/devices_service.dart';
 import '../../../services/socket_service.dart';
 import '../../../services/ui_settings_service.dart';
+import '../../../utils/contact_words.dart';
 import '../../../theme/cce_icons.dart';
 import '../../../theme/cce_tokens.dart';
 import '../../../theme/components/cce_segmented.dart';
@@ -421,9 +422,12 @@ class _TriggerSheetState extends State<_TriggerSheet> {
       case 'contact':
         controls = CceSegmented<bool>(
           value: t.sensorValue == true,
+          // CCE#115 — estas dos etiquetas son las ÚNICAS del vocabulario que
+          // escriben el valor en vez de leerlo: invertirlas guarda una
+          // automatización que dispara al revés de lo que el dueño eligió.
           segments: const [
-            CceSegment(value: true, label: 'Se abre'),
-            CceSegment(value: false, label: 'Se cierra'),
+            CceSegment(value: true, label: ContactWords.opens),
+            CceSegment(value: false, label: ContactWords.closes),
           ],
           onChanged: (v) => setState(() => t.sensorValue = v),
         );

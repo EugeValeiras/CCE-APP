@@ -425,10 +425,8 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
       // CCE#112 — el lux numérico de los SNZB-03PR2.
       if (s.lux != null) add('Luz', '${s.lux} lx');
       if (s.motion != null) add('Movimiento', s.motion! ? 'Detectado' : 'Sin movimiento');
-      // CCE#115 — `contact: true` es ABIERTA (esta fila decía lo contrario).
-      // El rótulo es «Apertura» y no «Contacto» para que concuerde con la
-      // palabra que usa el resto de la App (y con la sección «Aperturas»).
-      if (s.contact != null) add('Apertura', ContactWords.label(s.contact!));
+      // CCE#115 — `contact: true` es ABIERTA; esta fila decía lo contrario.
+      if (s.contact != null) add('Contacto', ContactWords.label(s.contact!));
       if (s.battery != null) add('Batería', s.battery!);
     }
     return Column(
