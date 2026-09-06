@@ -41,13 +41,16 @@ class _FakeApi extends ApiService {
   _FakeApi(super.config, {this.armed = false, this.testMode = false});
 
   bool armed;
-  bool testMode;
+  /// `null` = el backend no conoce la clave (uno viejo).
+  bool? testMode;
   bool failTestModePut = false;
+  /// `GET /config/sensor-alarm-triggers` revienta (backend a medias, red).
+  bool failTriggers = false;
   final List<bool> testModePuts = [];
   int statusReads = 0;
 
   @override
-  Future<({bool armed, bool testMode})> getAlarmStatus() async {
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
     statusReads++;
     return (armed: armed, testMode: testMode);
   }
@@ -61,7 +64,10 @@ class _FakeApi extends ApiService {
   }
 
   @override
-  Future<Map<String, bool>> getSensorAlarmTriggers() async => const {};
+  Future<Map<String, bool>> getSensorAlarmTriggers() async {
+    if (failTriggers) throw Exception('backend caído');
+    return const {};
+  }
 
   @override
   Future<EventsPage> getEvents({
@@ -80,11 +86,19 @@ class _FakeApi extends ApiService {
 /// Socket que no abre nada: los eventos se empujan a mano con
 /// `debugEmitAlarm` / `debugEmitLive`, que son de la clase base.
 class _FakeSocket extends SocketService {
+  bool disposed = false;
+
   @override
   void connect(ServerConfig config) {}
 
   @override
   void disconnect() {}
+
+  @override
+  void dispose() {
+    disposed = true;
+    super.dispose();
+  }
 }
 
 /// Sirena de mentira. Lo único que interesa es SI arrancó: el `AudioPlayer`
@@ -92,6 +106,7 @@ class _FakeSocket extends SocketService {
 class _FakeSiren extends SirenService {
   int starts = 0;
   int stops = 0;
+  bool disposed = false;
   String? lastSound;
 
   @override
@@ -109,7 +124,9 @@ class _FakeSiren extends SirenService {
   }
 
   @override
-  void dispose() {}
+  void dispose() {
+    disposed = true;
+  }
 }
 
 AlarmEvent _event({required bool critical}) => AlarmEvent(
@@ -352,25 +369,142 @@ void main() {
 
     testWidgets('si no se pudo leer el estado, no se dibuja un switch que miente',
         (tester) async {
-      final mudo = _ApiSinTestMode(_nowhere());
+      final caido = _ApiQueFalla(_nowhere());
       await tester.pumpWidget(
-          _app(AlarmSensorsScreen(devices: devices, api: mudo)));
+          _app(AlarmSensorsScreen(devices: devices, api: caido)));
       await tester.pump();
       await tester.pump();
 
       expect(find.text('MODO PRUEBA'), findsNothing);
       expect(find.text('La alarma no suena'), findsNothing);
     });
+
+    /**
+     * I5: contra un backend viejo, `GET /config/alarm-armed` contesta 200 SIN
+     * `testMode`. Leerlo como `false` dibujaba un switch que parece funcionar
+     * y cuyo PUT 404ea siempre.
+     */
+    testWidgets('un backend que no conoce la clave tampoco dibuja el switch',
+        (tester) async {
+      final viejo = _ApiSinTestMode(_nowhere());
+      await tester.pumpWidget(
+          _app(AlarmSensorsScreen(devices: devices, api: viejo)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('MODO PRUEBA'), findsNothing,
+          reason: 'ausente no es apagado: es "no se sabe"');
+    });
+
+    /**
+     * B4 — el bloqueante: la sección estaba DESPUÉS de los returns tempranos
+     * de "no hay sensores" y de `_failed`. Si fallaba el GET de los triggers,
+     * la pantalla mostraba el error y el toggle no se dibujaba, aunque el modo
+     * estuviera activo. Como no hay otro lugar en la App donde apagarlo, la
+     * alarma quedaba muda sin forma de revertirla desde el celular.
+     */
+    testWidgets('el toggle sigue estando aunque falle la lectura de sensores',
+        (tester) async {
+      api.testMode = true;
+      api.failTriggers = true;
+
+      await pump(tester);
+
+      expect(find.text('No pude leer qué sensores disparan la alarma.'),
+          findsOneWidget);
+      expect(find.text('MODO PRUEBA'), findsOneWidget,
+          reason: 'sin esto la alarma queda muda y sin forma de revertirla');
+      expect(testModeSwitch(tester).value, isTrue);
+      expect(testModeSwitch(tester).onChanged, isNotNull,
+          reason: 'y tiene que poder apagarse, no sólo verse');
+    });
+
+    testWidgets('y se puede APAGAR con la lectura de sensores caída',
+        (tester) async {
+      api.testMode = true;
+      api.failTriggers = true;
+      await pump(tester);
+
+      await tester.tap(find.descendant(
+        of: find
+            .ancestor(
+                of: find.text('La alarma no suena'), matching: find.byType(Row))
+            .first,
+        matching: find.byType(CceSwitch),
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      expect(api.testModePuts, [false]);
+      expect(api.testMode, isFalse);
+    });
+
+    testWidgets('el toggle sigue estando aunque la casa no tenga sensores',
+        (tester) async {
+      final vacia = DevicesService(config: _nowhere(), socket: _FakeSocket());
+      addTearDown(vacia.dispose);
+      vacia.debugSeedDevices([]);
+      api.testMode = true;
+
+      await tester.pumpWidget(
+          _app(AlarmSensorsScreen(devices: vacia, api: api)));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('La casa no tiene sensores de apertura ni de movimiento.'),
+          findsOneWidget);
+      expect(find.text('MODO PRUEBA'), findsOneWidget);
+    });
+  });
+
+  /**
+   * I6: `dispose()` destruía servicios que no había creado.
+   * `SocketService.dispose()` cierra sus siete StreamControllers: pasarle el
+   * socket compartido de `DevicesService` y salir de la pantalla mataba los
+   * eventos de toda la app.
+   */
+  group('los servicios inyectados son del caller', () {
+    testWidgets('salir de la pantalla no cierra un socket que vino de afuera',
+        (tester) async {
+      final socket = _FakeSocket();
+      final siren = _FakeSiren();
+      await tester.pumpWidget(_app(AlarmView(
+        initialConfig: _nowhere(),
+        api: _FakeApi(_nowhere()),
+        socket: socket,
+        siren: siren,
+      )));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.pumpWidget(_app(const SizedBox()));
+      await tester.pump();
+
+      // Si el dispose lo hubiera cerrado, este emit tiraría
+      // "Cannot add new events after calling close".
+      socket.debugEmitAlarm(_event(critical: false));
+      expect(socket.disposed, isFalse);
+      expect(siren.disposed, isFalse, reason: 'la sirena inyectada tampoco es suya');
+    });
   });
 }
 
-/// Backend que no conoce el endpoint (o está caído): la sección no aparece.
+/// Backend viejo: contesta 200 pero sin la clave `testMode`.
 class _ApiSinTestMode extends _FakeApi {
   _ApiSinTestMode(super.config);
 
   @override
-  Future<({bool armed, bool testMode})> getAlarmStatus() async {
-    throw Exception('404');
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async =>
+      (armed: true, testMode: null);
+}
+
+/// Backend caído para la lectura del estado.
+class _ApiQueFalla extends _FakeApi {
+  _ApiQueFalla(super.config);
+
+  @override
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
+    throw Exception('500');
   }
 }
 

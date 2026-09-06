@@ -764,8 +764,12 @@ class ApiService {
   /// (CCE#122). Van juntos a propósito — no puede haber un instante en el que
   /// la pantalla sepa que está armada y todavía no sepa que no va a sonar.
   ///
-  /// `testMode` ausente (backend viejo) = apagado, que es el lado seguro.
-  Future<({bool armed, bool testMode})> getAlarmStatus() async {
+  /// `testMode` es `bool?`: **null = el backend no lo conoce**, que NO es lo
+  /// mismo que apagado. Contra un backend viejo, `false` hacía que la pantalla
+  /// dibujara un switch que parece funcionar y cuyo PUT 404ea siempre; con
+  /// null, la sección no se dibuja. Quien sólo quiera pintar un badge puede
+  /// tratar el null como apagado, que ahí sí es el lado seguro.
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
     final response = await http
         .get(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
@@ -774,7 +778,11 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return (armed: data['armed'] == true, testMode: data['testMode'] == true);
+      final raw = data['testMode'];
+      return (
+        armed: data['armed'] == true,
+        testMode: raw is bool ? raw : null,
+      );
     }
     throw Exception('Error ${response.statusCode}');
   }

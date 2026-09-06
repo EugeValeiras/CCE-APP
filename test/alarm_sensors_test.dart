@@ -72,7 +72,7 @@ class _FakeApi extends ApiService {
   /// GET saldría de verdad — y el `ServerConfig` por default apunta a la casa
   /// del dueño.
   @override
-  Future<({bool armed, bool testMode})> getAlarmStatus() async =>
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async =>
       (armed: false, testMode: false);
   int reads = 0;
   final List<String> puts = [];

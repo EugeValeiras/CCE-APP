@@ -60,6 +60,13 @@ class AlarmView extends StatefulWidget {
 class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   late ServerConfig _config;
   ApiService? _api;
+  /// Los servicios que ESTE state creó, y por lo tanto los únicos que puede
+  /// destruir. `SocketService.dispose()` cierra sus siete StreamControllers:
+  /// hacerlo sobre un socket que vino inyectado —el compartido de
+  /// `DevicesService`, por ejemplo— mataría los eventos de TODA la app al
+  /// salir de esta pantalla.
+  late final bool _ownsSocket = widget.socket == null;
+  late final bool _ownsSiren = widget.siren == null;
   late final SocketService _socket = widget.socket ?? SocketService();
   late final SirenService _siren = widget.siren ?? SirenService();
   final NotificationService _notifications = NotificationService();
@@ -224,7 +231,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _isArmed = status.armed;
-        _isTestMode = status.testMode;
+        // Acá `null` (backend sin la clave) se pinta como apagado: el chip
+        // sólo AVISA, no ofrece cambiar nada. El switch de la pantalla de
+        // sensores sí distingue el null, porque ahí un toggle que no se puede
+        // guardar sería una mentira.
+        _isTestMode = status.testMode ?? false;
         _error = null;
         _isLoading = false;
       });
@@ -419,8 +430,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _tokenSub?.cancel();
     _pushReceivedSub?.cancel();
     _pushTapSub?.cancel();
-    _socket.dispose();
-    _siren.dispose();
+    // SÓLO lo que creó este state (ver `_ownsSocket`). Un servicio inyectado es
+    // del caller: ni `dispose()` ni `disconnect()` — las suscripciones propias
+    // ya se cancelaron arriba, y eso es todo lo que esta pantalla tiene que
+    // deshacer.
+    if (_ownsSocket) _socket.dispose();
+    if (_ownsSiren) _siren.dispose();
     super.dispose();
   }
 

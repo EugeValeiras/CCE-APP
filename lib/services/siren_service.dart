@@ -32,6 +32,14 @@ class SirenService {
 
     String assetPath;
     switch (sound) {
+      case 'none':
+        // Defensa en profundidad (CCE#122): el backend emite `sound: 'none'`
+        // en modo prueba y el `default` de abajo es la SIRENA. Hoy no se llega
+        // acá porque `_onAlarmTriggered` corta antes por `critical`, pero el
+        // silencio del modo prueba no puede depender de un solo `if` a una
+        // línea de distancia.
+        _isPlaying = false;
+        return;
       case 'doorbell':
         assetPath = 'sounds/doorbell.wav';
         break;

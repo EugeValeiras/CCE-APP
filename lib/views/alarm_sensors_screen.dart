@@ -176,48 +176,42 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     );
   }
 
+  /// El modo prueba va PRIMERO y fuera de todos los short-circuits.
+  ///
+  /// Estaba dentro del ListView final, después de los returns tempranos de "no
+  /// hay sensores" y de `_failed`: si `GET /config/sensor-alarm-triggers`
+  /// fallaba, la pantalla mostraba "No pude leer qué sensores disparan la
+  /// alarma" y el toggle NO se dibujaba —aunque su propia lectura hubiera
+  /// funcionado y el modo estuviera activo—. Como no hay otro lugar en la App
+  /// donde apagarlo, la alarma quedaba muda sin forma de revertirla desde el
+  /// celular. No depende de `_triggers`: no puede desaparecer con ellos.
   Widget _buildBody() {
     final contacts = _group(true);
     final motions = _group(false);
-
-    if (contacts.isEmpty && motions.isEmpty) {
-      return _Centered(
-        child: Text(
-          'La casa no tiene sensores de apertura ni de movimiento.',
-          textAlign: TextAlign.center,
-          style: CceText.body.copyWith(color: CceColors.textTertiary),
-        ),
-      );
-    }
-
-    if (_failed) {
-      return _Centered(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'No pude leer qué sensores disparan la alarma.',
-              textAlign: TextAlign.center,
-              style: CceText.body.copyWith(color: CceColors.textTertiary),
-            ),
-            SizedBox(height: CceSpace.lg),
-            TextButton(onPressed: _load, child: const Text('Reintentar')),
-          ],
-        ),
-      );
-    }
+    final sinSensores = contacts.isEmpty && motions.isEmpty;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
           CceSpace.lg, CceSpace.sm, CceSpace.lg, CceSpace.xxl),
       children: [
-        Text(
-          'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
-          style: CceText.caption,
-        ),
         ..._testModeSection(),
-        if (contacts.isNotEmpty) ..._section('Aperturas', contacts),
-        if (motions.isNotEmpty) ..._section('Movimiento', motions),
+        if (_failed)
+          _Aviso(
+            texto: 'No pude leer qué sensores disparan la alarma.',
+            onReintentar: _load,
+          )
+        else if (sinSensores)
+          const _Aviso(
+            texto: 'La casa no tiene sensores de apertura ni de movimiento.',
+          )
+        else ...[
+          Text(
+            'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
+            style: CceText.caption,
+          ),
+          if (contacts.isNotEmpty) ..._section('Aperturas', contacts),
+          if (motions.isNotEmpty) ..._section('Movimiento', motions),
+        ],
       ],
     );
   }
@@ -346,16 +340,31 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
   }
 }
 
-class _Centered extends StatelessWidget {
-  const _Centered({required this.child});
+/// Un estado vacío o con error, DENTRO de la lista y no en lugar de ella: lo
+/// que va arriba (el modo prueba) tiene que seguir a la vista.
+class _Aviso extends StatelessWidget {
+  const _Aviso({required this.texto, this.onReintentar});
 
-  final Widget child;
+  final String texto;
+  final VoidCallback? onReintentar;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: CceSpace.xxl),
-          child: child,
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.symmetric(
+            horizontal: CceSpace.lg, vertical: CceSpace.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: CceText.body.copyWith(color: CceColors.textTertiary),
+            ),
+            if (onReintentar != null) ...[
+              SizedBox(height: CceSpace.lg),
+              TextButton(onPressed: onReintentar, child: const Text('Reintentar')),
+            ],
+          ],
         ),
       );
 }
