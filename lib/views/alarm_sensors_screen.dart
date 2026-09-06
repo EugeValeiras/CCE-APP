@@ -39,6 +39,11 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
   Map<String, bool>? _triggers;
   bool _failed = false;
 
+  /// Modo prueba (CCE#122). null = todavía no se leyó: el switch espera en vez
+  /// de mostrar "apagado", que sería una promesa de que la alarma va a sonar.
+  bool? _testMode;
+  bool _savingTestMode = false;
+
   /// Ids canónicos con un PUT en vuelo: su switch no acepta otro toque.
   final Set<String> _saving = {};
 
@@ -52,6 +57,9 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
 
   Future<void> _load() async {
     setState(() => _failed = false);
+    // El modo prueba se lee aparte y es best-effort: que un backend viejo no
+    // conozca el endpoint no puede dejar sin configurar los sensores.
+    _loadTestMode();
     try {
       final triggers = await _api.getSensorAlarmTriggers();
       if (!mounted) return;
@@ -59,6 +67,41 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _loadTestMode() async {
+    try {
+      final status = await _api.getAlarmStatus();
+      if (!mounted) return;
+      setState(() => _testMode = status.testMode);
+    } catch (_) {
+      // Se queda en null: el switch no se dibuja antes que la verdad.
+    }
+  }
+
+  Future<void> _toggleTestMode(bool enabled) async {
+    if (_savingTestMode) return;
+    final previous = _testMode;
+    setState(() {
+      _testMode = enabled;
+      _savingTestMode = true;
+    });
+    try {
+      final saved = await _api.setAlarmTestMode(enabled);
+      if (!mounted) return;
+      setState(() => _testMode = saved);
+    } catch (_) {
+      if (!mounted) return;
+      // Revertir importa más acá que en cualquier otro switch: dejarlo en
+      // "activado" sin que el backend lo haya guardado hace creer que la
+      // alarma está muda cuando en realidad va a sonar.
+      setState(() => _testMode = previous);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No pude cambiar el modo prueba')),
+      );
+    } finally {
+      if (mounted) setState(() => _savingTestMode = false);
     }
   }
 
@@ -133,50 +176,101 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     );
   }
 
+  /// El modo prueba va PRIMERO y fuera de todos los short-circuits.
+  ///
+  /// Estaba dentro del ListView final, después de los returns tempranos de "no
+  /// hay sensores" y de `_failed`: si `GET /config/sensor-alarm-triggers`
+  /// fallaba, la pantalla mostraba "No pude leer qué sensores disparan la
+  /// alarma" y el toggle NO se dibujaba —aunque su propia lectura hubiera
+  /// funcionado y el modo estuviera activo—. Como no hay otro lugar en la App
+  /// donde apagarlo, la alarma quedaba muda sin forma de revertirla desde el
+  /// celular. No depende de `_triggers`: no puede desaparecer con ellos.
   Widget _buildBody() {
     final contacts = _group(true);
     final motions = _group(false);
-
-    if (contacts.isEmpty && motions.isEmpty) {
-      return _Centered(
-        child: Text(
-          'La casa no tiene sensores de apertura ni de movimiento.',
-          textAlign: TextAlign.center,
-          style: CceText.body.copyWith(color: CceColors.textTertiary),
-        ),
-      );
-    }
-
-    if (_failed) {
-      return _Centered(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'No pude leer qué sensores disparan la alarma.',
-              textAlign: TextAlign.center,
-              style: CceText.body.copyWith(color: CceColors.textTertiary),
-            ),
-            SizedBox(height: CceSpace.lg),
-            TextButton(onPressed: _load, child: const Text('Reintentar')),
-          ],
-        ),
-      );
-    }
+    final sinSensores = contacts.isEmpty && motions.isEmpty;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
           CceSpace.lg, CceSpace.sm, CceSpace.lg, CceSpace.xxl),
       children: [
-        Text(
-          'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
-          style: CceText.caption,
-        ),
-        if (contacts.isNotEmpty) ..._section('Aperturas', contacts),
-        if (motions.isNotEmpty) ..._section('Movimiento', motions),
+        ..._testModeSection(),
+        if (_failed)
+          _Aviso(
+            texto: 'No pude leer qué sensores disparan la alarma.',
+            onReintentar: _load,
+          )
+        else if (sinSensores)
+          const _Aviso(
+            texto: 'La casa no tiene sensores de apertura ni de movimiento.',
+          )
+        else ...[
+          Text(
+            'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
+            style: CceText.caption,
+          ),
+          if (contacts.isNotEmpty) ..._section('Aperturas', contacts),
+          if (motions.isNotEmpty) ..._section('Movimiento', motions),
+        ],
       ],
     );
   }
+
+  /// Modo prueba: el disparo llega sólo como notificación (CCE#122).
+  ///
+  /// Va ACÁ, al lado de qué sensores disparan, porque es la otra mitad de la
+  /// misma pregunta: qué hace la alarma cuando salta. Y el texto lo dice sin
+  /// vueltas — es un toggle manual, no vence solo, y la única defensa contra
+  /// olvidarlo prendido es que se lea.
+  List<Widget> _testModeSection() {
+    final testMode = _testMode;
+    if (testMode == null) return const [];
+    return [
+      const SectionHeader(title: 'Modo prueba'),
+      Container(
+        height: kRowHeight,
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: CceColors.strokeSoft)),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              testMode ? Icons.volume_off_outlined : Icons.volume_up_outlined,
+              size: 20,
+              color: testMode ? _amber : CceColors.textTertiary,
+            ),
+            SizedBox(width: CceSpace.md),
+            const Expanded(
+              child: Text('La alarma no suena', style: CceText.body),
+            ),
+            SizedBox(width: CceSpace.sm),
+            CceSwitch(
+              value: testMode,
+              accent: _amber,
+              onChanged: _savingTestMode ? null : _toggleTestMode,
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: CceSpace.sm),
+      Text(
+        testMode
+            ? 'ACTIVADO: la alarma sigue armada y sigue disparando, pero el '
+                'aviso llega sólo como notificación — sin sirena, sin pantalla '
+                'roja y sin repetirse. Se apaga a mano.'
+            : 'Para acostumbrarte a la alarma sin que suene: armala, salí y '
+                'hacela saltar. El aviso te llega igual, en silencio.',
+        style: CceText.caption.copyWith(
+          color: testMode ? _amber : CceColors.textTertiary,
+        ),
+      ),
+      SizedBox(height: CceSpace.md),
+    ];
+  }
+
+  /// Ámbar y no rojo: en la pantalla de la alarma el rojo ya significa
+  /// "armada", y mezclarlos sería peor que no decir nada.
+  static const Color _amber = Color(0xFFFFB300);
 
   List<Widget> _section(String title, List<Device> sensors) {
     final triggers = _triggers;
@@ -246,16 +340,31 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
   }
 }
 
-class _Centered extends StatelessWidget {
-  const _Centered({required this.child});
+/// Un estado vacío o con error, DENTRO de la lista y no en lugar de ella: lo
+/// que va arriba (el modo prueba) tiene que seguir a la vista.
+class _Aviso extends StatelessWidget {
+  const _Aviso({required this.texto, this.onReintentar});
 
-  final Widget child;
+  final String texto;
+  final VoidCallback? onReintentar;
 
   @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: CceSpace.xxl),
-          child: child,
+  Widget build(BuildContext context) => Padding(
+        padding: EdgeInsets.symmetric(
+            horizontal: CceSpace.lg, vertical: CceSpace.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              texto,
+              textAlign: TextAlign.center,
+              style: CceText.body.copyWith(color: CceColors.textTertiary),
+            ),
+            if (onReintentar != null) ...[
+              SizedBox(height: CceSpace.lg),
+              TextButton(onPressed: onReintentar, child: const Text('Reintentar')),
+            ],
+          ],
         ),
       );
 }

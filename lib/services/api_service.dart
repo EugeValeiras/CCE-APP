@@ -757,6 +757,19 @@ class ApiService {
   }
 
   Future<bool> getAlarmState() async {
+    return (await getAlarmStatus()).armed;
+  }
+
+  /// Estado completo de la alarma: armada y en modo prueba, en UNA lectura
+  /// (CCE#122). Van juntos a propósito — no puede haber un instante en el que
+  /// la pantalla sepa que está armada y todavía no sepa que no va a sonar.
+  ///
+  /// `testMode` es `bool?`: **null = el backend no lo conoce**, que NO es lo
+  /// mismo que apagado. Contra un backend viejo, `false` hacía que la pantalla
+  /// dibujara un switch que parece funcionar y cuyo PUT 404ea siempre; con
+  /// null, la sección no se dibuja. Quien sólo quiera pintar un badge puede
+  /// tratar el null como apagado, que ahí sí es el lado seguro.
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
     final response = await http
         .get(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
@@ -765,7 +778,31 @@ class ApiService {
         .timeout(const Duration(seconds: 5));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return data['armed'] == true;
+      final raw = data['testMode'];
+      return (
+        armed: data['armed'] == true,
+        testMode: raw is bool ? raw : null,
+      );
+    }
+    throw Exception('Error ${response.statusCode}');
+  }
+
+  /// Prende o apaga el modo prueba. Devuelve lo que quedó guardado, no lo que
+  /// se pidió: si el backend dijo otra cosa, manda el backend.
+  Future<bool> setAlarmTestMode(bool enabled) async {
+    final response = await http
+        .put(
+          Uri.parse('${config.baseUrl}/config/alarm-test-mode'),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'enabled': enabled}),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['enabled'] == true;
     }
     throw Exception('Error ${response.statusCode}');
   }

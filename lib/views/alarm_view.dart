@@ -34,11 +34,23 @@ class AlarmView extends StatefulWidget {
   /// sólo el dial (flujo de configuración inicial).
   final DevicesService? devices;
 
+  /// Inyectables para tests (mismo patrón que `AlarmSensorsScreen.api`). En
+  /// producción los tres se construyen acá adentro.
+  @visibleForTesting
+  final ApiService? api;
+  @visibleForTesting
+  final SocketService? socket;
+  @visibleForTesting
+  final SirenService? siren;
+
   const AlarmView({
     super.key,
     this.initialConfig,
     this.neo = false,
     this.devices,
+    this.api,
+    this.socket,
+    this.siren,
   });
 
   @override
@@ -48,11 +60,23 @@ class AlarmView extends StatefulWidget {
 class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   late ServerConfig _config;
   ApiService? _api;
-  final SocketService _socket = SocketService();
-  final SirenService _siren = SirenService();
+  /// Los servicios que ESTE state creó, y por lo tanto los únicos que puede
+  /// destruir. `SocketService.dispose()` cierra sus siete StreamControllers:
+  /// hacerlo sobre un socket que vino inyectado —el compartido de
+  /// `DevicesService`, por ejemplo— mataría los eventos de TODA la app al
+  /// salir de esta pantalla.
+  late final bool _ownsSocket = widget.socket == null;
+  late final bool _ownsSiren = widget.siren == null;
+  late final SocketService _socket = widget.socket ?? SocketService();
+  late final SirenService _siren = widget.siren ?? SirenService();
   final NotificationService _notifications = NotificationService();
 
   bool _isArmed = false;
+
+  /// Modo prueba (CCE#122): la alarma sigue armada y sigue disparando, pero el
+  /// aviso llega mudo. Va al lado del estado en la pantalla porque un dial que
+  /// dice "ARMADA" a secas mientras esto está prendido es una trampa.
+  bool _isTestMode = false;
   bool _isConnected = false;
   bool _isLoading = false;
   bool _isToggling = false;
@@ -147,7 +171,7 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
 
   void _connectToServer() {
     try {
-      _api = ApiService(_config);
+      _api = widget.api ?? ApiService(_config);
 
       _alarmSub?.cancel();
       _armedSub?.cancel();
@@ -181,6 +205,11 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         if (section == 'sensorAlarmTriggers' || section == 'all') {
           _loadAlarmTriggers();
         }
+        // El modo prueba se prende desde el CLI, el dashboard o esta misma
+        // App: sin esto el dial seguiría prometiendo una alarma que suena.
+        if (section == 'alarm' || section == 'all') {
+          _fetchAlarmState();
+        }
       });
 
       _fetchAlarmState();
@@ -198,10 +227,15 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     if (_api == null || !mounted) return;
     setState(() => _isLoading = true);
     try {
-      final armed = await _api!.getAlarmState();
+      final status = await _api!.getAlarmStatus();
       if (!mounted) return;
       setState(() {
-        _isArmed = armed;
+        _isArmed = status.armed;
+        // Acá `null` (backend sin la clave) se pinta como apagado: el chip
+        // sólo AVISA, no ofrece cambiar nada. El switch de la pantalla de
+        // sensores sí distingue el null, porque ahí un toggle que no se puede
+        // guardar sería una mentira.
+        _isTestMode = status.testMode ?? false;
         _error = null;
         _isLoading = false;
       });
@@ -328,8 +362,33 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _fetchAlarmState();
   }
 
+  /// Un disparo llegó por el websocket.
+  ///
+  /// El TIPO decide (EugeValeiras/CCE#122). Antes esto arrancaba la sirena y
+  /// tomaba la pantalla sin mirar `event.critical`: con la App abierta, un
+  /// aviso `info` sonaba igual que un robo — y con eso el modo prueba no se
+  /// cumplía justo en el dispositivo donde más importa. El Dashboard ya lo
+  /// resolvía del otro lado (`alarm.service.ts`: sólo `critical` toma la
+  /// pantalla); esta es la mitad que faltaba.
   void _onAlarmTriggered(AlarmEvent event) {
     _ackAlarm(event.automationId);
+
+    if (!event.critical) {
+      // Aviso discreto y nada más: sin sirena, sin pantalla roja, sin vibrar.
+      if (mounted) {
+        InAppNotification.show(
+          context,
+          title: event.automationName,
+          body: event.message,
+          icon: Icons.notifications_active_outlined,
+          iconColor: CceColors.textSecondary,
+          duration: const Duration(seconds: 6),
+        );
+      }
+      return;
+    }
+
+    // La alarma de la casa: pantalla completa, sirena y vibración. No se toca.
     setState(() => _activeAlarm = event);
     _siren.startSiren(sound: event.sound);
     HapticFeedback.heavyImpact();
@@ -371,8 +430,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     _tokenSub?.cancel();
     _pushReceivedSub?.cancel();
     _pushTapSub?.cancel();
-    _socket.dispose();
-    _siren.dispose();
+    // SÓLO lo que creó este state (ver `_ownsSocket`). Un servicio inyectado es
+    // del caller: ni `dispose()` ni `disconnect()` — las suscripciones propias
+    // ya se cancelaron arriba, y eso es todo lo que esta pantalla tiene que
+    // deshacer.
+    if (_ownsSocket) _socket.dispose();
+    if (_ownsSiren) _siren.dispose();
     super.dispose();
   }
 
@@ -602,6 +665,13 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                 ),
         ),
         SizedBox(height: isTablet ? CceSpace.xxxl : CceSpace.xxl),
+        // MODO PRUEBA (CCE#122): va PEGADO al dial y no escondido en el
+        // engranaje. El toggle es manual y no vence solo: la única defensa
+        // contra olvidarlo prendido es verlo cada vez que se mira la alarma.
+        if (_isTestMode) ...[
+          _TestModeChip(fontSize: hintSize),
+          SizedBox(height: CceSpace.md),
+        ],
         Text(
           'Tocá para ${_isArmed ? 'desarmar' : 'armar'}',
           style: CceText.body.copyWith(
@@ -622,6 +692,49 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// "MODO PRUEBA · No va a sonar", bajo el dial (CCE#122).
+///
+/// Ámbar y no rojo a propósito: en esta pantalla el rojo ya significa "armada",
+/// y confundir las dos cosas sería peor que no decir nada.
+class _TestModeChip extends StatelessWidget {
+  const _TestModeChip({required this.fontSize});
+
+  final double fontSize;
+
+  static const Color _amber = Color(0xFFFFB300);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+          horizontal: CceSpace.md, vertical: CceSpace.sm),
+      decoration: BoxDecoration(
+        color: _amber.withValues(alpha: 0.14),
+        border: Border.all(color: _amber.withValues(alpha: 0.55)),
+        borderRadius: BorderRadius.circular(CceRadii.sm),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.volume_off_outlined, size: fontSize + 4, color: _amber),
+          SizedBox(width: CceSpace.sm),
+          Flexible(
+            child: Text(
+              'MODO PRUEBA · no va a sonar',
+              style: CceText.body.copyWith(
+                color: _amber,
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

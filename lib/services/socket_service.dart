@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/alarm_event.dart';
 import '../models/server_config.dart';
@@ -191,6 +192,17 @@ class SocketService {
     _socket = null;
     _isConnected = false;
   }
+
+  /// SÓLO TESTS: empuja un disparo por el stream, sin socket. Es lo que
+  /// permite probar qué hace la pantalla ante un evento del backend — que un
+  /// aviso NO crítico no arranque la sirena, por ejemplo (CCE#122).
+  @visibleForTesting
+  void debugEmitAlarm(AlarmEvent event) => _alarmController.add(event);
+
+  /// SÓLO TESTS: lo mismo para un evento en vivo (`config:changed`, etc.).
+  @visibleForTesting
+  void debugEmitLive(String name, Map<String, dynamic> payload) =>
+      _emitLive(name, payload);
 
   void dispose() {
     disconnect();
