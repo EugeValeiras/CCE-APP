@@ -89,11 +89,14 @@ void main() {
     expect(phone.phoneInCall, isFalse);
   });
 
-  test('media es la contrapartida del filtro manual: dev_tv/dev_jbl viven ahí',
+  test('media es la contrapartida del filtro manual: dev_tv*/dev_jbl viven ahí',
       () {
     final s = seeded();
     final mediaIds = s.media.map((d) => d.id).toList();
-    expect(mediaIds, containsAll(['dev_tv', 'dev_jbl']));
+    // El golden de 05/09/2026 trae dos TVs (dev_tv_1, dev_tv_2).
+    expect(mediaIds, contains('dev_jbl'));
+    expect(mediaIds.where((id) => id.startsWith('dev_tv')), isNotEmpty,
+        reason: 'falta una TV en media');
     // …y siguen FUERA de lights/sensors (la exclusión que motiva el getter).
     expect(s.lights.any((d) => d.isMediaDevice), isFalse);
     expect(s.sensors.any((d) => d.isMediaDevice), isFalse);

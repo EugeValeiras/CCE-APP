@@ -421,6 +421,8 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
     if (s != null) {
       if (s.temperature != null) add('Temperatura', '${s.temperature!.toStringAsFixed(1)}°');
       if (s.humidity != null) add('Humedad', '${s.humidity!.toStringAsFixed(0)}%');
+      // CCE#112 — el lux numérico de los SNZB-03PR2.
+      if (s.lux != null) add('Luz', '${s.lux} lx');
       if (s.motion != null) add('Movimiento', s.motion! ? 'Detectado' : 'Sin movimiento');
       if (s.contact != null) add('Contacto', s.contact! ? 'Cerrado' : 'Abierto');
       if (s.battery != null) add('Batería', s.battery!);

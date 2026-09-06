@@ -1,4 +1,5 @@
 import '../../models/device.dart';
+import 'numeric_readings.dart';
 import '../../models/event_record.dart';
 import '../../services/devices_service.dart';
 
@@ -212,21 +213,18 @@ class _RunKey {
           maxGap: const Duration(seconds: 5),
         );
       }
-      if (sensor['temperature'] != null) {
-        return _RunKey(
-          kind: 'temperature',
-          deviceId: deviceId,
-          collapsible: true,
-          maxGap: const Duration(minutes: 30),
-        );
-      }
-      if (sensor['humidity'] != null) {
-        return _RunKey(
-          kind: 'humidity',
-          deviceId: deviceId,
-          collapsible: true,
-          maxGap: const Duration(minutes: 30),
-        );
+      // Lecturas numéricas (temperatura, humedad, luz): una corrida por la
+      // primera lectura presente, con 30 min de gap. La lista es LA tabla del
+      // historial (numeric_readings.dart), la misma que las dibuja (CCE#112).
+      for (final key in numericReadingKeys) {
+        if (sensor[key] != null) {
+          return _RunKey(
+            kind: key,
+            deviceId: deviceId,
+            collapsible: true,
+            maxGap: const Duration(minutes: 30),
+          );
+        }
       }
     }
 

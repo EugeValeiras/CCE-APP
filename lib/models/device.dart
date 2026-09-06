@@ -494,13 +494,29 @@ class DeviceState {
   }
 }
 
+/// Umbral con el que el backend deriva `brightness` de `lux`
+/// (BRIGHTNESS_LUX_THRESHOLD en el API, CCE#112): menos de 50 lx es oscuro.
+const int kBrightnessLuxThreshold = 50;
+
 class DeviceSensor {
   final double? temperature;
   final double? humidity;
   final String? battery;
   final bool? motion;
   final bool? contact;
+  /// 'darker' | 'brighter'. Derivado de [lux] (umbral 50) cuando el sensor mide.
   final String? brightness;
+  /// Iluminancia en lux, entera (CCE#112). Sólo en los sensores que la miden
+  /// (SNZB-03PR2); el SNZB-03P viejo trae [brightness] y nada más.
+  final int? lux;
+
+  /// ¿Hay luz? El binario si vino; si no, el número contra el mismo umbral que
+  /// usa el backend. null sin ninguna de las dos lecturas.
+  bool? get isBright {
+    if (brightness != null) return brightness == 'brighter';
+    if (lux != null) return lux! >= kBrightnessLuxThreshold;
+    return null;
+  }
   // Switches multi-botón (Hue Tap Dial / remotes): cantidad de botones y la
   // última tecla pulsada (0=click, 1=doble, 2=long).
   final int? outlets;
@@ -517,6 +533,7 @@ class DeviceSensor {
     this.motion,
     this.contact,
     this.brightness,
+    this.lux,
     this.outlets,
     this.lastKey,
     this.outlet,
@@ -545,6 +562,10 @@ class DeviceSensor {
       motion: _sensorBool(json['motion']) ?? current?.motion,
       contact: _sensorBool(json['contact']) ?? current?.contact,
       brightness: _sensorString(json['brightness']) ?? current?.brightness,
+      // CCE#112 — acá y NO en otra lista: esta es la única whitelist del sensor
+      // (REST y WS), así que agregarlo acá es lo que evita que el primer evento
+      // WebSocket lo borre (la trampa de CCE#100 con lightModes).
+      lux: _sensorInt(json['lux']) ?? current?.lux,
       outlets: _sensorInt(json['outlets']) ?? current?.outlets,
       lastKey: _sensorInt(json['lastKey']) ?? current?.lastKey,
       outlet: _sensorInt(json['outlet']) ?? current?.outlet,

@@ -518,10 +518,23 @@ class _TriggerSheetState extends State<_TriggerSheet> {
         );
       case 'temperature':
       case 'humidity':
+      case 'lux': // CCE#112 — mismo editor de umbral, en lx y de a 5
         final isTemp = t.sensorField == 'temperature';
-        final unit = isTemp ? '°' : '%';
+        final isLux = t.sensorField == 'lux';
+        final unit = isTemp ? '°' : (isLux ? ' lx' : '%');
         final step = isTemp ? 0.5 : 5.0;
-        final value = (t.sensorValue as num?)?.toDouble() ?? 0;
+        // La API acepta el umbral como String (el motor hace Number()): una
+        // automatización escrita por CLI trae "30" y un cast `as num?` la
+        // hacía pantalla roja al abrirla.
+        final value = num.tryParse('${t.sensorValue}')?.toDouble() ?? 0;
+        // Topes: la API define lux como entero >= 0 y la humedad va de 0 a
+        // 100; un «baja de -5 lx» nunca dispara y se guardaba igual. En el
+        // borde el botón se deshabilita en vez de hacer nada.
+        final double minValue = isTemp ? double.negativeInfinity : 0;
+        final double maxValue =
+            isLux || isTemp ? double.infinity : 100;
+        final canMinus = value > minValue;
+        final canPlus = value < maxValue;
         controls = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -539,8 +552,14 @@ class _TriggerSheetState extends State<_TriggerSheet> {
             _Stepper(
               valueText:
                   '${value == value.roundToDouble() ? value.round() : value}$unit',
-              onMinus: () => setState(() => t.sensorValue = value - step),
-              onPlus: () => setState(() => t.sensorValue = value + step),
+              onMinus: canMinus
+                  ? () => setState(() =>
+                      t.sensorValue = (value - step).clamp(minValue, maxValue))
+                  : null,
+              onPlus: canPlus
+                  ? () => setState(() =>
+                      t.sensorValue = (value + step).clamp(minValue, maxValue))
+                  : null,
             ),
             const SizedBox(height: 6),
             const Text(
@@ -554,6 +573,65 @@ class _TriggerSheetState extends State<_TriggerSheet> {
           '${t.sensorField} = ${t.sensorValue}',
           style: CceText.caption,
         );
+    }
+
+    // CCE#112 — un sensor de movimiento que ADEMÁS mide lux (SNZB-03PR2)
+    // dispara por cualquiera de las dos cosas: el chip cambia el campo. Se
+    // decide por la CAPABILITY, no por la lectura viva: tras un arranque del
+    // API el sensor declara `illuminance` sin tener lux todavía, y sin chips
+    // no había forma de crear el disparador de luz ni de volver a Movimiento
+    // en uno existente. El 03P viejo no declara nada y no ve los chips.
+    final luxChipApplies = d != null &&
+        (d.hasCapability('illuminance') ||
+            d.sensor?.lux != null ||
+            t.sensorField == 'lux');
+    // Movimiento por CAPABILITY (igual que la luz), con el type como red de
+    // seguridad para los devices legacy sin capabilities.
+    if (d != null &&
+        (d.hasCapability('motion') || d.isMotionSensor) &&
+        luxChipApplies &&
+        (t.sensorField == 'motion' || t.sensorField == 'lux')) {
+      controls = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            children: [
+              // Idempotentes: tocar el chip YA elegido no reescribe el
+              // trigger («Deja de detectar» se daba vuelta a «Detecta», y un
+              // umbral ajustado volvía a 30 lx).
+              ChoiceChip(
+                label: const Text('Movimiento'),
+                selected: t.sensorField == 'motion',
+                showCheckmark: false,
+                onSelected: (_) {
+                  if (t.sensorField == 'motion') return;
+                  setState(() {
+                    t.sensorField = 'motion';
+                    t.sensorValue = true;
+                    t.sensorOperator = null;
+                  });
+                },
+              ),
+              ChoiceChip(
+                label: const Text('Luz'),
+                selected: t.sensorField == 'lux',
+                showCheckmark: false,
+                onSelected: (_) {
+                  if (t.sensorField == 'lux') return;
+                  setState(() {
+                    t.sensorField = 'lux';
+                    t.sensorValue = 30;
+                    t.sensorOperator = 'lt';
+                  });
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          controls,
+        ],
+      );
     }
 
     return Container(
@@ -947,8 +1025,9 @@ class _Stepper extends StatelessWidget {
   });
 
   final String valueText;
-  final VoidCallback onMinus;
-  final VoidCallback onPlus;
+  /// null = en el tope: el botón se ve deshabilitado.
+  final VoidCallback? onMinus;
+  final VoidCallback? onPlus;
 
   @override
   Widget build(BuildContext context) {
@@ -978,22 +1057,26 @@ class _RoundIconButton extends StatelessWidget {
   const _RoundIconButton({required this.icon, required this.onTap});
 
   final IconData icon;
-  final VoidCallback onTap;
+  /// null = deshabilitado (atenuado y sin respuesta al toque).
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(CceRadii.pill),
-      child: Container(
-        width: 40,
-        height: 40,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(
-          color: CceColors.surfaceHigh,
-          shape: BoxShape.circle,
+    return Opacity(
+      opacity: onTap == null ? 0.4 : 1,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(CceRadii.pill),
+        child: Container(
+          width: 40,
+          height: 40,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: CceColors.surfaceHigh,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: CceColors.textPrimary),
         ),
-        child: Icon(icon, size: 20, color: CceColors.textPrimary),
       ),
     );
   }
@@ -1156,6 +1239,16 @@ SensorTrigger defaultTriggerFor(Device d) {
       sensorField: 'humidity',
       sensorValue: 60,
       sensorOperator: 'gt',
+    );
+  }
+  // CCE#112 — un sensor de iluminancia SIN movimiento (Z2M/Matter): «luz < 30
+  // lx». Antes caía a `motion: true`, que ese device nunca puede cumplir.
+  if (d.hasCapability('illuminance') || d.sensor?.lux != null) {
+    return SensorTrigger(
+      sensorId: d.id,
+      sensorField: 'lux',
+      sensorValue: 30,
+      sensorOperator: 'lt',
     );
   }
   return SensorTrigger(

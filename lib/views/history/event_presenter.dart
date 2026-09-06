@@ -10,6 +10,7 @@ import '../../utils/vacuum_state.dart';
 import '../../utils/verb_labels.dart';
 import '../telephony/call_history_screen.dart' show formatCallDuration;
 import 'cause_grouping.dart';
+import 'numeric_readings.dart';
 import 'event_grouping.dart';
 import 'phone_events.dart';
 
@@ -204,10 +205,13 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
     }
     if (sensor['motion'] != null) {
       final motion = sensor['motion'] == true;
+      // CCE#112 — el bloque viene ACUMULADO: el movimiento de un SNZB-03PR2
+      // trae su lux (y el de un Hue, su temperatura). Se muestran al lado.
       return EventPresentation(
         icon: _ic(motion ? CceIcons.personStanding : CceIcons.footprints),
         color: motion ? CceColors.motion : CceColors.textSecondary,
         title: motion ? 'Movimiento en $name' : 'Sin movimiento en $name',
+        subtitle: numericReadingsLine(sensor),
       );
     }
     if (sensor['lastKey'] != null) {
@@ -220,22 +224,16 @@ EventPresentation presentEvent(EventRecord e, DevicesService devices) {
         subtitle: outlet != null ? 'outlet $outlet' : null,
       );
     }
-    if (sensor['temperature'] is num) {
-      final t = (sensor['temperature'] as num).toDouble();
+    // Lecturas numéricas (temperatura, humedad, luz): una sola tabla, la
+    // misma que usa la fila colapsada (CCE#112). TODAS las que vengan: un
+    // sensor combinado trae temperatura y luz en el mismo bloque.
+    final readings = numericReadingsOf(sensor);
+    if (readings.isNotEmpty) {
       return EventPresentation(
-        icon: _ic(CceIcons.thermometer),
-        color: CceColors.contact,
+        icon: _ic(readings.first.$1.icon),
+        color: readings.first.$1.color,
         title: name,
-        subtitle: '${t.toStringAsFixed(1)}°',
-      );
-    }
-    if (sensor['humidity'] is num) {
-      final h = (sensor['humidity'] as num).toDouble();
-      return EventPresentation(
-        icon: _ic(CceIcons.droplet),
-        color: CceColors.info,
-        title: name,
-        subtitle: '${h.toStringAsFixed(0)}%',
+        subtitle: readings.map((r) => r.$1.format(r.$2)).join(' · '),
       );
     }
   }
@@ -595,11 +593,16 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
 
   if (sensor is Map) {
     if (sensor['motion'] != null) {
+      // El título dice lo que pasó de verdad: una corrida de motion:false es
+      // «Sin movimiento», no «Movimiento» (review de CCE#112: en un historial
+      // que se lee al lado de la alarma, inventar movimiento no es un detalle).
+      final motion = sensor['motion'] == true;
+      final readings = numericReadingsLine(sensor);
       return EventPresentation(
         icon: base.icon,
         color: base.color,
-        title: 'Movimiento en $name',
-        subtitle: since,
+        title: motion ? 'Movimiento en $name' : 'Sin movimiento en $name',
+        subtitle: [since, readings].whereType<String>().join(' · ').nullIfEmpty,
       );
     }
     if (sensor['lastKey'] != null) {
@@ -610,34 +613,26 @@ EventPresentation presentGroup(EventGroup g, DevicesService devices) {
         subtitle: since,
       );
     }
-    if (sensor['temperature'] is num) {
-      final t = (sensor['temperature'] as num).toDouble();
+    // Una corrida de lecturas numéricas se lee como «de → a», lectura por
+    // lectura. La tabla es la misma que la de la lectura suelta: sin esto la
+    // rama de lux quedó sin escribir y dos lecturas en 30 min perdían el
+    // número (review de CCE#112).
+    final readings = numericReadingsOf(sensor);
+    if (readings.isNotEmpty) {
       final oldSensor = g.events.last.payload?['sensor'];
-      final prev = oldSensor is Map
-          ? (oldSensor['temperature'] as num?)?.toDouble()
-          : null;
+      final parts = <String>[];
+      for (final (spec, value) in readings) {
+        final prevRaw = oldSensor is Map ? oldSensor[spec.key] : null;
+        final prev = prevRaw is num ? prevRaw.toDouble() : null;
+        parts.add(prev != null && prev != value
+            ? '${spec.format(prev)} → ${spec.format(value)}'
+            : spec.format(value));
+      }
       return EventPresentation(
         icon: base.icon,
         color: base.color,
         title: name,
-        subtitle: prev != null
-            ? '${prev.toStringAsFixed(1)}° → ${t.toStringAsFixed(1)}°'
-            : '${t.toStringAsFixed(1)}°',
-      );
-    }
-    if (sensor['humidity'] is num) {
-      final h = (sensor['humidity'] as num).toDouble();
-      final oldSensor = g.events.last.payload?['sensor'];
-      final prev = oldSensor is Map
-          ? (oldSensor['humidity'] as num?)?.toDouble()
-          : null;
-      return EventPresentation(
-        icon: base.icon,
-        color: base.color,
-        title: name,
-        subtitle: prev != null
-            ? '${prev.toStringAsFixed(0)}% → ${h.toStringAsFixed(0)}%'
-            : '${h.toStringAsFixed(0)}%',
+        subtitle: parts.join(' · '),
       );
     }
   }
@@ -848,4 +843,9 @@ class _Facts {
 
   String? get brightnessLabel =>
       bri == null ? null : 'al ${(bri! / 254 * 100).round()}%';
+}
+
+extension on String {
+  /// null cuando está vacío: para un subtítulo que no dice nada.
+  String? get nullIfEmpty => isEmpty ? null : this;
 }

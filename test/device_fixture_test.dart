@@ -48,7 +48,9 @@ void main() {
     expect(anyCap((d) => d.isLight), isTrue, reason: 'falta una luz');
     expect(devices.any((d) => d.id == 'dev_jbl'), isTrue,
         reason: 'falta dev_jbl');
-    expect(devices.any((d) => d.id == 'dev_tv'), isTrue, reason: 'falta dev_tv');
+    // Desde la recaptura de 05/09/2026 hay dos TVs: dev_tv_1 y dev_tv_2.
+    expect(devices.any((d) => d.id.startsWith('dev_tv')), isTrue,
+        reason: 'falta una TV (dev_tv*)');
   });
 
   test('coherencia de capability-getters', () {
@@ -73,7 +75,7 @@ void main() {
       () {
     final byId = {for (final e in entries) e['id'] as String: Device.fromJson(e)};
     final jbl = byId['dev_jbl'];
-    final tv = byId['dev_tv'];
+    final tv = byId.values.where((d) => d.id.startsWith('dev_tv')).firstOrNull;
     expect(jbl, isNotNull);
     expect(tv, isNotNull);
     // volume del backend es 0-100; el modelo lo transporta tal cual (la vista

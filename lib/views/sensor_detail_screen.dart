@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'sensor_event_row.dart';
 import 'package:flutter/services.dart';
 
 import '../models/device.dart';
@@ -406,6 +407,7 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     final sensor = _device.sensor;
     final battery = sensor?.battery;
     final brightness = sensor?.brightness;
+    final lux = sensor?.lux;
 
     final metrics = <Widget>[
       _Metric(
@@ -414,7 +416,25 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
         value: battery != null ? '$battery%' : '—',
         label: 'BATERÍA',
       ),
-      if (brightness != null)
+      // CCE#112 — con el número cuando el sensor lo mide (SNZB-03PR2): el valor
+      // es el lux y el rótulo dice si eso es oscuro o con luz. El 03P viejo
+      // sigue mostrando sólo el binario.
+      if (lux != null)
+        _Metric(
+          svg: CceIcons.sunMedium,
+          // El color sale del mismo umbral que el backend (50 lx): sin el
+          // binario, un sol gris sobre 800 lx mentía.
+          iconColor: (sensor?.isBright ?? false)
+              ? CceColors.warm
+              : CceColors.textSecondary,
+          value: '$lux lx',
+          // Sin el binario no se afirma «oscuro» sobre 800 lx: el rótulo
+          // queda neutro y el número habla solo.
+          label: brightness == null
+              ? 'LUZ'
+              : (brightness == 'brighter' ? 'CON LUZ' : 'OSCURO'),
+        )
+      else if (brightness != null)
         _Metric(
           svg: CceIcons.sunMedium,
           iconColor: brightness == 'brighter'
@@ -579,23 +599,24 @@ class _SensorDetailScreenState extends State<SensorDetailScreen> {
     );
   }
 
-  /// Lee el estado del sensor DEL EVENTO (no del device): cada fila cuenta
-  /// qué pasó en ese instante.
-  bool? _activeOf(EventRecord ev) {
-    final sensor = ev.payload?['sensor'];
-    if (sensor is! Map) return null;
-    final v = _isContact ? sensor['contact'] : sensor['motion'];
-    return v is bool ? v : null;
-  }
-
   Widget _buildEventRow(EventRecord ev, {required bool last}) {
     final spec = _spec;
-    final active = _activeOf(ev);
-    final label = active == null
-        ? 'Actualización'
-        : (active ? spec.activeLabel : spec.idleLabel);
-    final color = active == true ? spec.activeColor : CceColors.textTertiary;
-    final glyph = active == true ? spec.activeGlyph : spec.idleGlyph;
+    // La lógica de la fila es pura y está testeada aparte (sensor_event_row.dart).
+    final row = sensorEventRow(
+      ev,
+      isContact: _isContact,
+      spec: SensorEventRowSpec(
+        activeLabel: spec.activeLabel,
+        idleLabel: spec.idleLabel,
+        activeGlyph: spec.activeGlyph,
+        idleGlyph: spec.idleGlyph,
+        activeColor: spec.activeColor,
+      ),
+    );
+    final active = row.active;
+    final label = row.label;
+    final color = row.color;
+    final glyph = row.glyph;
     final ts = ev.timestamp;
 
     return Container(
