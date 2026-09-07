@@ -3,6 +3,7 @@ import '../../models/automation_flow.dart';
 import '../../services/devices_service.dart';
 import '../../models/device.dart';
 import '../../utils/button_events.dart';
+import '../../utils/contact_words.dart';
 import '../../utils/enum_options.dart';
 import '../../utils/verb_labels.dart';
 
@@ -124,7 +125,7 @@ String sensorTriggerPhrase(SensorTrigger t, DevicesService devices) {
           ? 'Movimiento en $name'
           : 'Sin movimiento en $name';
     case 'contact':
-      return t.sensorValue == true ? 'Se abre $name' : 'Se cierra $name';
+      return '${ContactWords.verb(t.sensorValue == true)} $name';
     case 'temperature':
       final v = _num(t.sensorValue);
       if (t.sensorOperator == 'lt' || t.sensorOperator == 'lte') {
@@ -578,7 +579,7 @@ String conditionClause(AutomationCondition c, DevicesService devices) {
           ? 'hay movimiento en $name'
           : 'no hay movimiento en $name';
     case 'contact':
-      return c.value == true ? '$name está abierto' : '$name está cerrado';
+      return '$name está ${ContactWords.masculine(c.value == true)}';
     case 'temperature':
       final v = _num(c.value);
       if (c.operator == 'lt' || c.operator == 'lte') {
@@ -700,7 +701,7 @@ String triggerClause(Automation a, DevicesService devices) {
               ? 'haya movimiento en $name'
               : 'deje de haber movimiento en $name';
         case 'contact':
-          s = first.sensorValue == true ? 'se abra $name' : 'se cierre $name';
+          s = '${ContactWords.verbSubjunctive(first.sensorValue == true)} $name';
         case 'lastKey':
           // lastKey es el TIPO de pulsación (0 click, 1 doble, 2 mantenido);
           // el botón físico lo dice sensorOutlet (0-based, se muestra +1).

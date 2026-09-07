@@ -5,6 +5,7 @@ import '../services/ui_settings_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/status_dot.dart';
+import '../utils/contact_words.dart';
 import '../utils/icon_resolver.dart';
 import '../views/dial_switch_screen.dart';
 import '../views/single_button_screen.dart';
@@ -54,7 +55,7 @@ class SensorTile extends StatelessWidget {
       color = on ? CceColors.warm : CceColors.textSecondary;
     } else if (device.isContactSensor) {
       final open = s?.contact == true;
-      stateLabel = open ? 'Abierta' : 'Cerrada';
+      stateLabel = ContactWords.label(open);
       color = open ? CceColors.contact : CceColors.textSecondary;
       alert = open;
     } else if (device.isHueMotionArea && !device.state.on) {

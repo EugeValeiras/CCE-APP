@@ -8,6 +8,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_switch.dart';
 import '../utils/capability_renderers.dart';
+import '../utils/contact_words.dart';
 import '../widgets/detach_tile.dart';
 import '../utils/enum_options.dart';
 import '../utils/verb_labels.dart';
@@ -424,7 +425,8 @@ class _UnifiedDeviceScreenState extends State<UnifiedDeviceScreen> {
       // CCE#112 — el lux numérico de los SNZB-03PR2.
       if (s.lux != null) add('Luz', '${s.lux} lx');
       if (s.motion != null) add('Movimiento', s.motion! ? 'Detectado' : 'Sin movimiento');
-      if (s.contact != null) add('Contacto', s.contact! ? 'Cerrado' : 'Abierto');
+      // CCE#115 — `contact: true` es ABIERTA; esta fila decía lo contrario.
+      if (s.contact != null) add('Contacto', ContactWords.label(s.contact!));
       if (s.battery != null) add('Batería', s.battery!);
     }
     return Column(

@@ -13,6 +13,7 @@ import '../theme/components/cce_card.dart';
 import '../theme/components/cce_switch.dart';
 import '../theme/components/featured_tile.dart';
 import '../theme/components/status_dot.dart';
+import '../utils/contact_words.dart';
 import '../utils/icon_resolver.dart';
 import '../views/automations/automation_card.dart' show automationIcon, triggerColor;
 import '../views/automations/run_automation.dart';
@@ -473,7 +474,7 @@ class SensorHomeCard extends StatelessWidget {
     if (d.isContactSensor) {
       final open = s?.contact ?? false;
       return (
-        label: open ? 'Abierta' : 'Cerrada',
+        label: ContactWords.label(open),
         color: open ? CceColors.contact : CceColors.textSecondary,
         glyph: open ? CceIcons.doorOpen : CceIcons.doorClosed,
         alert: open,
