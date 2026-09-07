@@ -35,19 +35,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cce_app/models/automation.dart';
 import 'package:cce_app/models/device.dart';
 import 'package:cce_app/models/event_record.dart';
+import 'package:cce_app/models/floor_plan.dart';
 import 'package:cce_app/models/server_config.dart';
+import 'package:cce_app/services/api_service.dart';
 import 'package:cce_app/services/devices_service.dart';
 import 'package:cce_app/services/socket_service.dart';
+import 'package:cce_app/services/ui_settings_service.dart';
 import 'package:cce_app/theme/cce_icons.dart';
 import 'package:cce_app/theme/cce_theme.dart';
+import 'package:cce_app/theme/cce_tokens.dart';
 import 'package:cce_app/theme/components/cce_segmented.dart';
 import 'package:cce_app/theme/components/room_card.dart';
 import 'package:cce_app/theme/mdi.dart';
 import 'package:cce_app/utils/contact_words.dart';
 import 'package:cce_app/utils/icon_resolver.dart';
+import 'package:cce_app/views/alarm_sensors_screen.dart';
 import 'package:cce_app/views/alarm_view.dart';
 import 'package:cce_app/views/automations/automation_phrases.dart';
 import 'package:cce_app/views/automations/sheets/trigger_sheet.dart';
+import 'package:cce_app/views/floor_plan_tab.dart';
 import 'package:cce_app/views/history/event_presenter.dart';
 import 'package:cce_app/views/sensor_detail_screen.dart';
 import 'package:cce_app/views/unified_device_screen.dart';
@@ -60,10 +66,22 @@ import 'package:cce_app/widgets/sensor_tile.dart';
 // declaraciones se rompen, los dos se caen juntos — que es exactamente lo que
 // NO pasaba cuando el meta-test tenía sus propias copias de las regexes.
 
-/// Un archivo narra el contacto si lo NOMBRA de cualquier forma: `s.contact`,
-/// `sensor['contact']`, `isContactSensor`, o —la que se escapaba— recibiéndolo
-/// como prop, `bool contactOpen`, que es la forma de [RoomCard].
-final menciona = RegExp('[Cc]ontact');
+/// Un archivo narra el contacto si TOCA EL SENSOR: lo lee del device, lo lee
+/// del payload de un evento, lo nombra como campo, o lo recibe ya resuelto como
+/// prop (`bool contactOpen`, la forma de [RoomCard]).
+///
+/// Se gatea por el acceso y no por la subcadena «contact» a propósito: la App
+/// tiene una AGENDA telefónica llena de `PhoneContact contact`, `contactName` y
+/// `pick.contact`, y un `CceColors.contact` que es un naranja. Ninguno de esos
+/// tiene por qué quedar prohibido de escribir «cerrada» por sus propios
+/// motivos.
+final menciona = RegExp(
+  r"\bsensor[?!]?\.contact\b" // device.sensor?.contact
+  r"|\bs[?!]?\.contact\b" // s.contact, con `final s = d.sensor`
+  r"|'contact'" // sensor['contact'], case 'contact', sensorField: 'contact'
+  r'|isContactSensor'
+  r'|[Cc]ontactOpen',
+);
 
 /// Las cuatro palabras del vocabulario, cada una en UNA declaración: el
 /// adjetivo del estado y el verbo del hecho, en sus dos polaridades.
@@ -90,8 +108,7 @@ final vocabulario = RegExp(
 /// [ContactWords]).
 List<String> palabrasSueltas(String fuente) {
   final (:codigo, :literales) = _lexer(fuente);
-  final nombra = menciona.hasMatch(codigo) || literales.any(menciona.hasMatch);
-  if (!nombra) return const [];
+  if (!menciona.hasMatch(codigo)) return const [];
   return [
     for (final l in literales)
       if (vocabulario.hasMatch(l)) l,
@@ -144,7 +161,10 @@ List<String> palabrasSueltas(String fuente) {
         i++;
       }
       literales.add(buf.toString());
-      codigo.write(' ');
+      // El literal vuelve al código ENTRECOMILLADO: así [menciona] puede pedir
+      // `'contact'` (el campo del sensor) tal como se lee, mientras el guard
+      // sigue buscando el vocabulario sólo en [literales].
+      codigo.write("'${buf.toString()}'");
       continue;
     }
     codigo.write(c);
@@ -183,6 +203,19 @@ DevicesService _servicio(Device d) {
     socket.dispose();
   });
   return service;
+}
+
+/// La pantalla de «qué arma la alarma» lee dos endpoints al abrirse. Sin este
+/// doble saldrían de verdad, y el `ServerConfig` por default es la casa REAL.
+class _ApiQuieta extends ApiService {
+  _ApiQuieta(super.config);
+
+  @override
+  Future<Map<String, bool>> getSensorAlarmTriggers() async => const {_id: true};
+
+  @override
+  Future<({bool armed, bool? testMode})> getAlarmStatus() async =>
+      (armed: false, testMode: false);
 }
 
 EventRecord _evento(bool abierta) => EventRecord(
@@ -225,7 +258,9 @@ class _Narrador {
     this.nombre,
     this.construir, {
     this.registro = _Registro.adjetivo,
+    this.diceLaPalabra = true,
     this.dibujaLaPuerta = false,
+    this.pintaElAcento = false,
     this.calladaCuandoCierra = false,
   });
 
@@ -233,9 +268,18 @@ class _Narrador {
   final Widget Function(Device d, DevicesService s) construir;
   final _Registro registro;
 
+  /// La vista escribe la palabra. El plano y la pantalla de la alarma no dicen
+  /// nada: PINTAN el estado, y por eso se los mira por los otros dos ejes.
+  final bool diceLaPalabra;
+
   /// La vista muestra el glifo de la puerta, no sólo la palabra. Los íconos se
   /// podían invertir sin que nada muriera hasta que esto se empezó a mirar.
   final bool dibujaLaPuerta;
+
+  /// La vista tiñe algo con [CceColors.contact] cuando la puerta está abierta:
+  /// el dot del plano, el ícono de la lista de la alarma. Es el único eje que
+  /// ve la decisión de «activo», que además ordena y colorea.
+  final bool pintaElAcento;
 
   /// Los badges de la home aparecen cuando algo está ABIERTO y callan cuando
   /// está cerrado: a ésos se les exige nada más que no mientan.
@@ -285,6 +329,41 @@ final _narradores = <_Narrador>[
     calladaCuandoCierra: true,
   ),
   _Narrador(
+    'qué sensores arman la alarma',
+    (d, s) => AlarmSensorsScreen(devices: s, api: _ApiQuieta(s.config)),
+    diceLaPalabra: false,
+    dibujaLaPuerta: true,
+    pintaElAcento: true,
+  ),
+  _Narrador(
+    'marcador del plano',
+    (d, s) {
+      s.debugSeedFloorPlans(FloorPlansData(
+        plans: [
+          FloorPlan.fromJson({
+            'id': 'p1',
+            'name': 'Casa',
+            'svg': '<svg xmlns="http://www.w3.org/2000/svg" '
+                'viewBox="0 0 200 200"></svg>',
+          }),
+        ],
+        activePlanId: 'p1',
+        positions: {
+          'p1': {_id: LightPosition(100, 100)},
+        },
+      ));
+      return FloorPlanPanel(
+        service: s,
+        ui: UiSettingsService(),
+        planId: 'p1',
+        showPlanChips: false,
+      );
+    },
+    diceLaPalabra: false,
+    dibujaLaPuerta: true,
+    pintaElAcento: true,
+  ),
+  _Narrador(
     'historial de eventos',
     (d, s) => Text(presentEvent(_evento(d.sensor?.contact == true), s).title),
   ),
@@ -331,6 +410,21 @@ Set<Object> _glifosVisibles(WidgetTester tester) => {
 
 // No pueden ser `const`: IconData no tiene igualdad primitiva. La comparación
 // del Set usa su ==, que sí está definido.
+/// Los acentos que la vista PINTA: el fondo de un dot y el color de un glifo.
+/// [CceColors.contact] ahí es la afirmación «esto está abierto».
+Set<Color> _acentosVisibles(WidgetTester tester) => {
+      for (final c in tester.widgetList<Container>(find.byType(Container)))
+        if (c.decoration case BoxDecoration(color: final color?)) color,
+      ...tester
+          .widgetList<CceIcon>(find.byType(CceIcon))
+          .map((i) => i.color)
+          .whereType<Color>(),
+      ...tester
+          .widgetList<Icon>(find.byType(Icon))
+          .map((i) => i.color)
+          .whereType<Color>(),
+    };
+
 final _glifosDeApertura = <Object>{CceIcons.doorOpen, Mdi.doorOpen};
 final _glifosDeCierre = <Object>{
   CceIcons.doorClosed,
@@ -385,10 +479,17 @@ void main() {
         await tester.pump();
 
         final texto = _textoVisible(tester);
-        expect(abrir.hasMatch(texto), isTrue,
-            reason: '«${n.nombre}» no dijo que la puerta se abre: $texto');
+        if (n.diceLaPalabra) {
+          expect(abrir.hasMatch(texto), isTrue,
+              reason: '«${n.nombre}» no dijo que la puerta se abre: $texto');
+        }
         expect(cerrar.hasMatch(texto), isFalse,
             reason: '«${n.nombre}» narró contact:true como cerrada: $texto');
+
+        if (n.pintaElAcento) {
+          expect(_acentosVisibles(tester), contains(CceColors.contact),
+              reason: '«${n.nombre}» no pinta de abierta una puerta abierta');
+        }
 
         if (n.dibujaLaPuerta) {
           final glifos = _glifosVisibles(tester);
@@ -412,10 +513,15 @@ void main() {
         final texto = _textoVisible(tester);
         expect(abrir.hasMatch(texto), isFalse,
             reason: '«${n.nombre}» narró contact:false como abierta: $texto');
-        if (!n.calladaCuandoCierra) {
+        if (!n.calladaCuandoCierra && n.diceLaPalabra) {
           expect(cerrar.hasMatch(texto), isTrue,
               reason:
                   '«${n.nombre}» no dijo que la puerta está cerrada: $texto');
+        }
+
+        if (n.pintaElAcento) {
+          expect(_acentosVisibles(tester), isNot(contains(CceColors.contact)),
+              reason: '«${n.nombre}» pinta de abierta una puerta cerrada');
         }
 
         if (n.dibujaLaPuerta) {
@@ -464,7 +570,10 @@ void main() {
     // elige «Se cierra», se guarda `sensorValue: true` y queda una
     // automatización que hace lo contrario de lo que pidió. Por eso se prueba
     // por el camino real —el sheet montado— y no por su literal.
-    Future<CceSegmented<bool>> abrirSheet(WidgetTester tester, bool abre) async {
+    Future<(Automation, CceSegmented<bool>)> abrirSheet(
+      WidgetTester tester,
+      bool abre,
+    ) async {
       final devices = _servicio(_puerta(false));
       final draft = _automatizacion(abre);
       // Pantalla de un iPhone 17 Pro Max: el sheet es una lista perezosa y con
@@ -487,30 +596,47 @@ void main() {
       await tester.tap(find.text('abrir'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      return tester.widget<CceSegmented<bool>>(find.byType(CceSegmented<bool>));
+      return (
+        draft,
+        tester.widget<CceSegmented<bool>>(find.byType(CceSegmented<bool>)),
+      );
     }
+
+    /// Lo que quedó guardado en el disparador del draft.
+    bool? guardado(Automation draft) =>
+        draft.trigger.sensorTriggers.first.sensorValue as bool?;
+
+    testWidgets('TOCAR «Se abre» guarda true', (tester) async {
+      // El test que faltaba: los otros LEEN el widget, y el bloqueante era que
+      // esta pantalla ESCRIBE. Se toca el segmento como lo toca el dueño y se
+      // mira qué quedó en el disparador.
+      final (draft, _) = await abrirSheet(tester, false);
+      await tester.tap(find.text(ContactWords.opens));
+      await tester.pump();
+      expect(guardado(draft), isTrue,
+          reason: 'el dueño tocó abrir y quedó guardado cerrar: la '
+              'automatización dispararía al revés');
+    });
+
+    testWidgets('TOCAR «Se cierra» guarda false', (tester) async {
+      final (draft, _) = await abrirSheet(tester, true);
+      await tester.tap(find.text(ContactWords.closes));
+      await tester.pump();
+      expect(guardado(draft), isFalse);
+    });
 
     testWidgets('el segmento elegido con sensorValue:true dice «Se abre»',
         (tester) async {
-      final seg = await abrirSheet(tester, true);
+      final (_, seg) = await abrirSheet(tester, true);
       final elegido = seg.segments.firstWhere((s) => s.value == seg.value);
       expect(elegido.label, ContactWords.opens);
     });
 
     testWidgets('el segmento elegido con sensorValue:false dice «Se cierra»',
         (tester) async {
-      final seg = await abrirSheet(tester, false);
+      final (_, seg) = await abrirSheet(tester, false);
       final elegido = seg.segments.firstWhere((s) => s.value == seg.value);
       expect(elegido.label, ContactWords.closes);
-    });
-
-    testWidgets('elegir «Se abre» guarda true, no lo contrario',
-        (tester) async {
-      final seg = await abrirSheet(tester, false);
-      final abrir =
-          seg.segments.firstWhere((s) => s.label == ContactWords.opens);
-      expect(abrir.value, isTrue,
-          reason: 'el dueño elegiría abrir y quedaría guardado cerrar');
     });
   });
 
@@ -595,9 +721,13 @@ void main() {
       });
 
       test('un comentario que explica la convención no lo hace fallar', () {
+        // El fixture lleva el vocabulario ENTRECOMILLADO dentro del comentario:
+        // sin eso el test pasaba hiciera lo que hiciera el lexer, que es el
+        // mismo defecto que este grupo vino a arreglar.
         expect(
-          palabrasSueltas('// `contact: true` es abierta.\n'
-              'final x = ContactWords.label(open);'),
+          palabrasSueltas("// s.contact! ? 'Cerrada' : 'Abierta' — la "
+              'convención de la casa.\n'
+              'final x = ContactWords.label(d.sensor!.contact!);'),
           isEmpty,
         );
       });
@@ -606,6 +736,42 @@ void main() {
         // La cerradura dice «Puerta abierta» con todo derecho: es otro estado,
         // de otro device.
         expect(palabrasSueltas("return 'Puerta abierta';"), isEmpty);
+      });
+
+      test('cada forma de tocar el sensor entra al guard', () {
+        // Una por alternativa del gate, y cada fixture dispara SÓLO la suya:
+        // así romper cualquiera de las cinco mata este test. Sin esto, el gate
+        // es una disyunción donde una rama puede pudrirse sin que nada avise —
+        // el mismo agujero que tenía el meta-test.
+        const casos = {
+          'leído del device': "final x = device.sensor?.contact == true "
+              "? 'Abierta' : 'Cerrada';",
+          'leído del bloque de sensor': 'final s = d.sensor; '
+              "final x = s.contact! ? 'Abierta' : 'Cerrada';",
+          'nombrado como campo': "case 'contact': return 'Abierta';",
+          'preguntado al device': "if (d.isContactSensor) return 'Abierta';",
+          'recibido como prop': "if (widget.contactOpen) l = 'Abierta';",
+        };
+        for (final MapEntry(key: forma, value: fuente) in casos.entries) {
+          expect(palabrasSueltas(fuente), isNotEmpty,
+              reason: 'el guard no ve el contacto $forma');
+        }
+      });
+
+      test('la agenda telefónica no es una abertura', () {
+        // `PhoneContact contact`, `contactName`, `pick.contact` y el naranja
+        // `CceColors.contact` no tienen por qué quedar prohibidos de decir
+        // «cerrada» por sus propios motivos.
+        expect(
+          palabrasSueltas('const ContactPick(this.contact);'
+              "const t = 'Agenda cerrada';"),
+          isEmpty,
+        );
+        expect(
+          palabrasSueltas("Text(c.contactName, style: TextStyle("
+              "color: CceColors.contact)); const t = 'Llamada cerrada';"),
+          isEmpty,
+        );
       });
     });
   });
