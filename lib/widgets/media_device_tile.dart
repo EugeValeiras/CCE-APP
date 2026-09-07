@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -20,14 +18,17 @@ import '../views/tv/tv_screen.dart';
 /// varios Samsung, el tile de una habitación fija su aparato con `deviceId` y
 /// toma el estado del inventario, porque TvService sólo sigue al elegido.
 ///
-/// Tap: [onOpen] si se provee (tablet → control inline en el panel derecho);
-/// si no, push de la pantalla dedicada (phone) — mismo dual que TvHomeCard /
-/// SoundbarHomeCard.
+/// Tap: [onOpen] si se provee (tablet → control inline en el panel derecho, y
+/// recibe el aparato de este tile); si no, push de la pantalla dedicada (phone)
+/// — mismo dual que TvHomeCard / SoundbarHomeCard.
 class TvDeviceTile extends StatelessWidget {
   final TvService service;
   final TileSize size;
   final bool neo;
-  final VoidCallback? onOpen;
+
+  /// Recibe el [deviceId] de ESTE tile: el panel de la tablet muestra el
+  /// control inline y necesita saber qué aparato abrir (CCE#130).
+  final ValueChanged<String?>? onOpen;
 
   /// Aparato que representa ESTE tile (`dev_tv-ce588d39`), cuando la habitación
   /// tiene uno propio: su nombre y su estado salen del inventario y el tap pasa
@@ -81,13 +82,16 @@ class TvDeviceTile extends StatelessWidget {
           onTap: () {
             HapticFeedback.selectionClick();
             // El tile de la habitación abre SU aparato, no el que quedó elegido
-            // desde otra pantalla.
-            if (deviceId != null) unawaited(tv.selectByDeviceId(deviceId!));
+            // desde otra pantalla. `selectDevice` es SÍNCRONO en lo que decide
+            // qué se ve, así que el control se construye ya mostrando este
+            // aparato; y si la lista todavía no llegó, deja el pedido anotado
+            // en vez de perderlo (antes abría el otro Samsung).
+            if (deviceId != null) tv.selectDevice(deviceId!);
             if (onOpen != null) {
-              onOpen!();
+              onOpen!(deviceId);
             } else {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TvScreen(service: tv),
+                builder: (_) => TvScreen(service: tv, deviceId: deviceId),
               ));
             }
           },

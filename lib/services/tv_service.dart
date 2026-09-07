@@ -74,8 +74,13 @@ class TvService extends ChangeNotifier {
   final ApiService _api;
   final SocketService _socket;
 
-  TvService({required ServerConfig config, required SocketService socket})
-      : _api = ApiService(config),
+  /// [api] se inyecta SÓLO en tests, para probar la selección y las carreras
+  /// de [refresh] sin red; en la app se construye del config.
+  TvService({
+    required ServerConfig config,
+    required SocketService socket,
+    ApiService? api,
+  })  : _api = api ?? ApiService(config),
         _socket = socket;
 
   TvStatus? _status;
@@ -83,15 +88,19 @@ class TvService extends ChangeNotifier {
   String? _error;
 
   // ── Varios Samsung (CCE#45) ────────────────────────────────────────────────
-  // `_status` es SIEMPRE el del aparato SELECCIONADO. La lista puede quedar
-  // vacía (backend viejo sin GET /tv/tvs): en ese caso no hay selector, los
-  // comandos van sin `?tv=` y el socket se filtra por `dev_tv` — exactamente el
-  // comportamiento anterior a esta feature.
+  // `_status` es SIEMPRE el del aparato SELECCIONADO, que desde CCE#130 lo
+  // nombra quien abre el control ([selectDevice]) y no un selector adentro de
+  // la pantalla. La lista puede quedar vacía (backend viejo sin GET /tv/tvs):
+  // ahí los comandos van sin `?tv=` y el socket se filtra por `dev_tv` —
+  // exactamente el comportamiento anterior a esta feature.
   List<TvSummary> _tvs = const [];
   String? _selectedId;
 
+  /// Device canónico pedido por quien abrió el control cuando la lista de
+  /// aparatos todavía no había llegado. [loadTvs] lo aplica al resolver.
+  String? _pendingDeviceId;
+
   List<TvSummary> get tvs => _tvs;
-  bool get hasMultipleTvs => _tvs.length > 1;
 
   /// El aparato elegido, o null mientras la lista no cargó.
   TvSummary? get selectedTv {
@@ -119,6 +128,12 @@ class TvService extends ChangeNotifier {
 
   bool _disposed = false;
   bool _refreshing = false;
+
+  /// Un refresh pedido mientras había otro en vuelo. No se tira: al abrir el
+  /// control se pide el estado del aparato elegido y enseguida el refresh de
+  /// cortesía de la pantalla, y descartar el segundo dejaba en pantalla el
+  /// estado del aparato anterior.
+  bool _queuedRefresh = false;
   StreamSubscription<DeviceStateEvent>? _sub;
   StreamSubscription<bool>? _connSub;
   bool _wasConnected = false;
@@ -246,14 +261,40 @@ class TvService extends ChangeNotifier {
     if (_selectedId != null && !list.any((t) => t.id == _selectedId)) {
       _selectedId = null;
     }
+    // Un aparato pedido ANTES de que llegara la lista (abrir el control del
+    // monitor apenas arrancó la app) se aplica recién acá. Sin esto el pedido
+    // se perdía en silencio y el control abría el que estuviera elegido.
+    final pending = _pendingDeviceId;
+    if (pending != null) {
+      // Se suelta aunque no resuelva: contra un backend sin GET /tv/tvs la
+      // lista siempre vuelve vacía, y dejarlo colgado dejaría la pantalla sin
+      // estado para siempre. Ahí manda el aparato por defecto del backend, que
+      // es como se comportaba la app cuando había uno solo.
+      _pendingDeviceId = null;
+      final tv = tvForDeviceId(pending);
+      if (tv != null) _selectedId = tv.id;
+    }
     _safeNotify();
+    // El pedido dejó la pantalla sin estado a propósito (no se muestra el del
+    // aparato anterior): ahora que se sabe cuál es, se pide el suyo.
+    if (pending != null && _status == null) await refresh();
   }
 
   /// Cambia el aparato controlado y relee su estado. El estado del anterior se
   /// descarta: mostrar el volumen del televisor mientras se comanda el monitor
   /// sería peor que mostrar "cargando".
+  ///
+  /// El guard mira el aparato EFECTIVO y no `_selectedId`: cuando nadie eligió
+  /// nada, `_selectedId` es null pero se está mostrando el principal, y fijarlo
+  /// explícitamente borraba su estado y mandaba la pantalla al spinner por
+  /// nada. Eso es el parpadeo que se ve al abrir el control desde la home.
   Future<void> selectTv(String id) async {
-    if (_selectedId == id) return;
+    if (selectedTv?.id == id) {
+      // Ya es el que se está mostrando: se fija para dejar de depender del
+      // default, sin tocar el estado.
+      _selectedId = id;
+      return;
+    }
     _selectedId = id;
     _status = null;
     _safeNotify();
@@ -270,14 +311,43 @@ class TvService extends ChangeNotifier {
     return null;
   }
 
-  /// Pasa a comandar el aparato [deviceId]. Es lo que hace falta cuando el
-  /// aparato lo nombra la HABITACIÓN y no el selector del control: tocar el
-  /// monitor del Office tiene que abrir el monitor, no el televisor que estaba
-  /// elegido (CCE#54). No-op si ese aparato no está en la lista.
-  Future<void> selectByDeviceId(String deviceId) async {
+  /// Pasa a comandar el aparato cuyo device canónico es [deviceId]. Es la única
+  /// forma en que se elige aparato desde CCE#130: lo nombra quien abre el
+  /// control (la habitación, el plano, la card de la home), no un selector
+  /// dentro de la pantalla.
+  ///
+  /// Lo que decide QUÉ SE VE es síncrono: al volver de esta llamada
+  /// `selectedTvId` ya es el del aparato pedido y el estado del anterior ya se
+  /// descartó, así que la pantalla que se construya después no alcanza a pintar
+  /// un frame del aparato de antes.
+  ///
+  /// Si la lista de aparatos todavía no llegó, el pedido queda PENDIENTE y lo
+  /// aplica [loadTvs]. Antes era un no-op silencioso: tocar el monitor con la
+  /// app recién abierta abría el televisor, con su estado y sus teclas.
+  void selectDevice(String deviceId) {
     final tv = tvForDeviceId(deviceId);
-    if (tv != null) await selectTv(tv.id);
+    if (tv != null) {
+      _pendingDeviceId = null;
+      // Sin await a propósito: lo que decide qué se ve ya pasó cuando esto
+      // vuelve; lo que queda pendiente es el GET del estado nuevo.
+      unawaited(selectTv(tv.id));
+      return;
+    }
+    // No se puede resolver todavía. Mientras tanto NO se muestra el estado de
+    // otro aparato como si fuera éste; la excepción es el televisor histórico
+    // sin lista cargada, que ES lo que se está mostrando.
+    if (selectedDeviceId != deviceId) {
+      _selectedId = null;
+      _status = null;
+    }
+    _pendingDeviceId = deviceId;
+    _safeNotify();
+    unawaited(loadTvs());
   }
+
+  /// Nombre del aparato [deviceId] según GET /tv/tvs; null si no está en la
+  /// lista (backend viejo, o un aparato que ya no existe).
+  String? nameForDeviceId(String deviceId) => tvForDeviceId(deviceId)?.name;
 
   /// Dispara el pairing Tizen del aparato elegido. TRÁMITE FÍSICO: aparece un
   /// aviso en SU pantalla y alguien tiene que aceptarlo ahí.
@@ -292,21 +362,46 @@ class TvService extends ChangeNotifier {
     }
   }
 
+  /// Relee el estado del aparato elegido, cuando se sabe cuál es.
+  ///
+  /// La respuesta se DESCARTA si mientras volaba se cambió de aparato: abrir el
+  /// control del monitor justo cuando volvía el estado del televisor pintaba el
+  /// monitor con el estado del televisor (CCE#130). Y un pedido que llega con
+  /// otro en vuelo se ENCOLA en vez de tirarse — ese es el caso normal al abrir
+  /// el control (elegir aparato + el refresh de cortesía de la pantalla), y
+  /// tirarlo dejaba la pantalla con el estado del aparato anterior.
   Future<void> refresh() async {
-    if (_refreshing) return;
+    // Con un aparato pedido y todavía sin resolver, un GET sin `?tv=` lo
+    // contesta el backend con SU aparato por defecto: sería traer el estado del
+    // televisor para la pantalla del monitor. Se espera a la lista — [loadTvs]
+    // pide el estado apenas sabe cuál es.
+    if (_pendingDeviceId != null) return;
+    if (_refreshing) {
+      _queuedRefresh = true;
+      return;
+    }
     _refreshing = true;
     _loading = true;
     _error = null;
     _safeNotify();
+    final requested = selectedTvId;
     try {
-      _status = await _api.getTvStatus(tvId: selectedTvId);
+      final status = await _api.getTvStatus(tvId: requested);
+      if (requested == selectedTvId) _status = status;
     } catch (e) {
-      _error = 'No se pudo conectar al servidor';
+      if (requested == selectedTvId) _error = 'No se pudo conectar al servidor';
       debugPrint('TvService refresh error: $e');
     } finally {
-      _loading = false;
       _refreshing = false;
-      _safeNotify();
+      if (_queuedRefresh) {
+        _queuedRefresh = false;
+        // Encadena SIN bajar `loading`: la pantalla sigue mostrando "cargando"
+        // hasta tener el estado del aparato que efectivamente muestra.
+        unawaited(refresh());
+      } else {
+        _loading = false;
+        _safeNotify();
+      }
     }
   }
 
@@ -324,6 +419,43 @@ class TvService extends ChangeNotifier {
       _status = _status!.copyWith(power: prev);
       _safeNotify();
       debugPrint('TvService setPower error: $e');
+      return false;
+    }
+  }
+
+  /// Prende/apaga el aparato [deviceId] SIN cambiar el que controla la pantalla
+  /// del control: en la home hay una card por Samsung y el switch de una no
+  /// puede llevarse el control de la otra.
+  ///
+  /// Devuelve false sin mandar nada si el aparato no está en la lista: el
+  /// comando sin `?tv=` lo resuelve el backend con SU aparato por defecto, o
+  /// sea que apagaría el televisor cuando se tocó el switch del monitor.
+  Future<bool> setPowerOf(String deviceId, bool on) async {
+    final tv = tvForDeviceId(deviceId);
+    if (tv == null) {
+      // Sin lista (backend viejo, o todavía cargando) el único aparato que se
+      // puede comandar sin ambigüedad es el histórico, que es el que el backend
+      // atiende por defecto.
+      if (_tvs.isEmpty && deviceId == kTvDeviceId) return setPower(on);
+      return false;
+    }
+    // El optimismo local sólo aplica al aparato que la pantalla está mostrando;
+    // las cards de los demás reflejan el cambio desde el inventario.
+    final mine = tv.id == selectedTv?.id && _status != null;
+    final prev = _status?.power;
+    if (mine) {
+      _status = _status!.copyWith(power: on ? 'on' : 'off');
+      _safeNotify();
+    }
+    try {
+      await _api.setTvPower(on, tvId: tv.id);
+      return true;
+    } catch (e) {
+      if (mine && prev != null) {
+        _status = _status!.copyWith(power: prev);
+        _safeNotify();
+      }
+      debugPrint('TvService setPowerOf error: $e');
       return false;
     }
   }

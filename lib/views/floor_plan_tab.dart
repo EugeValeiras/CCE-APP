@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -73,7 +72,8 @@ class FloorPlanPanel extends StatefulWidget {
 
   /// Callbacks de apertura del control dedicado (tablet): tap en el marker de
   /// TV / JBL del plano. En el tablet los setea _CasaSplit (_selectedDevice).
-  final VoidCallback? onOpenTv;
+  /// Recibe el device canónico del Samsung del marker que se tocó.
+  final ValueChanged<String?>? onOpenTv;
   final VoidCallback? onOpenJbl;
 
   /// Tablet: tap en el marker de un TERMOSTATO abre el control INLINE en el
@@ -485,7 +485,8 @@ class _PlanCanvas extends StatelessWidget {
 
   /// Qué aparatos dedicados dibujar sobre este plano y dónde.
   final List<_DedicatedMarker> dedicated;
-  final VoidCallback? onOpenTv;
+  /// Recibe el device canónico del Samsung del marker que se tocó.
+  final ValueChanged<String?>? onOpenTv;
   final VoidCallback? onOpenJbl;
   final ValueChanged<Device>? onOpenThermostat;
 
@@ -510,7 +511,7 @@ class _PlanCanvas extends StatelessWidget {
   Widget _dedicatedMarker(_DedicatedMarker m) {
     final isTv = m.family == DedicatedFamily.tv;
     final device = m.device;
-    final onOpen = isTv ? onOpenTv : onOpenJbl;
+    final canOpen = isTv ? onOpenTv != null : onOpenJbl != null;
     return _DeviceMarker(
       listenable: device != null ? service : (isTv ? tv! : jbl!),
       shape: isTv ? _MarkerShape.tv : _MarkerShape.jbl,
@@ -528,15 +529,19 @@ class _PlanCanvas extends StatelessWidget {
           ? (() => isTv ? tv!.isOn : jbl!.isOn)
           : (() => (service.byId(device.id) ?? device).state.on),
       size: dotSize * m.position.scaleFactor,
-      onTap: onOpen == null
+      onTap: !canOpen
           ? null
           : () {
-              // El marker comanda SU aparato: sin esto, tocar el monitor del
-              // Office abría el televisor que el control tenía elegido.
-              if (isTv && device != null) {
-                unawaited(tv!.selectByDeviceId(device.id));
+              if (!isTv) {
+                onOpenJbl!();
+                return;
               }
-              onOpen();
+              // El marker comanda SU aparato: sin esto, tocar el monitor del
+              // Office abría el televisor que el control tenía elegido. El id
+              // viaja además al panel, que es quien monta el control.
+              final id = device?.id;
+              if (id != null) tv?.selectDevice(id);
+              onOpenTv!(id);
             },
     );
   }

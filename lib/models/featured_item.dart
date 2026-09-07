@@ -56,6 +56,41 @@ class FeaturedItem {
   static List<String> encodeList(List<FeaturedItem> items) =>
       items.map((i) => i.encode()).toList();
 
+  /// Migración de la card "TV" única a una card por aparato (CCE#130).
+  ///
+  /// Un `tv` guardado SIN id es de cuando había una sola card de televisor y
+  /// cuál controlaba lo decidía el estado global del servicio. Se expande, EN
+  /// SU LUGAR, a un ítem por Samsung ([deviceIds] son los devices canónicos,
+  /// `dev_tv` / `dev_tv-ce588d39`), que es lo que la home ofrece ahora.
+  ///
+  /// Con la lista de aparatos todavía sin cargar ([deviceIds] vacía) devuelve
+  /// **la misma instancia** sin tocar nada: quien ya tenía la card destacada
+  /// tiene que seguir viéndola, y un `tv` sin id sigue renderizando la card del
+  /// aparato por defecto. Comparar con `identical` dice si hubo migración y
+  /// por lo tanto si hay que persistir.
+  static List<FeaturedItem> expandLegacyTv(
+    List<FeaturedItem> items,
+    List<String> deviceIds,
+  ) {
+    if (deviceIds.isEmpty) return items;
+    final hasLegacy =
+        items.any((i) => i.kind == FeaturedKind.tv && i.id == null);
+    if (!hasLegacy) return items;
+    final out = <FeaturedItem>[];
+    final seen = <FeaturedItem>{};
+    for (final item in items) {
+      final expansion = item.kind == FeaturedKind.tv && item.id == null
+          ? [for (final id in deviceIds) FeaturedItem(FeaturedKind.tv, id)]
+          : [item];
+      for (final e in expansion) {
+        // Dedupe: el aparato podía estar destacado además del `tv` genérico, y
+        // dos ítems iguales rompen las keys del reorder del editor.
+        if (seen.add(e)) out.add(e);
+      }
+    }
+    return out;
+  }
+
   @override
   bool operator ==(Object other) =>
       other is FeaturedItem && other.kind == kind && other.id == id;

@@ -60,7 +60,9 @@ class RoomPanel extends StatelessWidget {
   /// alimentan las filas de TV/JBL de la sección "Devices" (_buildLights).
   final TvService? tv;
   final JblService? jbl;
-  final VoidCallback? onOpenTv;
+  /// Recibe el device canónico del Samsung que se tocó (tile o marker del
+  /// plano): el panel derecho abre ESE aparato, no el que quedara elegido.
+  final ValueChanged<String?>? onOpenTv;
   final VoidCallback? onOpenJbl;
 
   /// TABLET: abre el termostato INLINE en el panel derecho (igual que TV/JBL).

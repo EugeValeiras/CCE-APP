@@ -166,15 +166,51 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
 
   // ── Destacados editable ───────────────────────────────────────────────────
 
+  /// Devices canónicos de los Samsung de la casa (`dev_tv`, `dev_tv-ce588d39`),
+  /// en el orden de GET /tv/tvs. Vacío mientras la lista no llegó o si el
+  /// backend no la ofrece.
+  List<String> get _tvDeviceIds =>
+      widget.tv?.tvs.map((t) => t.canonicalDeviceId).toList() ?? const [];
+
   /// Default histórico cuando el usuario nunca editó: TV → JBL → termostato →
-  /// robot (los que existan).
+  /// robot (los que existan). Desde CCE#130, UNA CARD POR SAMSUNG: la casa
+  /// tiene más de uno y una card genérica no dejaba llegar al segundo.
   List<FeaturedItem> _defaultFeatured(Device? thermostat, Device? vacuum) => [
-        if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+        if (widget.tv != null) ...[
+          for (final id in _tvDeviceIds) FeaturedItem(FeaturedKind.tv, id),
+          // Sin lista (backend viejo, o todavía cargando) la card histórica.
+          if (_tvDeviceIds.isEmpty) const FeaturedItem(FeaturedKind.tv),
+        ],
         if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
         if (thermostat != null)
           FeaturedItem(FeaturedKind.thermostat, thermostat.id),
         if (vacuum != null) FeaturedItem(FeaturedKind.vacuum, vacuum.id),
       ];
+
+  /// ¿Ya se intentó migrar la card "TV" única con la lista de aparatos cargada?
+  bool _tvMigrated = false;
+
+  /// Migra el destacado `tv` sin aparato a uno por Samsung (CCE#130) y lo
+  /// persiste. Se llama desde el build porque depende de GET /tv/tvs, que llega
+  /// después de que las prefs resolvieron.
+  ///
+  /// Es conservadora a propósito: sin lista de aparatos NO toca nada y la card
+  /// histórica se sigue mostrando. Quien ya tenía "TV" destacado no puede
+  /// quedarse sin card por una migración que se apuró.
+  void _migrateFeaturedTv() {
+    if (_tvMigrated) return;
+    final items = _featured;
+    // `null` = el usuario nunca editó: su default ya es una card por aparato.
+    if (items == null) return;
+    final deviceIds = _tvDeviceIds;
+    if (deviceIds.isEmpty) return;
+    final migrated = FeaturedItem.expandLegacyTv(items, deviceIds);
+    _tvMigrated = true;
+    if (identical(migrated, items)) return;
+    // Sin setState: esto corre DENTRO del build y el propio build ya lo usa.
+    _featured = migrated;
+    _saveFeatured(migrated);
+  }
 
   List<FeaturedItem> _effectiveFeatured(Device? thermostat, Device? vacuum) =>
       _featured ?? _defaultFeatured(thermostat, vacuum);
@@ -274,10 +310,23 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     switch (item.kind) {
       case FeaturedKind.tv:
         final tv = widget.tv;
-        return tv == null
-            ? null
-            : TvHomeCard(
-                service: tv, neo: true, trailing: trailing, tile: tile);
+        if (tv == null) return null;
+        // Un aparato que el backend ya no lista se saltea como cualquier
+        // destacado stale — pero SÓLO con la lista cargada: mientras no llegó,
+        // la card se muestra igual (si no, la home arrancaría sin sus cards).
+        if (item.id != null &&
+            tv.tvs.isNotEmpty &&
+            tv.tvForDeviceId(item.id!) == null) {
+          return null;
+        }
+        return TvHomeCard(
+          service: tv,
+          deviceId: item.id,
+          devices: service,
+          neo: true,
+          trailing: trailing,
+          tile: tile,
+        );
       case FeaturedKind.jbl:
         final jbl = widget.jbl;
         return jbl == null
@@ -374,7 +423,15 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     final service = widget.service;
     switch (item.kind) {
       case FeaturedKind.tv:
-        return 'Samsung TV';
+        final id = item.id;
+        if (id == null) return 'Samsung TV';
+        // El nombre del aparato: el de GET /tv/tvs primero (`65" OLED`), el del
+        // inventario si el device está, y el genérico mientras no haya ninguno
+        // — nunca "(ya no existe)", que sería falso durante la carga.
+        final named = widget.tv?.nameForDeviceId(id);
+        if (named != null) return named;
+        final d = service.byId(id);
+        return d != null ? service.displayName(d) : 'Samsung TV';
       case FeaturedKind.jbl:
         return 'JBL Soundbar';
       case FeaturedKind.thermostat:
@@ -475,7 +532,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           // dueño): dedicados + luces + botones + cerraduras + sensores,
           // ordenados por nombre para encontrarlos rápido.
           final devices = <FeaturedItem>[
-            if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+            if (widget.tv != null) ...[
+              for (final id in _tvDeviceIds) FeaturedItem(FeaturedKind.tv, id),
+              if (_tvDeviceIds.isEmpty) const FeaturedItem(FeaturedKind.tv),
+            ],
             if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
             for (final d in service.thermostats)
               FeaturedItem(FeaturedKind.thermostat, d.id),
@@ -691,9 +751,13 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       // hasta que un evento ajeno de DevicesService fuerce rebuild), y el badge
       // de temperatura de TempSensorPrefs (elegir otro termómetro en el detalle
       // de una habitación debe reflejarse en su botón al volver).
-      animation:
-          Listenable.merge([service, _automations, TempSensorPrefs.instance]),
+      // widget.tv entra al merge por los Destacados: la lista de Samsung llega
+      // después del primer frame y de ella salen cuántas cards de TV hay y qué
+      // nombre tiene cada una (CCE#130).
+      animation: Listenable.merge(
+          [service, _automations, TempSensorPrefs.instance, widget.tv]),
       builder: (context, _) {
+        _migrateFeaturedTv();
         if (service.loading && service.all.isEmpty) {
           // Mientras no haya datos seguimos mostrando "Preparando tu hogar"
           // (mismo visual que el splash) en vez de un spinner genérico.

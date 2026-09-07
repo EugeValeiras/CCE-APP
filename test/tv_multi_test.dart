@@ -94,7 +94,6 @@ void main() {
     test('sin lista se comporta como cuando había uno solo', () {
       final s = fresh();
       expect(s.tvs, isEmpty);
-      expect(s.hasMultipleTvs, isFalse);
       expect(s.selectedTv, isNull);
       expect(s.selectedTvId, isNull,
           reason: 'sin id no se manda ?tv= y el backend usa su aparato por '
@@ -112,8 +111,9 @@ void main() {
           TvSummary.fromJson(Map<String, dynamic>.from(_televisorJson)),
           TvSummary.fromJson(Map<String, dynamic>.from(_monitorJson)),
         ]);
-      expect(s.hasMultipleTvs, isTrue, reason: 'la UI muestra el selector');
-      expect(s.selectedTv?.id, 'tv');
+      expect(s.tvs, hasLength(2));
+      expect(s.selectedTv?.id, 'tv',
+          reason: 'sin que nadie elija, manda el principal');
       expect(s.selectedTvId, 'tv');
       expect(s.selectedDeviceId, 'dev_tv');
       expect(s.displayName, '65" OLED');

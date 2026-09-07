@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/device.dart';
+import '../../services/devices_service.dart';
 import '../../services/tv_service.dart';
 import '../../theme/cce_icons.dart';
 import '../../theme/cce_tokens.dart';
@@ -10,11 +12,26 @@ import '../../theme/components/featured_tile.dart';
 import '../../theme/components/status_dot.dart';
 import 'tv_screen.dart';
 
-/// Card del Samsung TV para la home (lo "expone como dispositivo"): muestra
-/// estado + power rápido y abre la pantalla completa al tocarla. Clon directo
-/// de [SoundbarHomeCard] adaptado al TV (ícono de TV, acento azul "vivo").
+/// Card de UN Samsung para la home (lo "expone como dispositivo"): muestra
+/// estado + power rápido y abre SU control al tocarla. Clon directo de
+/// [SoundbarHomeCard] adaptado al TV (ícono de TV, acento azul "vivo").
+///
+/// Desde CCE#130 la home tiene una card POR APARATO, así que la card sabe cuál
+/// es el suyo ([deviceId]) y no muestra el del estado global: con dos Samsung,
+/// dos cards leyendo `service.isOn` decían siempre lo mismo. Su estado y su
+/// nombre salen del inventario ([devices]), igual que el tile de la habitación;
+/// el TvService sólo conoce el del aparato ELEGIDO.
 class TvHomeCard extends StatefulWidget {
   final TvService service;
+
+  /// Aparato que representa ESTA card (`dev_tv-ce588d39`). En null la card es
+  /// la histórica del aparato elegido (backend sin GET /tv/tvs, o un destacado
+  /// viejo que todavía no nombra aparato).
+  final String? deviceId;
+
+  /// De dónde sale el estado cuando hay [deviceId]: TvService sólo conoce el
+  /// del aparato elegido, el de los demás vive en /devices/merged.
+  final DevicesService? devices;
 
   /// OPT-IN: relieve neumórfico (solo home teléfono). Default false ⇒ render
   /// idéntico al plano.
@@ -38,6 +55,8 @@ class TvHomeCard extends StatefulWidget {
   const TvHomeCard({
     super.key,
     required this.service,
+    this.deviceId,
+    this.devices,
     this.neo = false,
     this.onOpen,
     this.trailing,
@@ -55,39 +74,79 @@ class _TvHomeCardState extends State<TvHomeCard> {
   // La identidad de Samsung vive en el detalle del TV.
   static const Color _tvAccent = CceColors.accent;
 
+  /// El device del inventario que representa esta card, si lo tiene y está.
+  Device? get _device {
+    final id = widget.deviceId;
+    return id == null ? null : widget.devices?.byId(id);
+  }
+
   @override
   void initState() {
     super.initState();
     // Refresco de cortesía al aparecer (el shell maneja el polling continuo).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      // CCE#45: además del estado, la LISTA de Samsung — el título de la card
-      // es el nombre del aparato elegido, y sin la lista mostraría el histórico
-      // aunque el usuario esté controlando el otro.
+      // La LISTA de Samsung siempre: de ella salen el nombre del aparato de
+      // esta card y el `?tv=` de su switch.
       widget.service.loadTvs();
-      widget.service.refresh();
+      // El estado del servicio es el del aparato ELEGIDO. Una card que ya lee
+      // su estado del inventario no lo necesita, y pedirlo por cada card de la
+      // home era un GET /tv/status de más por aparato.
+      if (_device == null) widget.service.refresh();
     });
   }
 
   void _open() {
     HapticFeedback.selectionClick();
+    // El aparato se elige ACÁ, antes de abrir: `selectDevice` es síncrono en lo
+    // que decide qué se ve, así que el control se construye ya mostrando el
+    // Samsung de esta card y no el que quedó elegido desde otra pantalla.
+    final deviceId = widget.deviceId;
+    if (deviceId != null) widget.service.selectDevice(deviceId);
     if (widget.onOpen != null) {
       widget.onOpen!();
     } else {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => TvScreen(service: widget.service),
+        builder: (_) => TvScreen(service: widget.service, deviceId: deviceId),
       ));
     }
   }
 
+  /// Power del aparato de ESTA card. Con un aparato propio va por
+  /// `/tv/power?tv=…` (no puede llevarse el control de la otra card) y el
+  /// optimismo se aplica sobre el inventario, que es de donde la card lee.
+  Future<void> _setPower(bool on) async {
+    final deviceId = widget.deviceId;
+    if (deviceId == null) {
+      await widget.service.setPower(on);
+      return;
+    }
+    final devices = widget.devices;
+    final prev = devices?.applyLocalOn(deviceId, on);
+    final ok = await widget.service.setPowerOf(deviceId, on);
+    if (!ok && prev != null) devices!.restoreLocalState(deviceId, prev);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final inventory = widget.deviceId == null ? null : widget.devices;
     return AnimatedBuilder(
-      animation: widget.service,
+      animation: inventory == null
+          ? widget.service
+          : Listenable.merge([widget.service, inventory]),
       builder: (context, _) {
         final tv = widget.service;
-        final online = tv.online;
-        final on = tv.isOn;
+        final deviceId = widget.deviceId;
+        final device = _device;
+        // ¿El estado que hay a mano es el de ESTE aparato? Con el device del
+        // inventario, siempre. Sin él, sólo si además es el aparato elegido:
+        // en cualquier otro caso el estado del servicio es el del OTRO Samsung
+        // y mostrarlo sería mentir sobre este.
+        final mine =
+            deviceId == null || device != null || deviceId == tv.selectedDeviceId;
+        final known = device != null || (mine && tv.status != null);
+        final online = device?.state.reachable ?? (mine && tv.online);
+        final on = device?.state.on ?? (mine && tv.isOn);
         final neo = widget.neo;
         // Color de acento del estado. En neo, el "vivo" es accent (ON) y el
         // resto cae a los grises neo; en plano se conserva el warm histórico.
@@ -96,9 +155,12 @@ class _TvHomeCardState extends State<TvHomeCard> {
             : (on
                 ? (neo ? _tvAccent : CceColors.warm)
                 : CceColors.textSecondary);
-        final sub = !online
-            ? 'Fuera de línea'
-            : (on ? 'Encendido' : 'En espera');
+        // Sin primera lectura, '—' (mismo placeholder que el tile de la
+        // habitación): con dos Samsung, "Fuera de línea" mientras carga sería
+        // una afirmación sobre un aparato del que todavía no se sabe nada.
+        final sub = !known
+            ? '—'
+            : (!online ? 'Fuera de línea' : (on ? 'Encendido' : 'En espera'));
         // Dot de estado (solo neo): accent pulsante ON, gris terciario fuera.
         final dotColor = !online
             ? CceColors.textTertiary
@@ -113,15 +175,31 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 ? CceSwitch(
                     value: on,
                     accent: _tvAccent,
-                    onChanged: (v) => tv.setPower(v),
+                    onChanged: _setPower,
                   )
                 : FeaturedTile.chevron());
 
+        // Nombre del APARATO de esta card. El del inventario manda (es el que
+        // ya se ve en la habitación y en el plano); si el device no está, el
+        // de GET /tv/tvs; y sin nada, el histórico.
+        final name = device != null
+            ? inventory!.displayName(device)
+            : (deviceId != null
+                ? (tv.nameForDeviceId(deviceId) ?? tv.displayName)
+                : tv.displayName);
+        // Un monitor no es un televisor y conviene que se note: con una card
+        // por aparato, el ícono es lo que las distingue de un vistazo.
+        final isMonitor =
+            deviceId != null && (tv.tvForDeviceId(deviceId)?.isMonitor ?? false);
+        final Widget glyph = isMonitor
+            ? const Icon(Icons.desktop_windows_rounded, size: 24)
+            : const CceIcon(CceIcons.tv, size: 24);
+
         if (widget.tile) {
           return FeaturedTile(
-            glyph: const CceIcon(CceIcons.tv, size: 24),
+            glyph: glyph,
             glyphColor: glyphColor,
-            title: tv.displayName,
+            title: name,
             subtitle: sub,
             dotColor: dotColor,
             dotPulse: online && on,
@@ -155,7 +233,9 @@ class _TvHomeCardState extends State<TvHomeCard> {
                     // Ícono del sistema, no el logotipo de Samsung: en una
                     // lista, un logo de marca compite con el contenido y rompe
                     // la familia visual de los demás glyphs.
-                    child: const CceIcon(CceIcons.tv, size: 30),
+                    child: isMonitor
+                        ? const Icon(Icons.desktop_windows_rounded, size: 30)
+                        : const CceIcon(CceIcons.tv, size: 30),
                   ),
                 ),
               ),
@@ -165,7 +245,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tv.displayName,
+                      name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: neo

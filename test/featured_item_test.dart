@@ -54,6 +54,14 @@ void main() {
       expect(items[1].id, 'dev_t');
     });
 
+    test('un Samsung por device canónico (CCE#130)', () {
+      const item = FeaturedItem(FeaturedKind.tv, 'dev_tv-ce588d39');
+      expect(item.encode(), 'tv:dev_tv-ce588d39');
+      expect(FeaturedItem.decode('tv:dev_tv-ce588d39'), item);
+      expect(FeaturedItem.decode('tv:dev_tv'),
+          const FeaturedItem(FeaturedKind.tv, 'dev_tv'));
+    });
+
     test('encodeList round-trip estable', () {
       final list = [
         const FeaturedItem(FeaturedKind.tv),
@@ -63,6 +71,92 @@ void main() {
       expect(
         FeaturedItem.decodeList(FeaturedItem.encodeList(list)),
         list,
+      );
+    });
+  });
+
+  // La card "TV" única pasa a una card por Samsung (EugeValeiras/CCE#130).
+  // Esto toca SharedPreferences: quien ya tenía la card destacada tiene que
+  // seguir teniendo una card de TV después de actualizar. Si la migración se
+  // equivoca, el usuario pierde su home.
+  group('FeaturedItem.expandLegacyTv', () {
+    const televisor = 'dev_tv';
+    const monitor = 'dev_tv-ce588d39';
+
+    test('el `tv` viejo se abre en un ítem por aparato, EN SU LUGAR', () {
+      final migrated = FeaturedItem.expandLegacyTv(
+        const [
+          FeaturedItem(FeaturedKind.jbl),
+          FeaturedItem(FeaturedKind.tv),
+          FeaturedItem(FeaturedKind.vacuum, 'dev_robot'),
+        ],
+        const [televisor, monitor],
+      );
+      expect(migrated, const [
+        FeaturedItem(FeaturedKind.jbl),
+        FeaturedItem(FeaturedKind.tv, televisor),
+        FeaturedItem(FeaturedKind.tv, monitor),
+        FeaturedItem(FeaturedKind.vacuum, 'dev_robot'),
+      ], reason: 'el resto de los destacados no se mueve de lugar');
+    });
+
+    test('sin la lista de aparatos NO se toca nada', () {
+      const items = [FeaturedItem(FeaturedKind.tv)];
+      final migrated = FeaturedItem.expandLegacyTv(items, const []);
+      expect(identical(migrated, items), isTrue,
+          reason: 'contra un backend sin GET /tv/tvs, o antes de que la lista '
+              'llegue, migrar dejaría al usuario sin su card de TV');
+    });
+
+    test('destacados ya migrados no se vuelven a tocar', () {
+      const items = [
+        FeaturedItem(FeaturedKind.tv, televisor),
+        FeaturedItem(FeaturedKind.jbl),
+      ];
+      expect(
+        identical(FeaturedItem.expandLegacyTv(items, const [televisor, monitor]),
+            items),
+        isTrue,
+        reason: 'y en particular NO se agrega el monitor a la home de alguien '
+            'que ya eligió qué destacar',
+      );
+    });
+
+    test('sin ningún destacado de TV tampoco', () {
+      const items = [FeaturedItem(FeaturedKind.jbl)];
+      expect(
+        identical(FeaturedItem.expandLegacyTv(items, const [televisor]), items),
+        isTrue,
+      );
+    });
+
+    test('un aparato ya destacado no queda duplicado', () {
+      final migrated = FeaturedItem.expandLegacyTv(
+        const [
+          FeaturedItem(FeaturedKind.tv, monitor),
+          FeaturedItem(FeaturedKind.tv),
+        ],
+        const [televisor, monitor],
+      );
+      expect(migrated, const [
+        FeaturedItem(FeaturedKind.tv, monitor),
+        FeaturedItem(FeaturedKind.tv, televisor),
+      ], reason: 'dos ítems iguales rompen las keys del reorder del editor');
+    });
+
+    test('con un solo Samsung queda una sola card, como estaba', () {
+      final migrated = FeaturedItem.expandLegacyTv(
+          const [FeaturedItem(FeaturedKind.tv)], const [televisor]);
+      expect(migrated, const [FeaturedItem(FeaturedKind.tv, televisor)]);
+    });
+
+    test('lo migrado sobrevive el round-trip por prefs', () {
+      final migrated = FeaturedItem.expandLegacyTv(
+          const [FeaturedItem(FeaturedKind.tv)], const [televisor, monitor]);
+      expect(
+        FeaturedItem.decodeList(FeaturedItem.encodeList(migrated)),
+        migrated,
+        reason: 'es lo que se guarda y se vuelve a leer en el próximo arranque',
       );
     });
   });
