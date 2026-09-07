@@ -92,6 +92,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         AutomationsService(config: widget.service.config, devices: widget.service);
     _loadOrder();
     _loadFeatured();
+    // El TvService NO va al merge del build: notifica con CADA delta del socket
+    // (volumen, canal, fuente) y la home entera se reconstruía con cada uno.
+    // Lo único que le importa a esta pantalla es cuándo cambia la LISTA de
+    // Samsung, que es de donde salen las cards y su migración.
+    widget.tv?.addListener(_onTvsChanged);
     // Termómetro elegido por habitación: alimenta el badge de cada RoomCard.
     // Se carga una vez y queda cacheado (el build lo necesita síncrono).
     TempSensorPrefs.instance.ensureLoaded();
@@ -99,8 +104,20 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
 
   @override
   void dispose() {
+    widget.tv?.removeListener(_onTvsChanged);
     _automations.dispose();
     super.dispose();
+  }
+
+  /// Los Samsung con los que se construyó la sección por última vez.
+  List<String> _tvIdsVistos = const [];
+
+  void _onTvsChanged() {
+    final ids = _tvDeviceIds;
+    if (const ListEquality<String>().equals(ids, _tvIdsVistos)) return;
+    _tvIdsVistos = ids;
+    _migrateFeaturedTv();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFeatured() async {
@@ -111,6 +128,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       // await (primer acceso a prefs puede ser lento), no pisar su edición.
       if (raw != null && mounted && _featured == null) {
         setState(() => _featured = _dedupe(FeaturedItem.decodeList(raw)));
+        // La lista de Samsung puede haber llegado ANTES que las prefs: ahí el
+        // listener ya corrió sin nada que migrar. Se reintenta acá para cubrir
+        // los dos órdenes.
+        _migrateFeaturedTv();
       }
     } catch (_) {}
   }
@@ -172,15 +193,23 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   List<String> get _tvDeviceIds =>
       widget.tv?.tvs.map((t) => t.canonicalDeviceId).toList() ?? const [];
 
+  /// Los destacados de TV que la casa ofrece: uno por Samsung, o el histórico
+  /// mientras no hay lista (backend viejo, o todavía cargando).
+  ///
+  /// UN SOLO lugar: el default de la home y el catálogo del editor tienen que
+  /// ofrecer lo mismo, y con el bloque escrito dos veces nada lo obligaba.
+  List<FeaturedItem> get _tvFeatured {
+    if (widget.tv == null) return const [];
+    final ids = _tvDeviceIds;
+    if (ids.isEmpty) return const [FeaturedItem(FeaturedKind.tv)];
+    return [for (final id in ids) FeaturedItem(FeaturedKind.tv, id)];
+  }
+
   /// Default histórico cuando el usuario nunca editó: TV → JBL → termostato →
   /// robot (los que existan). Desde CCE#130, UNA CARD POR SAMSUNG: la casa
   /// tiene más de uno y una card genérica no dejaba llegar al segundo.
   List<FeaturedItem> _defaultFeatured(Device? thermostat, Device? vacuum) => [
-        if (widget.tv != null) ...[
-          for (final id in _tvDeviceIds) FeaturedItem(FeaturedKind.tv, id),
-          // Sin lista (backend viejo, o todavía cargando) la card histórica.
-          if (_tvDeviceIds.isEmpty) const FeaturedItem(FeaturedKind.tv),
-        ],
+        ..._tvFeatured,
         if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
         if (thermostat != null)
           FeaturedItem(FeaturedKind.thermostat, thermostat.id),
@@ -191,8 +220,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   bool _tvMigrated = false;
 
   /// Migra el destacado `tv` sin aparato a uno por Samsung (CCE#130) y lo
-  /// persiste. Se llama desde el build porque depende de GET /tv/tvs, que llega
-  /// después de que las prefs resolvieron.
+  /// persiste. Lo disparan las DOS señales de las que depende —que lleguen los
+  /// destacados de prefs y que llegue GET /tv/tvs—, en el orden que sea; nunca
+  /// desde el build, que es donde escribía prefs y mutaba estado durante el
+  /// paint.
   ///
   /// Es conservadora a propósito: sin lista de aparatos NO toca nada y la card
   /// histórica se sigue mostrando. Quien ya tenía "TV" destacado no puede
@@ -207,8 +238,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     final migrated = FeaturedItem.expandLegacyTv(items, deviceIds);
     _tvMigrated = true;
     if (identical(migrated, items)) return;
-    // Sin setState: esto corre DENTRO del build y el propio build ya lo usa.
-    _featured = migrated;
+    if (mounted) {
+      setState(() => _featured = migrated);
+    } else {
+      _featured = migrated;
+    }
     _saveFeatured(migrated);
   }
 
@@ -532,10 +566,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           // dueño): dedicados + luces + botones + cerraduras + sensores,
           // ordenados por nombre para encontrarlos rápido.
           final devices = <FeaturedItem>[
-            if (widget.tv != null) ...[
-              for (final id in _tvDeviceIds) FeaturedItem(FeaturedKind.tv, id),
-              if (_tvDeviceIds.isEmpty) const FeaturedItem(FeaturedKind.tv),
-            ],
+            ..._tvFeatured,
             if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
             for (final d in service.thermostats)
               FeaturedItem(FeaturedKind.thermostat, d.id),
@@ -751,13 +782,9 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       // hasta que un evento ajeno de DevicesService fuerce rebuild), y el badge
       // de temperatura de TempSensorPrefs (elegir otro termómetro en el detalle
       // de una habitación debe reflejarse en su botón al volver).
-      // widget.tv entra al merge por los Destacados: la lista de Samsung llega
-      // después del primer frame y de ella salen cuántas cards de TV hay y qué
-      // nombre tiene cada una (CCE#130).
-      animation: Listenable.merge(
-          [service, _automations, TempSensorPrefs.instance, widget.tv]),
+      animation:
+          Listenable.merge([service, _automations, TempSensorPrefs.instance]),
       builder: (context, _) {
-        _migrateFeaturedTv();
         if (service.loading && service.all.isEmpty) {
           // Mientras no haya datos seguimos mostrando "Preparando tu hogar"
           // (mismo visual que el splash) en vez de un spinner genérico.

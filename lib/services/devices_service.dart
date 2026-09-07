@@ -436,24 +436,28 @@ class DevicesService extends ChangeNotifier {
   }
 
   /// Pisa el `on` de un device del inventario SIN mandar nada a la red, y
-  /// devuelve el estado previo para poder revertir. Lo usa quien manda el
+  /// devuelve el valor previo para poder revertir. Lo usa quien manda el
   /// comando por OTRA ruta —el Samsung va por `/tv/power?tv=…`, no por
   /// `/devices/:id/state`— y necesita que su card se mueva sin esperar al
   /// `device:state-changed`. Null si ese device no está en el inventario.
-  DeviceState? applyLocalOn(String deviceId, bool on) {
+  bool? applyLocalOn(String deviceId, bool on) {
     final d = _byId[deviceId];
     if (d == null) return null;
-    final prev = d.state;
+    final prev = d.state.on;
     d.state = d.state.copyWith(on: on);
     notifyListeners();
     return prev;
   }
 
-  /// Restaura el estado que devolvió [applyLocalOn] cuando el comando falló.
-  void restoreLocalState(String deviceId, DeviceState prev) {
+  /// Devuelve `on` al valor que dio [applyLocalOn], cuando el comando falló.
+  ///
+  /// Revierte SÓLO ese campo y no un snapshot entero: mientras el comando
+  /// volaba pudo llegar un `device:state-changed` con volumen, fuente o
+  /// alcanzabilidad nuevos, y restaurar todo los pisaría con datos viejos.
+  void restoreLocalOn(String deviceId, bool on) {
     final d = _byId[deviceId];
     if (d == null) return;
-    d.state = prev;
+    d.state = d.state.copyWith(on: on);
     notifyListeners();
   }
 

@@ -100,6 +100,41 @@ class TvService extends ChangeNotifier {
   /// aparatos todavía no había llegado. [loadTvs] lo aplica al resolver.
   String? _pendingDeviceId;
 
+  /// Device canónico pedido que la lista NO contiene (lo quitaron del backend).
+  /// No se puede caer al aparato por defecto: comandar el televisor cuando se
+  /// abrió el monitor es peor que decir que no se puede.
+  String? _missingDeviceId;
+
+  /// Cambia cada vez que cambia EL APARATO QUE LA PANTALLA TIENE QUE MOSTRAR.
+  ///
+  /// Es la identidad que [refresh] necesita para saber si la respuesta que le
+  /// llegó sigue siendo la de esta pantalla. `selectedTvId` NO sirve para eso:
+  /// pasa de null al id del principal con sólo llegar la lista, sin que nadie
+  /// haya cambiado de aparato — y comparando contra él, el primer estado de
+  /// cada sesión se descartaba por una diferencia que no era un cambio.
+  int _selectionEpoch = 0;
+
+  /// Cambia cada vez que se anota un pedido pendiente. [loadTvs] la mira para
+  /// no resolver con una lista que salió ANTES del pedido: hay varios
+  /// `loadTvs` en vuelo (el shell, cada card, cada apertura del control) y uno
+  /// viejo se llevaba puesta la selección recién pedida.
+  int _pendingEpoch = 0;
+
+  /// Numeración de los GET /tv/tvs: se piden desde varios lados a la vez (el
+  /// shell, cada card de la home, cada apertura del control) y vuelven
+  /// desordenados. Una respuesta más vieja que la última aplicada se descarta:
+  /// si no, una lista vacía —que es lo que devuelve [ApiService.getTvs] ante
+  /// CUALQUIER error— pisaba la lista buena y se llevaba puesta la selección.
+  int _tvsRequestSeq = 0;
+  int _tvsAppliedSeq = 0;
+
+  /// GET /tv/tvs en vuelo, compartido por quien no necesita una lista recién
+  /// pedida (las cards de la home): tres cards montándose eran tres requests.
+  Future<void>? _tvsInFlight;
+
+  /// El aparato pedido no está y no se puede comandar otro en su lugar.
+  bool get missingDevice => _missingDeviceId != null;
+
   List<TvSummary> get tvs => _tvs;
 
   /// El aparato elegido, o null mientras la lista no cargó.
@@ -250,34 +285,82 @@ class TvService extends ChangeNotifier {
 
   // ── Lectura ──────────────────────────────────────────────────────────────
 
-  /// Trae los Samsung configurados. NUNCA tira: contra un backend viejo (sin
-  /// GET /tv/tvs) la lista queda vacía y la app se comporta como cuando había
-  /// un solo televisor.
-  Future<void> loadTvs() async {
+  /// NUNCA tira: contra un backend viejo (sin GET /tv/tvs) la lista queda vacía
+  /// y la app se comporta como cuando había un solo televisor.
+  ///
+  /// Trae los Samsung configurados.
+  ///
+  /// [force] pide una lista NUEVA en vez de compartir la que esté en vuelo: lo
+  /// necesita [selectDevice], porque una lista pedida antes que el aparato no
+  /// sirve para resolverlo. Lo demás (el shell, las cards) comparte.
+  Future<void> loadTvs({bool force = false}) async {
+    final inFlight = _tvsInFlight;
+    if (!force && inFlight != null) return inFlight;
+    final future = _loadTvs();
+    _tvsInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_tvsInFlight, future)) _tvsInFlight = null;
+    }
+  }
+
+  Future<void> _loadTvs() async {
+    final seq = ++_tvsRequestSeq;
+    // La epoch del pendiente se captura ANTES de salir a la red: si mientras
+    // vuela esta lista alguien pide otro aparato, esta respuesta ya es vieja y
+    // no puede decidir sobre ese pedido.
+    final epoch = _pendingEpoch;
     final list = await _api.getTvs();
+    // Respuesta fuera de orden: ya se aplicó una más nueva.
+    if (seq < _tvsAppliedSeq) return;
+    _tvsAppliedSeq = seq;
     _tvs = list;
     // Un aparato elegido que ya no existe (lo quitaron) no puede dejar la app
     // mandando comandos a la nada.
     if (_selectedId != null && !list.any((t) => t.id == _selectedId)) {
       _selectedId = null;
+      _selectionEpoch++;
     }
     // Un aparato pedido ANTES de que llegara la lista (abrir el control del
     // monitor apenas arrancó la app) se aplica recién acá. Sin esto el pedido
     // se perdía en silencio y el control abría el que estuviera elegido.
     final pending = _pendingDeviceId;
-    if (pending != null) {
-      // Se suelta aunque no resuelva: contra un backend sin GET /tv/tvs la
-      // lista siempre vuelve vacía, y dejarlo colgado dejaría la pantalla sin
-      // estado para siempre. Ahí manda el aparato por defecto del backend, que
-      // es como se comportaba la app cuando había uno solo.
-      _pendingDeviceId = null;
+    final resolvable = pending != null && epoch == _pendingEpoch;
+    if (resolvable) {
       final tv = tvForDeviceId(pending);
-      if (tv != null) _selectedId = tv.id;
+      if (tv != null) {
+        _pendingDeviceId = null;
+        _missingDeviceId = null;
+        if (_selectedId != tv.id) _selectionEpoch++;
+        _selectedId = tv.id;
+      } else if (list.isEmpty) {
+        // Backend sin GET /tv/tvs: la lista vuelve vacía SIEMPRE y no se puede
+        // saber nada del aparato. Se suelta el pedido y manda el aparato por
+        // defecto del backend, que es como se comportaba la app cuando había
+        // uno solo. Dejarlo colgado dejaría la pantalla sin estado para siempre.
+        _pendingDeviceId = null;
+        _selectionEpoch++;
+      } else {
+        // La lista llegó y ese aparato NO está: lo quitaron. No se cae al
+        // aparato por defecto — cada tecla iría al Samsung equivocado.
+        _pendingDeviceId = null;
+        _missingDeviceId = pending;
+        _status = null;
+        _error = 'Ese aparato ya no está';
+        _selectionEpoch++;
+      }
     }
     _safeNotify();
     // El pedido dejó la pantalla sin estado a propósito (no se muestra el del
     // aparato anterior): ahora que se sabe cuál es, se pide el suyo.
-    if (pending != null && _status == null) await refresh();
+    //
+    // Sin condicionarlo a que falte el estado. Hoy da igual —con la epoch de
+    // selección, cualquier respuesta en vuelo del aparato anterior se descarta
+    // y `_status` llega acá en null—, pero el invariante que importa es "al
+    // cambiar de aparato se lee el estado del nuevo", y escribirlo así no lo
+    // hace depender de que el otro arreglo siga en su lugar.
+    if (resolvable && _missingDeviceId == null) await refresh();
   }
 
   /// Cambia el aparato controlado y relee su estado. El estado del anterior se
@@ -297,6 +380,7 @@ class TvService extends ChangeNotifier {
     }
     _selectedId = id;
     _status = null;
+    _selectionEpoch++;
     _safeNotify();
     await refresh();
   }
@@ -324,14 +408,21 @@ class TvService extends ChangeNotifier {
   /// Si la lista de aparatos todavía no llegó, el pedido queda PENDIENTE y lo
   /// aplica [loadTvs]. Antes era un no-op silencioso: tocar el monitor con la
   /// app recién abierta abría el televisor, con su estado y sus teclas.
-  void selectDevice(String deviceId) {
+  ///
+  /// Devuelve true si de acá sale una lectura del estado —porque cambió el
+  /// aparato o porque quedó pendiente—, para que quien abre la pantalla no
+  /// pida una segunda: abrir un control costaba dos GET /tv/status del mismo
+  /// aparato.
+  bool selectDevice(String deviceId) {
     final tv = tvForDeviceId(deviceId);
     if (tv != null) {
       _pendingDeviceId = null;
+      _missingDeviceId = null;
+      final cambia = selectedTv?.id != tv.id;
       // Sin await a propósito: lo que decide qué se ve ya pasó cuando esto
       // vuelve; lo que queda pendiente es el GET del estado nuevo.
       unawaited(selectTv(tv.id));
-      return;
+      return cambia;
     }
     // No se puede resolver todavía. Mientras tanto NO se muestra el estado de
     // otro aparato como si fuera éste; la excepción es el televisor histórico
@@ -341,13 +432,38 @@ class TvService extends ChangeNotifier {
       _status = null;
     }
     _pendingDeviceId = deviceId;
+    _missingDeviceId = null;
+    _error = null;
+    // Las dos epochs: la de selección invalida las respuestas en vuelo (el
+    // estado del aparato anterior ya no es el de esta pantalla), y la del
+    // pendiente evita que un `loadTvs` que salió antes de este pedido lo
+    // resuelva con una lista vieja.
+    _selectionEpoch++;
+    _pendingEpoch++;
     _safeNotify();
-    unawaited(loadTvs());
+    unawaited(loadTvs(force: true));
+    return true;
   }
 
   /// Nombre del aparato [deviceId] según GET /tv/tvs; null si no está en la
   /// lista (backend viejo, o un aparato que ya no existe).
   String? nameForDeviceId(String deviceId) => tvForDeviceId(deviceId)?.name;
+
+  /// Reintento del cartel de error de la pantalla. Con un aparato que no
+  /// aparecía en la lista vuelve a pedirla —lo pueden haber vuelto a agregar—;
+  /// si no, relee el estado. [refresh] solo no alcanza: con un aparato sin
+  /// resolver sale temprano a propósito y el botón no haría nada.
+  Future<void> retry() async {
+    final missing = _missingDeviceId;
+    if (missing == null) return refresh();
+    _missingDeviceId = null;
+    _error = null;
+    _pendingDeviceId = missing;
+    _pendingEpoch++;
+    _selectionEpoch++;
+    _safeNotify();
+    await loadTvs(force: true);
+  }
 
   /// Dispara el pairing Tizen del aparato elegido. TRÁMITE FÍSICO: aparece un
   /// aviso en SU pantalla y alguien tiene que aceptarlo ahí.
@@ -374,8 +490,9 @@ class TvService extends ChangeNotifier {
     // Con un aparato pedido y todavía sin resolver, un GET sin `?tv=` lo
     // contesta el backend con SU aparato por defecto: sería traer el estado del
     // televisor para la pantalla del monitor. Se espera a la lista — [loadTvs]
-    // pide el estado apenas sabe cuál es.
-    if (_pendingDeviceId != null) return;
+    // pide el estado apenas sabe cuál es. Y un aparato que ya no está no tiene
+    // estado que pedir.
+    if (_pendingDeviceId != null || _missingDeviceId != null) return;
     if (_refreshing) {
       _queuedRefresh = true;
       return;
@@ -384,24 +501,24 @@ class TvService extends ChangeNotifier {
     _loading = true;
     _error = null;
     _safeNotify();
-    final requested = selectedTvId;
+    final epoch = _selectionEpoch;
     try {
-      final status = await _api.getTvStatus(tvId: requested);
-      if (requested == selectedTvId) _status = status;
+      final status = await _api.getTvStatus(tvId: selectedTvId);
+      if (epoch == _selectionEpoch) _status = status;
     } catch (e) {
-      if (requested == selectedTvId) _error = 'No se pudo conectar al servidor';
+      if (epoch == _selectionEpoch) _error = 'No se pudo conectar al servidor';
       debugPrint('TvService refresh error: $e');
     } finally {
       _refreshing = false;
-      if (_queuedRefresh) {
-        _queuedRefresh = false;
-        // Encadena SIN bajar `loading`: la pantalla sigue mostrando "cargando"
-        // hasta tener el estado del aparato que efectivamente muestra.
-        unawaited(refresh());
-      } else {
-        _loading = false;
-        _safeNotify();
-      }
+      final queued = _queuedRefresh;
+      _queuedRefresh = false;
+      // `loading` SIEMPRE baja y SIEMPRE se notifica, incluso encadenando: el
+      // encadenado puede salir temprano (aparato sin resolver) y dejar la
+      // pantalla clavada en el spinner. Cuando sí corre, vuelve a subirlo en
+      // este mismo turno síncrono, así que no hay un frame intermedio.
+      _loading = false;
+      _safeNotify();
+      if (queued) unawaited(refresh());
     }
   }
 
@@ -441,9 +558,8 @@ class TvService extends ChangeNotifier {
     }
     // El optimismo local sólo aplica al aparato que la pantalla está mostrando;
     // las cards de los demás reflejan el cambio desde el inventario.
-    final mine = tv.id == selectedTv?.id && _status != null;
     final prev = _status?.power;
-    if (mine) {
+    if (tv.id == selectedTv?.id && _status != null) {
       _status = _status!.copyWith(power: on ? 'on' : 'off');
       _safeNotify();
     }
@@ -451,7 +567,10 @@ class TvService extends ChangeNotifier {
       await _api.setTvPower(on, tvId: tv.id);
       return true;
     } catch (e) {
-      if (mine && prev != null) {
+      // El revert se re-chequea contra el estado ACTUAL, no contra el de hace
+      // un rato: cambiar de aparato mientras el PUT vuela deja `_status` en
+      // null, y revertir a ciegas reventaba con un null check.
+      if (prev != null && _status != null && tv.id == selectedTv?.id) {
         _status = _status!.copyWith(power: prev);
         _safeNotify();
       }

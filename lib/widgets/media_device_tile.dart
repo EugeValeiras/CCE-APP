@@ -60,19 +60,31 @@ class TvDeviceTile extends StatelessWidget {
       builder: (context, _) {
         final tv = service;
         final device = inventory?.byId(deviceId!);
-        final online = device?.state.reachable ?? tv.online;
-        final isOn = device?.state.on ?? tv.isOn;
+        // ¿El estado que hay a mano es el de ESTE aparato? Con el device del
+        // inventario, siempre. Sin él, sólo si además es el elegido: si no, el
+        // estado del service es el del OTRO Samsung y el tile del monitor
+        // apagado decía «Encendido» copiándole al televisor (CCE#130).
+        final mine = deviceId == null ||
+            device != null ||
+            deviceId == tv.selectedDeviceId;
+        final known = device != null || (mine && tv.status != null);
+        final online = device?.state.reachable ?? (mine && tv.online);
+        final isOn = device?.state.on ?? (mine && tv.isOn);
         final active = online && isOn;
-        // Sin primera respuesta del service → '—' (mismo placeholder que los
-        // sensores sin lectura); luego el patrón de TvHomeCard. Con un aparato
-        // fijado no hay espera: el inventario ya trae su estado.
-        final label = device == null && tv.status == null
+        // Sin primera lectura → '—' (mismo placeholder que los sensores sin
+        // lectura). Con un aparato fijado no hay espera: el inventario ya trae
+        // su estado.
+        final label = !known
             ? '—'
             : (!online ? 'Fuera de línea' : (isOn ? 'Encendido' : 'En espera'));
         return _MediaTile(
+          // Con un aparato propio sin nombre, el de GET /tv/tvs y después un
+          // neutro: `tv.displayName` es el nombre del aparato SELECCIONADO.
           name: device != null
               ? inventory!.displayName(device)
-              : tv.displayName,
+              : (deviceId != null
+                  ? (tv.nameForDeviceId(deviceId!) ?? 'Samsung TV')
+                  : tv.displayName),
           label: label,
           dotColor: active ? CceColors.info : CceColors.textTertiary,
           glyphColor: active ? CceColors.info : CceColors.textSecondary,

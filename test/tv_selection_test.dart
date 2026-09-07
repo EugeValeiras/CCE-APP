@@ -79,12 +79,21 @@ class _FakeApi extends ApiService {
   /// (tvId, on) de cada PUT /tv/power.
   final List<(String?, bool)> powerCalls = [];
 
+  /// Hace fallar el PUT, para ejercitar el camino de revert.
+  bool failPower = false;
+
   /// Si está, getTvStatus espera a que se complete antes de responder.
   Completer<void>? gate;
+
+  /// Si está, getTvs devuelve ESE future: permite que la lista llegue después
+  /// del estado, o que una lista vieja vuelva después de una nueva.
+  Completer<List<TvSummary>>? tvsGate;
 
   @override
   Future<List<TvSummary>> getTvs() async {
     tvsCalls++;
+    final g = tvsGate;
+    if (g != null) return g.future;
     return tvs;
   }
 
@@ -99,12 +108,20 @@ class _FakeApi extends ApiService {
   @override
   Future<String> setTvPower(bool on, {String? tvId}) async {
     powerCalls.add((tvId, on));
+    if (failPower) throw Exception('PUT /tv/power falló');
     return on ? 'on' : 'off';
   }
 }
 
 TvService _service(_FakeApi api) =>
     TvService(config: ServerConfig(), socket: SocketService(), api: api);
+
+/// Drena los microtasks encadenados (loadTvs → refresh → …).
+Future<void> _drain([int n = 6]) async {
+  for (var i = 0; i < n; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
 
 void main() {
   group('selectDevice: el aparato lo nombra quien abre el control', () {
@@ -250,6 +267,143 @@ void main() {
       expect(api.statusCalls, contains('tv-ce588d39'),
           reason: 'y el pedido del monitor no se descartó por haber caído '
               'encima de uno en vuelo');
+    });
+  });
+
+  // Review de CCE-APP#48: la primera vuelta usaba `selectedTvId` como identidad
+  // para decidir si una respuesta seguía siendo la de esta pantalla. No lo es:
+  // pasa de null al id del principal con sólo llegar la lista, sin que nadie
+  // haya cambiado de aparato. De ahí salían los cuatro caminos al aparato
+  // equivocado que fijan estos tests.
+  group('review #48: la identidad de la selección', () {
+    test('el PRIMER estado de la sesión no se descarta', () async {
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      api.statuses[null] = _encendido;
+      final s = _service(api);
+      // startPolling dispara loadTvs() y refresh() juntos. La lista (lectura de
+      // config) vuelve antes que el status (que va a SmartThings).
+      final gate = Completer<void>();
+      api.gate = gate;
+      s.startPolling();
+      await _drain();
+      api.gate = null;
+      gate.complete();
+      await _drain();
+
+      expect(s.status, isNotNull,
+          reason: 'el status salió sin ?tv= y volvió cuando selectedTvId ya '
+              'era "tv": comparando contra él se descartaba el primer estado '
+              'de cada sesión y el control abría muerto');
+      expect(s.loading, isFalse);
+      s.stopPolling();
+    });
+
+    test('el estado del anterior no se acepta como el del pendiente', () async {
+      final api = _FakeApi();
+      api.statuses[null] = _encendido;
+      api.statuses['tv-ce588d39'] = _apagado;
+      final s = _service(api);
+      // /tv/status del televisor en vuelo, sin ?tv= porque la lista no llegó.
+      final statusGate = Completer<void>();
+      api.gate = statusGate;
+      unawaited(s.refresh());
+      // Se abre el monitor; su lista queda retenida.
+      final tvsGate = Completer<List<TvSummary>>();
+      api.tvsGate = tvsGate;
+      s.selectDevice('dev_tv-ce588d39');
+      // El estado del televisor vuelve PRIMERO.
+      api.gate = null;
+      statusGate.complete();
+      await _drain();
+
+      expect(s.status, isNull,
+          reason: 'selectedTvId seguía siendo null en los dos momentos, así '
+              'que la respuesta del televisor se colaba como estado del '
+              'monitor: volumen, encendido y fuentes del aparato equivocado');
+
+      api.tvsGate = null;
+      tvsGate.complete([_televisor(), _monitor()]);
+      await _drain();
+
+      expect(s.selectedTvId, 'tv-ce588d39');
+      expect(s.volume, 7,
+          reason: 'y al resolverse el pendiente se pide el estado del monitor: '
+              'antes sólo se pedía si faltaba, así que el control se quedaba '
+              'para siempre con el del televisor');
+    });
+
+    test('una lista vieja no se lleva puesta la selección recién pedida',
+        () async {
+      final api = _FakeApi();
+      // GET /tv/tvs #1 en vuelo; va a devolver [] (getTvs se traga cualquier
+      // error devolviendo la lista vacía).
+      final vieja = Completer<List<TvSummary>>();
+      api.tvsGate = vieja;
+      final s = _service(api);
+      unawaited(s.loadTvs());
+      // Se toca el monitor: anota el pedido y pide una lista NUEVA.
+      api.tvsGate = null;
+      api.tvs = [_televisor(), _monitor()];
+      s.selectDevice('dev_tv-ce588d39');
+      // La #1 resuelve DESPUÉS, con la lista vacía.
+      vieja.complete(const []);
+      await _drain();
+
+      expect(s.selectedDeviceId, 'dev_tv-ce588d39',
+          reason: 'la respuesta vieja pisaba la lista buena con la vacía y el '
+              'control del monitor terminaba abriendo el televisor, callado');
+      expect(s.tvs, hasLength(2));
+    });
+
+    test('cambiar de aparato con un power en vuelo no revienta', () async {
+      final api = _FakeApi()..failPower = true;
+      final s = _service(api)
+        ..debugSeed(tvs: [_televisor(), _monitor()], status: _encendido);
+
+      final f = s.setPowerOf('dev_tv', false); // optimismo sobre el televisor
+      s.selectDevice('dev_tv-ce588d39');       // _status pasa a null
+      // El revert no puede asumir que el estado que tocó sigue estando.
+      await expectLater(f, completion(isFalse));
+    });
+
+    test('un aparato que ya no está NO se reemplaza por el principal',
+        () async {
+      final api = _FakeApi()..tvs = [_televisor()];
+      api.statuses[null] = _encendido;
+      api.statuses['tv'] = _encendido;
+      final s = _service(api)..debugSeed(tvs: [_televisor()]);
+
+      s.selectDevice('dev_tv-ce588d39'); // no está en la lista
+      await _drain();
+
+      expect(s.missingDevice, isTrue);
+      expect(s.status, isNull,
+          reason: 'sin estado no pasa ningún comando: todos gatean por él');
+      expect(s.error, isNotNull, reason: 'y la pantalla lo dice');
+      expect(await s.sendKey(TvRemoteKeys.ok), isFalse,
+          reason: 'cada tecla habría ido al Samsung equivocado');
+      expect(await s.togglePower(), isFalse);
+    });
+
+    test('el spinner no queda clavado cuando el encadenado sale temprano',
+        () async {
+      final api = _FakeApi();
+      api.statuses[null] = _encendido;
+      final s = _service(api)..debugSeed(status: _encendido);
+      final gate = Completer<void>();
+      api.gate = gate;
+      unawaited(s.refresh());
+      unawaited(s.refresh()); // se encola
+      final tvsGate = Completer<List<TvSummary>>();
+      api.tvsGate = tvsGate;
+      s.selectDevice('dev_tv'); // deja pendiente: el encadenado saldrá temprano
+      api.gate = null;
+      gate.complete();
+      await _drain();
+
+      expect(s.loading, isFalse,
+          reason: 'el finally encadenaba sin bajar loading ni notificar, y el '
+              'encadenado salía temprano: la pantalla quedaba en el spinner');
     });
   });
 

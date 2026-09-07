@@ -31,6 +31,7 @@ import 'package:cce_app/services/tv_service.dart';
 import 'package:cce_app/views/rooms_list_screen.dart';
 import 'package:cce_app/views/tv/tv_home_card.dart';
 import 'package:cce_app/views/tv/tv_screen.dart';
+import 'package:cce_app/widgets/media_device_tile.dart';
 
 const _televisorName = '65" OLED';
 const _monitorName = '49" Odyssey OLED G9';
@@ -70,19 +71,25 @@ class _FakeApi extends ApiService {
   _FakeApi(this.tvs, {this.gate}) : super(ServerConfig());
   final List<TvSummary> tvs;
 
+  int tvsCalls = 0;
+  int statusCalls = 0;
+
   /// Si está, GET /tv/tvs no responde hasta completarlo: sirve para separar el
   /// momento en que resuelven las prefs del momento en que llega la lista.
   final Completer<void>? gate;
 
   @override
   Future<List<TvSummary>> getTvs() async {
+    tvsCalls++;
     if (gate != null) await gate!.future;
     return tvs;
   }
 
   @override
-  Future<TvStatus> getTvStatus({String? tvId}) async =>
-      const TvStatus(online: true, power: 'on', volume: 12);
+  Future<TvStatus> getTvStatus({String? tvId}) async {
+    statusCalls++;
+    return const TvStatus(online: true, power: 'on', volume: 12);
+  }
 }
 
 DevicesService _devices(List<Device> house) {
@@ -215,7 +222,8 @@ void main() {
         reason: 'y la selección ya estaba hecha antes de construirla');
   });
 
-  testWidgets('el control no ofrece cambiar de aparato', (tester) async {
+  testWidgets('el control dice qué aparato comanda y no deja cambiarlo',
+      (tester) async {
     tester.view.physicalSize = const Size(430, 1400);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -228,10 +236,31 @@ void main() {
     await tester.pump();
 
     expect(find.text(_monitorName), findsNothing,
-        reason: 'los tabs eran una forma de terminar apretando teclas en el '
-            'aparato equivocado');
-    expect(find.text(_televisorName), findsNothing,
-        reason: 'sin selector no queda media fila de tabs tampoco');
+        reason: 'el otro Samsung no está en pantalla: los tabs eran una forma '
+            'de terminar apretando teclas en el aparato equivocado');
+    expect(find.text(_televisorName), findsOneWidget,
+        reason: 'pero el que SÍ se comanda tiene que decir su nombre: la '
+            'pantalla no tiene AppBar y sin esto el primer aviso de estar en '
+            'el aparato equivocado es el aparato equivocado reaccionando');
+  });
+
+  testWidgets('el rótulo del aparato no es un selector', (tester) async {
+    tester.view.physicalSize = const Size(430, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final tv = _tvService(tvs: [_televisor(), _monitor()])
+      ..debugSeed(status: const TvStatus(online: true, power: 'on', volume: 12));
+
+    await tester.pumpWidget(MaterialApp(
+      home: TvScreen(service: tv, deviceId: _televisorDevice),
+    ));
+    await tester.pump();
+    await tester.tap(find.text(_televisorName));
+    await tester.pump();
+
+    expect(tv.selectedDeviceId, _televisorDevice,
+        reason: 'tocarlo no abre ningún selector ni cambia de aparato');
+    expect(find.text(_monitorName), findsNothing);
   });
 
   testWidgets('quien tenía la card "TV" destacada no se queda sin card',
@@ -297,6 +326,140 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getStringList('home.featured'),
         ['tv:$_televisorDevice', 'tv:$_monitorDevice']);
+  });
+
+  // Review de CCE-APP#48: cuando el aparato de un widget no se puede resolver,
+  // caer al estado o al nombre del aparato SELECCIONADO es peor que no decir
+  // nada — la card queda honesta sobre el estado y mentirosa sobre cuál es.
+  testWidgets('la card sin nombre resoluble no se rotula con el del elegido',
+      (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    // El aparato de la card no está ni en el inventario ni en GET /tv/tvs; el
+    // elegido es el televisor y se llama '65" OLED'.
+    final tv = _tvService(tvs: [_televisor()]);
+    await tester.pumpWidget(MaterialApp(
+      home: Material(
+        child: TvHomeCard(
+          service: tv,
+          deviceId: _monitorDevice,
+          devices: _devices([_samsung(_televisorDevice, _televisorName, on: true)]),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.text(_televisorName), findsNothing,
+        reason: 'rotular la card del monitor con el nombre del televisor es '
+            'exactamente el error que este issue viene a arreglar');
+    expect(find.text('Samsung TV'), findsOneWidget);
+  });
+
+  testWidgets('el tile de la habitación tampoco copia el estado del elegido',
+      (tester) async {
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    // El elegido (el televisor) está ENCENDIDO; el aparato del tile no está en
+    // el inventario, así que de él no se sabe nada.
+    final tv = _tvService(tvs: [_televisor(), _monitor()])
+      ..debugSeed(status: const TvStatus(online: true, power: 'on', volume: 3));
+    await tester.pumpWidget(MaterialApp(
+      home: Material(
+        child: SizedBox(
+          height: 200,
+          child: TvDeviceTile(
+            service: tv,
+            devices: _devices(
+                [_samsung(_televisorDevice, _televisorName, on: true)]),
+            deviceId: _monitorDevice,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.text('Encendido'), findsNothing,
+        reason: 'el tile del monitor decía "Encendido" copiándole al televisor');
+    expect(find.text('—'), findsOneWidget);
+  });
+
+  testWidgets('la home no pide la lista de Samsung una vez por card',
+      (tester) async {
+    final api = _FakeApi([_televisor(), _monitor()]);
+    final tv = TvService(
+      config: ServerConfig(),
+      socket: SocketService(),
+      api: api,
+    )..debugSeed(tvs: [_televisor(), _monitor()]);
+    await _pumpHome(
+      tester,
+      devices: _devices([
+        _samsung(_televisorDevice, _televisorName, on: true),
+        _samsung(_monitorDevice, _monitorName, on: false),
+      ]),
+      tv: tv,
+    );
+
+    expect(find.byType(TvHomeCard), findsNWidgets(2));
+    expect(api.tvsCalls, 1,
+        reason: 'dos cards montándose eran dos GET /tv/tvs concurrentes, y esa '
+            'concurrencia es lo que hacía que una respuesta vieja se llevara '
+            'puesta la selección');
+  });
+
+  testWidgets('abrir un control cuesta UN solo GET /tv/status', (tester) async {
+    final api = _FakeApi([_televisor(), _monitor()]);
+    final tv = TvService(
+      config: ServerConfig(),
+      socket: SocketService(),
+      api: api,
+    )..debugSeed(tvs: [_televisor(), _monitor()]);
+    await _pumpHome(
+      tester,
+      devices: _devices([
+        _samsung(_televisorDevice, _televisorName, on: true),
+        _samsung(_monitorDevice, _monitorName, on: false),
+      ]),
+      tv: tv,
+    );
+    api.statusCalls = 0;
+
+    await tester.tap(find.text(_monitorName));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(api.statusCalls, 1,
+        reason: 'elegir el aparato ya pide su estado; el refresh de cortesía '
+            'de la pantalla lo pedía una segunda vez');
+  });
+
+  test('el revert del switch no pisa lo que llegó por el socket', () {
+    // El Samsung va por /tv/power?tv=…, no por /devices/:id/state, así que el
+    // optimismo de su card lo aplica el inventario a mano. Si el comando falla
+    // mientras tanto pudo llegar un device:state-changed con datos nuevos.
+    final devices = _devices([
+      _samsung(_televisorDevice, _televisorName, on: true),
+    ]);
+    final prev = devices.applyLocalOn(_televisorDevice, false);
+    expect(prev, isTrue);
+
+    // Mientras el PUT vuela, el socket dice que el aparato quedó inalcanzable.
+    devices.debugApplyDeviceEvent(DeviceStateEvent(
+      deviceId: _televisorDevice,
+      state: const {'reachable': false},
+    ));
+    expect(devices.byId(_televisorDevice)!.state.reachable, isFalse);
+
+    // El PUT falla y se revierte.
+    devices.restoreLocalOn(_televisorDevice, prev!);
+
+    expect(devices.byId(_televisorDevice)!.state.on, isTrue,
+        reason: 'el `on` vuelve a donde estaba');
+    expect(devices.byId(_televisorDevice)!.state.reachable, isFalse,
+        reason: 'pero restaurar el snapshot ENTERO pisaba con datos viejos lo '
+            'que el socket había actualizado mientras el comando volaba');
   });
 
   testWidgets('con un backend sin lista de aparatos la home queda igual',

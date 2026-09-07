@@ -124,7 +124,7 @@ class _TvHomeCardState extends State<TvHomeCard> {
     final devices = widget.devices;
     final prev = devices?.applyLocalOn(deviceId, on);
     final ok = await widget.service.setPowerOf(deviceId, on);
-    if (!ok && prev != null) devices!.restoreLocalState(deviceId, prev);
+    if (!ok && prev != null) devices!.restoreLocalOn(deviceId, prev);
   }
 
   @override
@@ -180,12 +180,15 @@ class _TvHomeCardState extends State<TvHomeCard> {
                 : FeaturedTile.chevron());
 
         // Nombre del APARATO de esta card. El del inventario manda (es el que
-        // ya se ve en la habitación y en el plano); si el device no está, el
-        // de GET /tv/tvs; y sin nada, el histórico.
+        // ya se ve en la habitación y en el plano); si el device no está, el de
+        // GET /tv/tvs. Con un aparato propio SIN nombre, un neutro: caer a
+        // `tv.displayName` rotulaba la card del monitor como «65" OLED», que es
+        // el nombre del aparato SELECCIONADO. El estado de al lado ya dice «—»
+        // correctamente; el título no puede mentir la identidad.
         final name = device != null
             ? inventory!.displayName(device)
             : (deviceId != null
-                ? (tv.nameForDeviceId(deviceId) ?? tv.displayName)
+                ? (tv.nameForDeviceId(deviceId) ?? 'Samsung TV')
                 : tv.displayName);
         // Un monitor no es un televisor y conviene que se note: con una card
         // por aparato, el ícono es lo que las distingue de un vistazo.

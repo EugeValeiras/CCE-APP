@@ -64,13 +64,21 @@ class _TvScreenState extends State<TvScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final deviceId = widget.deviceId;
-      if (deviceId != null) {
-        // Reafirma el aparato pedido; si ya es el que se muestra no toca nada
-        // (y en particular NO descarta su estado, que sería el parpadeo).
-        widget.service.selectDevice(deviceId);
-      }
+      // Reafirma el aparato pedido; si ya es el que se muestra no toca nada (y
+      // en particular NO descarta su estado, que sería el parpadeo).
+      final yaPidioEstado =
+          deviceId != null && widget.service.selectDevice(deviceId);
       // Refresh defensivo de cortesía (one-shot). El polling lo posee el shell.
-      widget.service.refresh();
+      //
+      // Con un aparato nombrado se pide sólo si hace falta: quien abrió el
+      // control ya lo eligió, y elegirlo lee su estado. Pedirlo igual hacía que
+      // abrir un control costara DOS GET /tv/status del mismo aparato. Sin
+      // aparato nombrado (backend viejo) se conserva la cortesía de siempre.
+      final faltaEstado = widget.service.status == null;
+      final yaEnVuelo = widget.service.loading;
+      if (!yaPidioEstado && !yaEnVuelo && (deviceId == null || faltaEstado)) {
+        widget.service.refresh();
+      }
     });
   }
 
@@ -94,8 +102,18 @@ class _TvScreenState extends State<TvScreen> {
 
   Widget _buildBody(BuildContext context, TvService service) {
     // Fallo real de red/servidor (sin estado conocido): cartel + reintentar.
+    // Un aparato que el backend ya no lista tiene su propio texto: NO se cae al
+    // Samsung por defecto, porque cada tecla iría al aparato equivocado.
     if (service.error != null && service.status == null) {
-      return _ServerError(onRetry: service.refresh);
+      return _ServerError(
+        onRetry: service.retry,
+        title: service.missingDevice
+            ? 'Ese aparato ya no está'
+            : 'No se pudo conectar al servidor',
+        detail: service.missingDevice
+            ? 'El backend dejó de listarlo. Revisalo desde el Dashboard.'
+            : 'Revisá la conexión con la API CCE.',
+      );
     }
 
     // Primera carga, todavía sin estado.
@@ -122,6 +140,13 @@ class _TvScreenState extends State<TvScreen> {
           // en el plano o en la card de la home—, que es donde el aparato tiene
           // nombre y lugar; una fila de tabs acá era una forma de terminar
           // apretando teclas en el aparato equivocado.
+          //
+          // Lo que SÍ queda es el NOMBRE, y no es interactivo: la pantalla no
+          // tiene AppBar ni ningún otro lugar donde diga qué se está
+          // comandando, y sin eso el primer aviso de estar en el aparato
+          // equivocado es el aparato equivocado reaccionando.
+          _TvName(service: service),
+          const SizedBox(height: 8),
           if (!online) ...[
             const _OfflineBanner(),
             const SizedBox(height: 8),
@@ -897,6 +922,49 @@ class _PairBannerState extends State<_PairBanner> {
   }
 }
 
+/// Nombre del Samsung que se está comandando. NO es un selector: no responde
+/// al tap y no hay forma de cambiar de aparato desde acá — eso se elige en la
+/// habitación, en el plano o en la card de la home. Sólo dice cuál es, que es
+/// lo único del selector viejo que hacía falta conservar (CCE#130).
+class _TvName extends StatelessWidget {
+  const _TvName({required this.service});
+
+  final TvService service;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            service.selectedTv?.isMonitor ?? false
+                ? Icons.desktop_windows_rounded
+                : Icons.tv_rounded,
+            size: 15,
+            color: CceColors.textTertiary,
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              service.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+                color: CceColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Cartel "Sin conexión": el TV respondió pero está apagado/inalcanzable. El
 /// control igual se monta (atenuado) porque varias teclas lo despiertan.
 class _OfflineBanner extends StatelessWidget {
@@ -966,9 +1034,15 @@ class StatusDotFallback extends StatelessWidget {
 /// Pantalla de error de servidor (sin estado conocido): no se pudo hablar con la
 /// API CCE. Cartel + reintentar.
 class _ServerError extends StatelessWidget {
-  const _ServerError({required this.onRetry});
+  const _ServerError({
+    required this.onRetry,
+    this.title = 'No se pudo conectar al servidor',
+    this.detail = 'Revisá la conexión con la API CCE.',
+  });
 
   final VoidCallback onRetry;
+  final String title;
+  final String detail;
 
   @override
   Widget build(BuildContext context) {
@@ -981,21 +1055,17 @@ class _ServerError extends StatelessWidget {
             const CceIcon(CceIcons.tv,
                 size: 48, color: CceColors.textTertiary),
             const SizedBox(height: 16),
-            const Text(
-              'No se pudo conectar al servidor',
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: CceColors.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Revisá la conexión con la API CCE.',
-              textAlign: TextAlign.center,
-              style: CceText.caption,
-            ),
+            Text(detail, textAlign: TextAlign.center, style: CceText.caption),
             const SizedBox(height: 20),
             TextButton.icon(
               onPressed: onRetry,
