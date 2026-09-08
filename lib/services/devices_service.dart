@@ -440,23 +440,27 @@ class DevicesService extends ChangeNotifier {
   /// comando por OTRA ruta —el Samsung va por `/tv/power?tv=…`, no por
   /// `/devices/:id/state`— y necesita que su card se mueva sin esperar al
   /// `device:state-changed`. Null si ese device no está en el inventario.
-  bool? applyLocalOn(String deviceId, bool on) {
+  /// Lo que [applyLocalOn] escribió, para poder revertirlo si el comando falla:
+  /// el valor previo de `on` y el estado exacto que quedó aplicado.
+  ({bool on, DeviceState applied})? applyLocalOn(String deviceId, bool on) {
     final d = _byId[deviceId];
     if (d == null) return null;
     final prev = d.state.on;
-    d.state = d.state.copyWith(on: on);
+    final applied = d.state = d.state.copyWith(on: on);
     notifyListeners();
-    return prev;
+    return (on: prev, applied: applied);
   }
 
   /// Devuelve `on` al valor que dio [applyLocalOn], cuando el comando falló.
   ///
-  /// Revierte SÓLO ese campo y no un snapshot entero: mientras el comando
-  /// volaba pudo llegar un `device:state-changed` con volumen, fuente o
-  /// alcanzabilidad nuevos, y restaurar todo los pisaría con datos viejos.
-  void restoreLocalOn(String deviceId, bool on) {
+  /// Sólo si el estado sigue siendo EXACTAMENTE el que se aplicó: mientras el
+  /// comando volaba pudo llegar un `device:state-changed` —incluido uno que
+  /// prende el aparato de verdad, desde el control físico— y revertir a ciegas
+  /// pisaba esa verdad fresca con el valor viejo. Misma guarda que
+  /// [_revertVacuumIfUntouched], que ya resolvía esto para el robot.
+  void restoreLocalOn(String deviceId, bool on, DeviceState applied) {
     final d = _byId[deviceId];
-    if (d == null) return;
+    if (d == null || !identical(d.state, applied)) return;
     d.state = d.state.copyWith(on: on);
     notifyListeners();
   }

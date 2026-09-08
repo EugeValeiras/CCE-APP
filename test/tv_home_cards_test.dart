@@ -41,6 +41,14 @@ const _monitorName = '49" Odyssey OLED G9';
 const _televisorDevice = 'dev_tv-1ca02124';
 const _monitorDevice = 'dev_tv-ce588d39';
 
+/// Una luz cualquiera, para que la casa no esté vacía.
+Device _luz() => Device(
+      id: 'dev_luz',
+      name: 'Luz',
+      type: 'Extended color light',
+      state: DeviceState(on: true, bri: 200),
+    );
+
 /// Samsung tal cual lo trae /devices/merged: `type: 'tv'` + capabilities de AV.
 Device _samsung(String id, String name, {required bool on}) => Device(
       id: id,
@@ -74,12 +82,15 @@ class _FakeApi extends ApiService {
   int tvsCalls = 0;
   int statusCalls = 0;
 
+  /// Si está, getTvStatus espera: le da al GET una latencia realista.
+  Completer<void>? statusGate;
+
   /// Si está, GET /tv/tvs no responde hasta completarlo: sirve para separar el
   /// momento en que resuelven las prefs del momento en que llega la lista.
   final Completer<void>? gate;
 
   @override
-  Future<List<TvSummary>> getTvs() async {
+  Future<List<TvSummary>?> getTvs() async {
     tvsCalls++;
     if (gate != null) await gate!.future;
     return tvs;
@@ -88,6 +99,8 @@ class _FakeApi extends ApiService {
   @override
   Future<TvStatus> getTvStatus({String? tvId}) async {
     statusCalls++;
+    final g = statusGate;
+    if (g != null) await g.future;
     return const TvStatus(online: true, power: 'on', volume: 12);
   }
 }
@@ -409,6 +422,57 @@ void main() {
             'puesta la selección');
   });
 
+  testWidgets('reabrir el control del mismo aparato SÍ relee su estado',
+      (tester) async {
+    tester.view.physicalSize = const Size(430, 1400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final api = _FakeApi([_televisor(), _monitor()]);
+    final tv = TvService(
+      config: ServerConfig(),
+      socket: SocketService(),
+      api: api,
+    )..debugSeed(
+        tvs: [_televisor(), _monitor()],
+        selectedId: 'tv-1ca02124',
+        status: const TvStatus(online: true, power: 'on', volume: 12));
+    api.statusCalls = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      home: TvScreen(service: tv, deviceId: _televisorDevice),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(api.statusCalls, 1,
+        reason: 'el seed trae los campos que el socket NO emite (fuentes, '
+            'nombre de canal, modos, disabled) y reabrir el control es el '
+            'momento de refrescarlos: saltearlo por tener ya un estado los '
+            'dejaba viejos sin forma de forzar la lectura');
+  });
+
+  testWidgets('en el arranque no se lee el estado del aparato elegido por card',
+      (tester) async {
+    final api = _FakeApi([_televisor(), _monitor()]);
+    final tv = TvService(
+      config: ServerConfig(),
+      socket: SocketService(),
+      api: api,
+    )..debugSeed(tvs: [_televisor(), _monitor()]);
+    // La casa cargó, pero los Samsung NO están todavía en /devices/merged: es
+    // el arranque en frío, con las cards ya montadas y sin poder resolver su
+    // device. (Con el inventario del todo vacío la home muestra el splash y las
+    // cards ni se construyen, así que el test no probaría nada.)
+    await _pumpHome(tester, devices: _devices([_luz()]), tv: tv);
+    expect(find.byType(TvHomeCard), findsNWidgets(2),
+        reason: 'las cards TIENEN que estar montadas para que esto pruebe algo');
+
+    expect(api.statusCalls, 0,
+        reason: 'cada card pedía el estado del aparato ELEGIDO al no encontrar '
+            'el suyo en el inventario: dos lecturas que ninguna card iba a '
+            'mirar, y del aparato equivocado');
+  });
+
   testWidgets('abrir un control cuesta UN solo GET /tv/status', (tester) async {
     final api = _FakeApi([_televisor(), _monitor()]);
     final tv = TvService(
@@ -425,6 +489,10 @@ void main() {
       tv: tv,
     );
     api.statusCalls = 0;
+    // El GET tarda, como en la vida real: respondiendo instantáneo el test
+    // mediría un artefacto del fake y no lo que pasa en el teléfono.
+    final lento = Completer<void>();
+    api.statusGate = lento;
 
     await tester.tap(find.text(_monitorName));
     await tester.pump();
@@ -432,7 +500,10 @@ void main() {
 
     expect(api.statusCalls, 1,
         reason: 'elegir el aparato ya pide su estado; el refresh de cortesía '
-            'de la pantalla lo pedía una segunda vez');
+            'de la pantalla lo pedía una segunda vez del mismo aparato');
+    api.statusGate = null;
+    lento.complete();
+    await tester.pump();
   });
 
   test('el revert del switch no pisa lo que llegó por el socket', () {
@@ -442,24 +513,35 @@ void main() {
     final devices = _devices([
       _samsung(_televisorDevice, _televisorName, on: true),
     ]);
-    final prev = devices.applyLocalOn(_televisorDevice, false);
-    expect(prev, isTrue);
+    final prev = devices.applyLocalOn(_televisorDevice, false)!;
+    expect(prev.on, isTrue);
 
-    // Mientras el PUT vuela, el socket dice que el aparato quedó inalcanzable.
-    devices.debugApplyDeviceEvent(DeviceStateEvent(
-      deviceId: _televisorDevice,
-      state: const {'reachable': false},
-    ));
-    expect(devices.byId(_televisorDevice)!.state.reachable, isFalse);
-
-    // El PUT falla y se revierte.
-    devices.restoreLocalOn(_televisorDevice, prev!);
-
+    // El PUT falla y se revierte, sin que nadie haya tocado nada en el medio.
+    devices.restoreLocalOn(_televisorDevice, prev.on, prev.applied);
     expect(devices.byId(_televisorDevice)!.state.on, isTrue,
         reason: 'el `on` vuelve a donde estaba');
-    expect(devices.byId(_televisorDevice)!.state.reachable, isFalse,
-        reason: 'pero restaurar el snapshot ENTERO pisaba con datos viejos lo '
-            'que el socket había actualizado mientras el comando volaba');
+  });
+
+  test('el revert NO pisa lo que llegó por el socket mientras tanto', () {
+    final devices = _devices([
+      _samsung(_televisorDevice, _televisorName, on: false),
+    ]);
+    final prev = devices.applyLocalOn(_televisorDevice, true)!;
+
+    // Mientras el PUT viaja, alguien prende el aparato con el control físico y
+    // el backend lo empuja por el socket.
+    devices.debugApplyDeviceEvent(DeviceStateEvent(
+      deviceId: _televisorDevice,
+      state: const {'on': true, 'reachable': false},
+    ));
+
+    // El PUT falla: revertir a ciegas escribiría el `false` viejo encima.
+    devices.restoreLocalOn(_televisorDevice, prev.on, prev.applied);
+
+    expect(devices.byId(_televisorDevice)!.state.on, isTrue,
+        reason: 'el estado que llegó por el socket es más fresco que el que '
+            'este comando había escrito: el revert no puede pisarlo');
+    expect(devices.byId(_televisorDevice)!.state.reachable, isFalse);
   });
 
   testWidgets('con un backend sin lista de aparatos la home queda igual',

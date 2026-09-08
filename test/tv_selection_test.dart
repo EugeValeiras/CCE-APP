@@ -87,11 +87,16 @@ class _FakeApi extends ApiService {
 
   /// Si está, getTvs devuelve ESE future: permite que la lista llegue después
   /// del estado, o que una lista vieja vuelva después de una nueva.
-  Completer<List<TvSummary>>? tvsGate;
+  Completer<List<TvSummary>?>? tvsGate;
+
+  /// GET /tv/tvs no se pudo leer (timeout, red, 5xx): devuelve null, que es lo
+  /// que distingue "no sé" de "el backend dijo que no hay lista".
+  bool tvsIlegible = false;
 
   @override
-  Future<List<TvSummary>> getTvs() async {
+  Future<List<TvSummary>?> getTvs() async {
     tvsCalls++;
+    if (tvsIlegible) return null;
     final g = tvsGate;
     if (g != null) return g.future;
     return tvs;
@@ -124,6 +129,37 @@ Future<void> _drain([int n = 6]) async {
 }
 
 void main() {
+  // La línea de la que salían dos caminos al aparato equivocado: `getTvs`
+  // devolvía lista vacía ante CUALQUIER error, así que un timeout de 6 s era
+  // indistinguible de "este backend no tiene el endpoint" (re-review de
+  // CCE-APP#48).
+  group('ApiService: leer la lista de aparatos', () {
+    test('404 ES una lista vacía: el backend viejo sin la ruta', () {
+      expect(ApiService.parseTvsResponse(404, ''), isEmpty);
+    });
+
+    test('cualquier otro fallo NO se puede leer como lista vacía', () {
+      expect(ApiService.parseTvsResponse(500, ''), isNull,
+          reason: 'leerlo como vacía soltaba el aparato pedido y abría el '
+              'Samsung por defecto, sin ningún aviso');
+      expect(ApiService.parseTvsResponse(502, 'gateway'), isNull);
+      expect(ApiService.parseTvsResponse(401, ''), isNull);
+    });
+
+    test('un 200 que no trae una lista tampoco', () {
+      expect(ApiService.parseTvsResponse(200, '{"error":"nope"}'), isNull);
+      expect(ApiService.parseTvsResponse(200, '"texto"'), isNull);
+    });
+
+    test('un 200 con la lista la trae, en los dos formatos', () {
+      final envuelto = ApiService.parseTvsResponse(
+          200, '{"tvs":[{"id":"tv-ce588d39","name":"Odyssey"}]}');
+      expect(envuelto, hasLength(1));
+      expect(envuelto!.first.canonicalDeviceId, 'dev_tv-ce588d39');
+      expect(ApiService.parseTvsResponse(200, '[]'), isEmpty);
+    });
+  });
+
   group('selectDevice: el aparato lo nombra quien abre el control', () {
     test('cambia de aparato SIN esperar la red', () {
       final api = _FakeApi();
@@ -385,7 +421,7 @@ void main() {
       expect(await s.togglePower(), isFalse);
     });
 
-    test('el spinner no queda clavado cuando el encadenado sale temprano',
+    test('mientras el aparato no se resuelve, la pantalla dice "cargando"',
         () async {
       final api = _FakeApi();
       api.statuses[null] = _encendido;
@@ -396,14 +432,125 @@ void main() {
       unawaited(s.refresh()); // se encola
       final tvsGate = Completer<List<TvSummary>>();
       api.tvsGate = tvsGate;
-      s.selectDevice('dev_tv'); // deja pendiente: el encadenado saldrá temprano
+      s.selectDevice('dev_tv'); // deja pendiente: el encadenado sale temprano
       api.gate = null;
       gate.complete();
       await _drain();
 
+      expect(s.loading, isTrue,
+          reason: 'sin estado, sin error y sin nada en vuelo, la pantalla no '
+              'entraba al spinner NI al cartel: dibujaba el control entero '
+              'rotulado con el aparato anterior y con los botones muertos');
+
+      api.tvsGate = null;
+      tvsGate.complete([_televisor(), _monitor()]);
+      await _drain();
+
       expect(s.loading, isFalse,
-          reason: 'el finally encadenaba sin bajar loading ni notificar, y el '
-              'encadenado salía temprano: la pantalla quedaba en el spinner');
+          reason: 'y al resolverse no queda clavado: el finally encadenaba sin '
+              'bajar loading ni notificar');
+      expect(s.status, isNotNull);
+    });
+  });
+
+  // Re-review de CCE-APP#48: `getTvs` devolvía lista vacía ante CUALQUIER error,
+  // así que un timeout era indistinguible de "este backend no tiene el
+  // endpoint". Toda la máquina de selección estaba montada sobre un valor que
+  // mentía, y de ahí salían dos caminos más al aparato equivocado.
+  group('re-review #48: una lista que no se pudo leer no es una lista vacía',
+      () {
+    test('un timeout de /tv/tvs NO abre el aparato por defecto', () async {
+      final api = _FakeApi()
+        ..tvs = [_televisor(), _monitor()]
+        ..tvsIlegible = true;
+      api.statuses[null] = _encendido;
+      final s = _service(api);
+
+      s.selectDevice('dev_tv-ce588d39');
+      await _drain();
+
+      expect(api.statusCalls, isNot(contains(null)),
+          reason: 'leerlo como "backend viejo" soltaba el pedido y pedía el '
+              'estado sin ?tv=: el control del monitor abría el televisor, con '
+              'su nombre y sus teclas, y sin ningún aviso');
+      expect(s.status, isNull);
+      expect(s.error, isNotNull, reason: 'la pantalla lo dice');
+      expect(s.loading, isFalse, reason: 'y no se queda en el spinner');
+    });
+
+    test('el 404 del backend viejo SÍ es una lista vacía', () async {
+      // getTvs devuelve [] sólo cuando el backend contestó que no hay ruta.
+      final api = _FakeApi();
+      api.statuses[null] = _encendido;
+      final s = _service(api);
+
+      s.selectDevice('dev_tv-ce588d39');
+      await _drain();
+
+      expect(s.selectedTvId, isNull,
+          reason: 'sin lista los comandos van sin ?tv= y los resuelve el '
+              'backend: es como se comportaba la app con un solo aparato');
+      expect(s.status, isNotNull);
+      expect(s.error, isNull);
+    });
+
+    test('una lista ilegible no pisa la que ya estaba', () async {
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      api.statuses['tv-ce588d39'] = _apagado;
+      final s = _service(api)
+        ..debugSeed(
+            tvs: [_televisor(), _monitor()],
+            selectedId: 'tv-ce588d39',
+            status: _apagado);
+
+      // Una card monta y pide la lista; ese GET falla.
+      api.tvsIlegible = true;
+      await s.loadTvs();
+      await _drain();
+
+      expect(s.tvs, hasLength(2), reason: 'la lista buena sigue ahí');
+      expect(s.selectedTvId, 'tv-ce588d39',
+          reason: 'pisarla con la vacía dejaba el estado del monitor en '
+              'pantalla mientras los comandos se iban al televisor');
+      expect(await s.setPowerOf('dev_tv-ce588d39', true), isTrue,
+          reason: 'y el switch de su card sigue funcionando');
+    });
+
+    test('pedir dos veces el mismo aparato no lo pide dos veces', () async {
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      final s = _service(api);
+
+      s.selectDevice('dev_tv-ce588d39'); // la card, al tocarla
+      s.selectDevice('dev_tv-ce588d39'); // la pantalla, en su post-frame
+      await _drain();
+
+      expect(api.tvsCalls, 1,
+          reason: 'el segundo pedido invalidaba la lista ya en camino: llegaba '
+              '"vieja", se aplicaba pero no resolvía el aparato, y la pantalla '
+              'se quedaba sin estado hasta la respuesta siguiente');
+      expect(s.selectedTvId, 'tv-ce588d39');
+      expect(s.status, isNotNull);
+    });
+
+    test('el revert del power no pisa lo que dijo el socket', () async {
+      final api = _FakeApi()..failPower = true;
+      final s = _service(api)
+        ..debugSeed(
+            tvs: [_televisor(), _monitor()],
+            status: const TvStatus(online: true, power: 'off', volume: 42));
+
+      final f = s.setPowerOf('dev_tv', true); // optimismo: queda en on
+      // Mientras el PUT viaja, alguien lo prende con el control físico.
+      s.debugApplyDeviceEvent(DeviceStateEvent(
+        deviceId: 'dev_tv',
+        state: const {'on': true, 'volume': 9},
+      ));
+      await f;
+
+      expect(s.isOn, isTrue,
+          reason: 'el aparato está prendido de verdad: el revert del comando '
+              'fallido no puede escribir el valor viejo encima');
+      expect(s.volume, 9);
     });
   });
 

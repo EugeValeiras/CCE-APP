@@ -80,6 +80,15 @@ class _TvHomeCardState extends State<TvHomeCard> {
     return id == null ? null : widget.devices?.byId(id);
   }
 
+  /// A quién escucha la card, armado UNA vez: `Listenable.merge` no define
+  /// `==`, así que construirlo dentro del build hacía que el AnimatedBuilder
+  /// desenganchara y reenganchara listeners en los dos servicios en cada
+  /// rebuild.
+  late final Listenable _escucha = widget.deviceId == null ||
+          widget.devices == null
+      ? widget.service
+      : Listenable.merge([widget.service, widget.devices!]);
+
   @override
   void initState() {
     super.initState();
@@ -89,10 +98,12 @@ class _TvHomeCardState extends State<TvHomeCard> {
       // La LISTA de Samsung siempre: de ella salen el nombre del aparato de
       // esta card y el `?tv=` de su switch.
       widget.service.loadTvs();
-      // El estado del servicio es el del aparato ELEGIDO. Una card que ya lee
-      // su estado del inventario no lo necesita, y pedirlo por cada card de la
-      // home era un GET /tv/status de más por aparato.
-      if (_device == null) widget.service.refresh();
+      // El estado del servicio es el del aparato ELEGIDO: sólo lo necesita la
+      // card que NO tiene aparato propio. Condicionarlo a que el device no esté
+      // en el inventario lo disparaba en cada arranque en frío —cuando el
+      // inventario predeciblemente no llegó— y por cada card: dos lecturas del
+      // aparato elegido que ninguna card iba a mirar.
+      if (widget.deviceId == null) widget.service.refresh();
     });
   }
 
@@ -124,16 +135,16 @@ class _TvHomeCardState extends State<TvHomeCard> {
     final devices = widget.devices;
     final prev = devices?.applyLocalOn(deviceId, on);
     final ok = await widget.service.setPowerOf(deviceId, on);
-    if (!ok && prev != null) devices!.restoreLocalOn(deviceId, prev);
+    if (!ok && prev != null) {
+      devices!.restoreLocalOn(deviceId, prev.on, prev.applied);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final inventory = widget.deviceId == null ? null : widget.devices;
     return AnimatedBuilder(
-      animation: inventory == null
-          ? widget.service
-          : Listenable.merge([widget.service, inventory]),
+      animation: _escucha,
       builder: (context, _) {
         final tv = widget.service;
         final deviceId = widget.deviceId;
@@ -148,6 +159,11 @@ class _TvHomeCardState extends State<TvHomeCard> {
         final online = device?.state.reachable ?? (mine && tv.online);
         final on = device?.state.on ?? (mine && tv.isOn);
         final neo = widget.neo;
+        // `online` sólo puede ser true si ya hubo una lectura de ESTE aparato
+        // (con device del inventario, `known` es true; sin él, `tv.online`
+        // exige un status), así que `known && online` es `online`: el punto, el
+        // glyph y el control ya caen al mismo gris neutro que corresponde a "no
+        // se sabe". El único que necesitaba distinguirlo era el subtítulo.
         // Color de acento del estado. En neo, el "vivo" es accent (ON) y el
         // resto cae a los grises neo; en plano se conserva el warm histórico.
         final accent = !online

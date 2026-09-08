@@ -70,15 +70,13 @@ class _TvScreenState extends State<TvScreen> {
           deviceId != null && widget.service.selectDevice(deviceId);
       // Refresh defensivo de cortesía (one-shot). El polling lo posee el shell.
       //
-      // Con un aparato nombrado se pide sólo si hace falta: quien abrió el
-      // control ya lo eligió, y elegirlo lee su estado. Pedirlo igual hacía que
-      // abrir un control costara DOS GET /tv/status del mismo aparato. Sin
-      // aparato nombrado (backend viejo) se conserva la cortesía de siempre.
-      final faltaEstado = widget.service.status == null;
-      final yaEnVuelo = widget.service.loading;
-      if (!yaPidioEstado && !yaEnVuelo && (deviceId == null || faltaEstado)) {
-        widget.service.refresh();
-      }
+      // Se saltea SÓLO si el estado de este aparato ya se está leyendo: quien
+      // abrió el control lo eligió, y elegirlo lo lee — pedirlo igual hacía que
+      // abrir un control costara dos lecturas del mismo aparato. Cuando no hay
+      // nada en vuelo sí se pide, aunque ya haya estado: el seed trae los
+      // campos que el socket NO emite (inputs, nombre de canal, modos,
+      // disabled) y reabrir el control es el momento de refrescarlos.
+      if (!yaPidioEstado && !widget.service.loading) widget.service.refresh();
     });
   }
 
@@ -107,12 +105,8 @@ class _TvScreenState extends State<TvScreen> {
     if (service.error != null && service.status == null) {
       return _ServerError(
         onRetry: service.retry,
-        title: service.missingDevice
-            ? 'Ese aparato ya no está'
-            : 'No se pudo conectar al servidor',
-        detail: service.missingDevice
-            ? 'El backend dejó de listarlo. Revisalo desde el Dashboard.'
-            : 'Revisá la conexión con la API CCE.',
+        title: service.error!,
+        detail: service.errorDetail ?? 'Revisá la conexión con la API CCE.',
       );
     }
 
