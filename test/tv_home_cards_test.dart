@@ -506,6 +506,78 @@ void main() {
     await tester.pump();
   });
 
+  testWidgets('el editor no ofrece la card genérica en una home ya migrada',
+      (tester) async {
+    await _pumpHome(
+      tester,
+      devices: _devices([
+        _samsung(_televisorDevice, _televisorName, on: true),
+        _samsung(_monitorDevice, _monitorName, on: false),
+      ]),
+      tv: _tvService(tvs: [_televisor(), _monitor()]),
+    );
+    expect(find.byType(TvHomeCard), findsNWidgets(2));
+
+    // Long-press sobre un destacado abre el editor.
+    await tester.longPress(find.text(_televisorName));
+    // pumpAndSettle NO: las cards llevan un StatusDot con pulso infinito y el
+    // settle nunca termina.
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 120));
+    }
+
+    // Los dos Samsung ya están destacados, así que el catálogo "Dispositivos"
+    // no debería ofrecer NINGUNA card de TV más. Ofrecer la genérica agregaría
+    // una que abre el aparato que esté seleccionado.
+    expect(find.text('Samsung TV'), findsNothing,
+        reason: 'la card genérica sólo existe mientras no se sabe qué aparatos '
+            'hay; con la lista cargada, agregarla desde el editor volvía a '
+            'meter la card que abre el que esté elegido');
+  });
+
+  testWidgets('la card se re-suscribe cuando le cambian el aparato',
+      (tester) async {
+    // Flutter reusa el State cuando la lista de destacados se reescribe (las
+    // cards no llevan key), así que la card puede pasar a representar OTRO
+    // aparato sin volver a montarse.
+    tester.view.physicalSize = const Size(430, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final devices = _devices([
+      _samsung(_televisorDevice, _televisorName, on: true),
+      _samsung(_monitorDevice, _monitorName, on: false),
+    ]);
+    final tv = _tvService(tvs: [_televisor(), _monitor()]);
+
+    Widget card(String? deviceId) => MaterialApp(
+          home: Material(
+            child: TvHomeCard(service: tv, deviceId: deviceId, devices: devices),
+          ),
+        );
+
+    // Arranca como la card GENÉRICA (sin aparato), que escucha sólo al
+    // TvService: es lo que hay antes de que la migración reescriba la lista.
+    await tester.pumpWidget(card(null));
+    await tester.pump();
+
+    // La migración le da su aparato. Mismo State: las cards no llevan key.
+    await tester.pumpWidget(card(_monitorDevice));
+    await tester.pump();
+    expect(find.text(_monitorName), findsOneWidget);
+    expect(_estadoDe(tester, _monitorName), 'En espera');
+
+    // Un evento del inventario para el aparato NUEVO tiene que llegarle.
+    devices.debugApplyDeviceEvent(DeviceStateEvent(
+      deviceId: _monitorDevice,
+      state: const {'on': true},
+    ));
+    await tester.pump();
+
+    expect(_estadoDe(tester, _monitorName), 'Encendido',
+        reason: 'sin re-suscribirse, la card renderiza el aparato nuevo pero '
+            'sigue escuchando sólo al TvService y no se entera de SUS eventos');
+  });
+
   test('el revert del switch no pisa lo que llegó por el socket', () {
     // El Samsung va por /tv/power?tv=…, no por /devices/:id/state, así que el
     // optimismo de su card lo aplica el inventario a mano. Si el comando falla

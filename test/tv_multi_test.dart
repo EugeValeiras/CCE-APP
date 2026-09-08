@@ -155,15 +155,20 @@ void main() {
           reason: 'sin pairing hay que ir hasta el aparato: la app lo avisa');
     });
 
-    test('un elegido que ya no existe cae al principal', () {
+    // CCE#130 cambió esto a propósito: antes caía al principal, y eso era
+    // mandarle las teclas a OTRO Samsung sin decirlo. Ahora la pantalla lo
+    // dice y no comanda nada.
+    test('un elegido que ya no existe NO se reemplaza por el principal', () {
       final s = fresh()
         ..debugSeed(
           tvs: [TvSummary.fromJson(Map<String, dynamic>.from(_televisorJson))],
           selectedId: 'tv-borrado',
         );
-      expect(s.selectedTv?.id, 'tv',
-          reason: 'no puede quedar apuntando a un aparato inexistente');
-      expect(s.selectedDeviceId, 'dev_tv');
+      expect(s.selectedTv, isNull,
+          reason: 'no puede quedar apuntando a un aparato inexistente, y '
+              'tampoco a uno distinto del que se pidió');
+      expect(s.selectedTvId, isNull, reason: 'así no viaja ningún ?tv=');
+      expect(s.missingDevice, isTrue);
     });
   });
 

@@ -84,10 +84,24 @@ class _TvHomeCardState extends State<TvHomeCard> {
   /// `==`, así que construirlo dentro del build hacía que el AnimatedBuilder
   /// desenganchara y reenganchara listeners en los dos servicios en cada
   /// rebuild.
-  late final Listenable _escucha = widget.deviceId == null ||
-          widget.devices == null
-      ? widget.service
-      : Listenable.merge([widget.service, widget.devices!]);
+  late Listenable _escucha = _armarEscucha();
+
+  Listenable _armarEscucha() =>
+      widget.deviceId == null || widget.devices == null
+          ? widget.service
+          : Listenable.merge([widget.service, widget.devices!]);
+
+  @override
+  void didUpdateWidget(TvHomeCard old) {
+    super.didUpdateWidget(old);
+    // Flutter REUSA este State cuando la lista de destacados se reescribe (la
+    // migración cambia los ítems y las cards no llevan key): sin esto la card
+    // quedaba renderizando un aparato nuevo mientras seguía suscrita sólo al
+    // TvService, y no se enteraba de los device:state-changed del suyo.
+    if (old.deviceId != widget.deviceId || old.devices != widget.devices) {
+      _escucha = _armarEscucha();
+    }
+  }
 
   @override
   void initState() {

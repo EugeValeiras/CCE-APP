@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import '../models/tv_status.dart';
 import '../models/server_config.dart';
@@ -55,6 +56,66 @@ abstract final class TvApps {
   static const String youtube = 'youtube';
 }
 
+/// A qué punto llegó la resolución del aparato que la pantalla quiere mostrar.
+enum _TargetState {
+  /// Se sabe cuál es: o está en la lista, o nadie nombró aparato y manda el
+  /// que el backend elija.
+  resolved,
+
+  /// Se pidió por device canónico y la lista de aparatos todavía no llegó.
+  pending,
+
+  /// Se pidió y NO se pudo resolver: la lista no lo tiene, o no se pudo leer.
+  /// No se cae al aparato por defecto — cada tecla iría al Samsung equivocado.
+  unresolved,
+}
+
+/// Qué Samsung tiene que mostrar la pantalla, en UNA pieza inmutable.
+///
+/// Todo lo que sale a la red captura este valor antes de irse y lo compara al
+/// volver. Antes la misma pregunta estaba repartida en siete campos sueltos —el
+/// elegido, el pendiente, el que faltaba, dos épocas y dos contadores de
+/// requests— que había que mover juntos y a mano; cada vuelta de review
+/// encontraba un subconjunto actualizado a medias, y ése era el bug. Con una
+/// sola pieza, "esta respuesta es para el aparato que quiero" no se puede
+/// actualizar a medias (CCE#130).
+@immutable
+class _TvTarget {
+  const _TvTarget({
+    required this.seq,
+    required this.deviceId,
+    required this.state,
+  });
+
+  static const inicial =
+      _TvTarget(seq: 0, deviceId: null, state: _TargetState.resolved);
+
+  /// Monótono: cada cambio de destino saca uno nuevo. Descarta la respuesta de
+  /// un destino anterior aunque el aparato haya vuelto a ser el mismo.
+  final int seq;
+
+  /// Device canónico pedido (`dev_tv-ce588d39`), o null si nadie nombró aparato.
+  final String? deviceId;
+
+  final _TargetState state;
+
+  bool get isResolved => state == _TargetState.resolved;
+
+  /// ¿Es EXACTAMENTE este destino? Lo usa lo que vuelve de /tv/status: un
+  /// estado viejo del mismo aparato tampoco sirve.
+  bool sameAs(_TvTarget other) => seq == other.seq;
+
+  /// ¿Se sigue queriendo este aparato? Más laxo que [sameAs] a propósito: una
+  /// lista de aparatos que llega sirve para resolver el mismo device sin
+  /// importar cuántos intentos hubo en el medio. Comparando el número de pedido
+  /// en vez del aparato, el cartel de error quedaba pegado con la lista buena
+  /// ya en memoria.
+  bool wants(String? device) => deviceId == device;
+
+  _TvTarget next({required String? deviceId, required _TargetState state}) =>
+      _TvTarget(seq: seq + 1, deviceId: deviceId, state: state);
+}
+
 /// Estado del Samsung TV con PUSH por socket (F13). dev_tv emite
 /// device:state-changed con deltas parciales; el service hace un SEED inicial
 /// (getTvStatus, que además trae inputs/modos/disabled que el socket NO emite) y
@@ -99,54 +160,48 @@ class TvService extends ChangeNotifier {
   // ahí los comandos van sin `?tv=` y el socket se filtra por `dev_tv` —
   // exactamente el comportamiento anterior a esta feature.
   List<TvSummary> _tvs = const [];
-  String? _selectedId;
 
-  /// Device canónico pedido por quien abrió el control cuando la lista de
-  /// aparatos todavía no había llegado. [loadTvs] lo aplica al resolver.
-  String? _pendingDeviceId;
-
-  /// Device canónico pedido que la lista NO contiene (lo quitaron del backend).
-  /// No se puede caer al aparato por defecto: comandar el televisor cuando se
-  /// abrió el monitor es peor que decir que no se puede.
-  String? _missingDeviceId;
-
-  /// Cambia cada vez que cambia EL APARATO QUE LA PANTALLA TIENE QUE MOSTRAR.
-  ///
-  /// Es la identidad que [refresh] necesita para saber si la respuesta que le
-  /// llegó sigue siendo la de esta pantalla. `selectedTvId` NO sirve para eso:
-  /// pasa de null al id del principal con sólo llegar la lista, sin que nadie
-  /// haya cambiado de aparato — y comparando contra él, el primer estado de
-  /// cada sesión se descartaba por una diferencia que no era un cambio.
-  int _selectionEpoch = 0;
-
-  /// Cambia cada vez que se anota un pedido pendiente. [loadTvs] la mira para
-  /// no resolver con una lista que salió ANTES del pedido: hay varios
-  /// `loadTvs` en vuelo (el shell, cada card, cada apertura del control) y uno
-  /// viejo se llevaba puesta la selección recién pedida.
-  int _pendingEpoch = 0;
-
-  /// Numeración de los GET /tv/tvs: se piden desde varios lados a la vez (el
-  /// shell, cada card de la home, cada apertura del control) y vuelven
-  /// desordenados. Una respuesta más vieja que la última aplicada se descarta:
-  /// si no, una lista vacía —que es lo que devuelve [ApiService.getTvs] ante
-  /// CUALQUIER error— pisaba la lista buena y se llevaba puesta la selección.
-  int _tvsRequestSeq = 0;
-  int _tvsAppliedSeq = 0;
+  /// Qué aparato tiene que mostrar la pantalla y en qué estado está su
+  /// resolución. ÚNICA fuente: lo cambia sólo [_retarget].
+  _TvTarget _target = _TvTarget.inicial;
 
   /// GET /tv/tvs en vuelo, compartido por quien no necesita una lista recién
   /// pedida (las cards de la home): tres cards montándose eran tres requests.
+  /// No es identidad, es coalescencia — por eso no vive en el token.
   Future<void>? _tvsInFlight;
 
   /// El aparato pedido no está y no se puede comandar otro en su lugar.
-  bool get missingDevice => _missingDeviceId != null;
+  bool get missingDevice => _target.state == _TargetState.unresolved;
+
+  /// Cambia el destino. ÚNICO lugar que toca [_target], para que el estado
+  /// asociado —el status que deja de valer y el cartel de error que deja de
+  /// aplicar— no pueda quedar a medio actualizar.
+  void _retarget(
+    _TvTarget next, {
+    bool keepStatus = false,
+    String? error,
+    String? errorDetail,
+  }) {
+    _target = next;
+    if (!keepStatus) _status = null;
+    _error = error;
+    _errorDetail = errorDetail;
+    _safeNotify();
+  }
 
   List<TvSummary> get tvs => _tvs;
 
-  /// El aparato elegido, o null mientras la lista no cargó.
+  /// El aparato que la pantalla muestra, o null si todavía no se sabe cuál es
+  /// (la lista no llegó, o el pedido no se pudo resolver).
   TvSummary? get selectedTv {
     if (_tvs.isEmpty) return null;
-    for (final t in _tvs) {
-      if (t.id == _selectedId) return t;
+    final wanted = _target.deviceId;
+    if (wanted != null) {
+      for (final t in _tvs) {
+        if (t.canonicalDeviceId == wanted) return t;
+      }
+      // Se pidió un aparato y la lista no lo tiene: NO se cae al principal.
+      return null;
     }
     for (final t in _tvs) {
       if (t.isDefault) return t;
@@ -155,10 +210,13 @@ class TvService extends ChangeNotifier {
   }
 
   /// Id para `?tv=` (null ⇒ el backend usa su aparato por defecto).
-  String? get selectedTvId => selectedTv?.id ?? _selectedId;
+  String? get selectedTvId => selectedTv?.id;
 
-  /// Device canónico del elegido: por dónde llegan SUS eventos del socket.
-  String get selectedDeviceId => selectedTv?.canonicalDeviceId ?? kTvDeviceId;
+  /// Device canónico del que se muestra: por dónde llegan SUS eventos del
+  /// socket. Con un aparato pedido y sin resolver, ése — no el histórico, que
+  /// haría pasar por propios los eventos de otro.
+  String get selectedDeviceId =>
+      selectedTv?.canonicalDeviceId ?? _target.deviceId ?? kTvDeviceId;
 
   /// Qué soporta el elegido. Sin lista, todo (comportamiento histórico).
   TvFeatures get features => selectedTv?.features ?? TvFeatures.all;
@@ -169,11 +227,6 @@ class TvService extends ChangeNotifier {
   bool _disposed = false;
   bool _refreshing = false;
 
-  /// Un refresh pedido mientras había otro en vuelo. No se tira: al abrir el
-  /// control se pide el estado del aparato elegido y enseguida el refresh de
-  /// cortesía de la pantalla, y descartar el segundo dejaba en pantalla el
-  /// estado del aparato anterior.
-  bool _queuedRefresh = false;
   StreamSubscription<DeviceStateEvent>? _sub;
   StreamSubscription<bool>? _connSub;
   bool _wasConnected = false;
@@ -185,7 +238,7 @@ class TvService extends ChangeNotifier {
   /// resolver no hay estado, no hay error y no hay nada en vuelo, y sin esto la
   /// pantalla se saltaba el spinner Y el cartel y dibujaba el control entero
   /// rotulado con el aparato ANTERIOR, con todos los botones muertos.
-  bool get loading => _loading || _pendingDeviceId != null;
+  bool get loading => _loading || _target.state == _TargetState.pending;
   String? get error => _error;
   String? get errorDetail => _errorDetail;
 
@@ -318,109 +371,63 @@ class TvService extends ChangeNotifier {
   }
 
   Future<void> _loadTvs() async {
-    final seq = ++_tvsRequestSeq;
-    // La epoch del pendiente se captura ANTES de salir a la red: si mientras
-    // vuela esta lista alguien pide otro aparato, esta respuesta ya es vieja y
-    // no puede decidir sobre ese pedido.
-    final epoch = _pendingEpoch;
-    final pending = _pendingDeviceId;
-    final pendingWaiting = pending != null;
+    final asked = _target;
     final list = await _api.getTvs();
-    // Respuesta fuera de orden: ya se aplicó una más nueva.
-    if (seq < _tvsAppliedSeq) return;
     if (list == null) {
-      // NO se pudo leer la lista. La que había NO se toca —pisarla con una
-      // vacía dejaba el estado del monitor en pantalla y los comandos yéndose
-      // al televisor— y un aparato pedido NO se da por inexistente ni se
-      // reemplaza por el principal: se dice que no se pudo y se ofrece
+      // NO se pudo leer. La lista que había no se toca —pisarla con una vacía
+      // dejaba el estado de un aparato en pantalla mientras los comandos se
+      // iban a otro— y un aparato esperándola no se da por inexistente ni se
+      // reemplaza por el principal: se dice que no se pudo, y se puede
       // reintentar.
-      if (pendingWaiting && epoch == _pendingEpoch) {
-        _pendingDeviceId = null;
-        _missingDeviceId = pending;
-        _status = null;
-        _error = 'No se pudo leer la lista de aparatos';
-        _errorDetail = 'Sin ella no se sabe cuál de los Samsung es éste.';
-        _selectionEpoch++;
+      if (asked.state == _TargetState.pending &&
+          _target.state == _TargetState.pending &&
+          _target.wants(asked.deviceId)) {
+        _retarget(
+          _target.next(deviceId: asked.deviceId, state: _TargetState.unresolved),
+          error: 'No se pudo leer la lista de aparatos',
+          errorDetail: 'Sin ella no se sabe cuál de los Samsung es éste.',
+        );
+      }
+      return;
+    }
+    _tvs = list;
+
+    final wanted = _target.deviceId;
+    if (wanted == null) {
+      // Nadie nombró aparato: manda el principal y no hay nada que resolver.
+      _safeNotify();
+      return;
+    }
+    if (tvForDeviceId(wanted) != null) {
+      // Cualquier lista que llegue resuelve el aparato que se quiere AHORA,
+      // haya o no un pedido anotado: así una lista buena despega el cartel que
+      // dejó una lectura fallida anterior, sin esperar a que alguien reintente.
+      if (!_target.isResolved) {
+        _retarget(_target.next(deviceId: wanted, state: _TargetState.resolved));
+        await refresh();
+      } else {
         _safeNotify();
       }
       return;
     }
-    _tvsAppliedSeq = seq;
-    _tvs = list;
-    // Un aparato elegido que ya no existe (lo quitaron) no puede dejar la app
-    // mandando comandos a la nada.
-    if (_selectedId != null && !list.any((t) => t.id == _selectedId)) {
-      _selectedId = null;
-      _selectionEpoch++;
-    }
-    // Un aparato pedido ANTES de que llegara la lista (abrir el control del
-    // monitor apenas arrancó la app) se aplica recién acá. Sin esto el pedido
-    // se perdía en silencio y el control abría el que estuviera elegido.
-    final resolvable = _pendingDeviceId != null && epoch == _pendingEpoch;
-    if (resolvable) {
-      final tv = tvForDeviceId(_pendingDeviceId!);
-      if (tv != null) {
-        _pendingDeviceId = null;
-        _missingDeviceId = null;
-        if (_selectedId != tv.id) _selectionEpoch++;
-        _selectedId = tv.id;
-      } else if (list.isEmpty) {
-        // El backend contestó que NO tiene lista (404: la ruta no existe). Es
-        // el caso de un solo aparato de antes de CCE#45: se suelta el pedido y
-        // manda el aparato por defecto del backend, que es como se comportaba
-        // la app entonces. Esto sólo es seguro porque ahora una lista vacía
-        // significa "el backend lo dijo" y no "algo falló".
-        _pendingDeviceId = null;
-        _selectionEpoch++;
-      } else {
-        // La lista llegó y ese aparato NO está: lo quitaron. No se cae al
-        // aparato por defecto — cada tecla iría al Samsung equivocado.
-        final missing = _pendingDeviceId;
-        _pendingDeviceId = null;
-        _missingDeviceId = missing;
-        _status = null;
-        _error = 'Ese aparato ya no está';
-        _errorDetail = 'El backend dejó de listarlo. Revisalo desde el Dashboard.';
-        _selectionEpoch++;
-      }
-    }
-    _safeNotify();
-    // El pedido dejó la pantalla sin estado a propósito (no se muestra el del
-    // aparato anterior): ahora que se sabe cuál es, se pide el suyo.
-    //
-    // Sin condicionarlo a que falte el estado. Hoy da igual —con la epoch de
-    // selección, cualquier respuesta en vuelo del aparato anterior se descarta
-    // y `_status` llega acá en null—, pero el invariante que importa es "al
-    // cambiar de aparato se lee el estado del nuevo", y escribirlo así no lo
-    // hace depender de que el otro arreglo siga en su lugar.
-    if (resolvable && _missingDeviceId == null) await refresh();
-  }
-
-  /// Cambia el aparato controlado y relee su estado. El estado del anterior se
-  /// descarta: mostrar el volumen del televisor mientras se comanda el monitor
-  /// sería peor que mostrar "cargando".
-  ///
-  /// PRIVADA: el aparato se elige por su device canónico ([selectDevice]), que
-  /// es lo único que tienen a mano la habitación, el plano y las cards. Entrar
-  /// por acá con un pedido pendiente vivo dejaba la pantalla sin estado, sin
-  /// spinner y sin error, y sin forma de reintentar.
-  ///
-  /// El guard mira el aparato EFECTIVO y no `_selectedId`: cuando nadie eligió
-  /// nada, `_selectedId` es null pero se está mostrando el principal, y fijarlo
-  /// explícitamente borraba su estado y mandaba la pantalla al spinner por
-  /// nada. Eso es el parpadeo que se ve al abrir el control desde la home.
-  Future<void> _selectTv(String id) async {
-    if (selectedTv?.id == id) {
-      // Ya es el que se está mostrando: se fija para dejar de depender del
-      // default, sin tocar el estado.
-      _selectedId = id;
+    if (list.isEmpty) {
+      // El backend contestó que no tiene lista (404): es el caso de un solo
+      // aparato de antes de CCE#45. Los comandos van sin `?tv=` y los resuelve
+      // el backend, que es como se comportaba la app entonces.
+      _retarget(_target.next(deviceId: null, state: _TargetState.resolved));
+      await refresh();
       return;
     }
-    _selectedId = id;
-    _status = null;
-    _selectionEpoch++;
-    _safeNotify();
-    await refresh();
+    // La lista llegó y ese aparato NO está: lo quitaron.
+    if (_target.state != _TargetState.unresolved) {
+      _retarget(
+        _target.next(deviceId: wanted, state: _TargetState.unresolved),
+        error: 'Ese aparato ya no está',
+        errorDetail: 'El backend dejó de listarlo. Revisalo desde el Dashboard.',
+      );
+    } else {
+      _safeNotify();
+    }
   }
 
   /// El aparato cuyo device canónico es [deviceId] (`dev_tv-ce588d39`), o null
@@ -452,39 +459,41 @@ class TvService extends ChangeNotifier {
   /// pida una segunda: abrir un control costaba dos GET /tv/status del mismo
   /// aparato.
   bool selectDevice(String deviceId) {
-    // Idempotente: la card lo llama al tocarla y la pantalla lo reafirma en su
-    // post-frame. Sin esto, el segundo pedido bumpeaba las épocas y la lista ya
-    // en camino llegaba "vieja": se aplicaba pero no resolvía el aparato, y la
-    // pantalla se quedaba sin estado hasta la respuesta siguiente.
-    if (_pendingDeviceId == deviceId) return true;
+    // Ya es exactamente lo que se está mostrando: no hay nada que descartar.
+    // Igual se limpia un cartel viejo — si no, abrir el control de un aparato
+    // perfectamente válido pintaba encima el error de un intento anterior.
+    if (_target.isResolved && _target.wants(deviceId)) {
+      if (_error != null) {
+        _error = null;
+        _errorDetail = null;
+        _safeNotify();
+      }
+      return false;
+    }
+    // Ya se está resolviendo ESE aparato: la card lo pide al tocarla y la
+    // pantalla lo reafirma al abrirse. Volver a pedirlo invalidaba la lista ya
+    // en camino, que llegaba "vieja" y no resolvía nada.
+    if (_target.state == _TargetState.pending && _target.wants(deviceId)) {
+      return true;
+    }
     final tv = tvForDeviceId(deviceId);
     if (tv != null) {
-      _pendingDeviceId = null;
-      _missingDeviceId = null;
-      final cambia = selectedTv?.id != tv.id;
-      // Sin await a propósito: lo que decide qué se ve ya pasó cuando esto
-      // vuelve; lo que queda pendiente es el GET del estado nuevo.
-      unawaited(_selectTv(tv.id));
-      return cambia;
+      final mismoAparato = selectedTv?.id == tv.id;
+      _retarget(
+        _target.next(deviceId: deviceId, state: _TargetState.resolved),
+        keepStatus: mismoAparato,
+      );
+      if (mismoAparato) return false;
+      unawaited(refresh());
+      return true;
     }
     // No se puede resolver todavía. Mientras tanto NO se muestra el estado de
     // otro aparato como si fuera éste; la excepción es el televisor histórico
     // sin lista cargada, que ES lo que se está mostrando.
-    if (selectedDeviceId != deviceId) {
-      _selectedId = null;
-      _status = null;
-    }
-    _pendingDeviceId = deviceId;
-    _missingDeviceId = null;
-    _error = null;
-    _errorDetail = null;
-    // Las dos epochs: la de selección invalida las respuestas en vuelo (el
-    // estado del aparato anterior ya no es el de esta pantalla), y la del
-    // pendiente evita que un `loadTvs` que salió antes de este pedido lo
-    // resuelva con una lista vieja.
-    _selectionEpoch++;
-    _pendingEpoch++;
-    _safeNotify();
+    _retarget(
+      _target.next(deviceId: deviceId, state: _TargetState.pending),
+      keepStatus: selectedDeviceId == deviceId,
+    );
     unawaited(loadTvs(force: true));
     return true;
   }
@@ -498,15 +507,10 @@ class TvService extends ChangeNotifier {
   /// si no, relee el estado. [refresh] solo no alcanza: con un aparato sin
   /// resolver sale temprano a propósito y el botón no haría nada.
   Future<void> retry() async {
-    final missing = _missingDeviceId;
-    if (missing == null) return refresh();
-    _missingDeviceId = null;
-    _error = null;
-    _errorDetail = null;
-    _pendingDeviceId = missing;
-    _pendingEpoch++;
-    _selectionEpoch++;
-    _safeNotify();
+    if (_target.state != _TargetState.unresolved) return refresh();
+    _retarget(
+      _target.next(deviceId: _target.deviceId, state: _TargetState.pending),
+    );
     await loadTvs(force: true);
   }
 
@@ -532,42 +536,34 @@ class TvService extends ChangeNotifier {
   /// el control (elegir aparato + el refresh de cortesía de la pantalla), y
   /// tirarlo dejaba la pantalla con el estado del aparato anterior.
   Future<void> refresh() async {
-    // Con un aparato pedido y todavía sin resolver, un GET sin `?tv=` lo
-    // contesta el backend con SU aparato por defecto: sería traer el estado del
-    // televisor para la pantalla del monitor. Se espera a la lista — [loadTvs]
-    // pide el estado apenas sabe cuál es. Y un aparato que ya no está no tiene
-    // estado que pedir.
-    if (_pendingDeviceId != null || _missingDeviceId != null) return;
-    if (_refreshing) {
-      _queuedRefresh = true;
-      return;
-    }
+    // Sin saber qué aparato es, un GET sin `?tv=` lo contesta el backend con SU
+    // aparato por defecto: sería traer el estado del televisor para la pantalla
+    // del monitor. [loadTvs] pide el estado apenas lo resuelve.
+    if (!_target.isResolved) return;
+    if (_refreshing) return;
     _refreshing = true;
     _loading = true;
     _error = null;
     _errorDetail = null;
     _safeNotify();
-    final epoch = _selectionEpoch;
+    final asked = _target;
     try {
       final status = await _api.getTvStatus(tvId: selectedTvId);
-      if (epoch == _selectionEpoch) _status = status;
+      if (_target.sameAs(asked)) _status = status;
     } catch (e) {
-      if (epoch == _selectionEpoch) {
+      if (_target.sameAs(asked)) {
         _error = 'No se pudo conectar al servidor';
         _errorDetail = 'Revisá la conexión con la API CCE.';
       }
       debugPrint('TvService refresh error: $e');
     } finally {
       _refreshing = false;
-      final queued = _queuedRefresh;
-      _queuedRefresh = false;
-      // `loading` SIEMPRE baja y SIEMPRE se notifica, incluso encadenando: el
-      // encadenado puede salir temprano (aparato sin resolver) y dejar la
-      // pantalla clavada en el spinner. Cuando sí corre, vuelve a subirlo en
-      // este mismo turno síncrono, así que no hay un frame intermedio.
       _loading = false;
       _safeNotify();
-      if (queued) unawaited(refresh());
+      // El destino cambió mientras esto volaba: lo que llegó no era de esta
+      // pantalla, y quien lo cambió no pudo pedir el suyo porque este estaba en
+      // curso. Se pide ahora, en vez de encolarlo en un campo aparte.
+      if (!_target.sameAs(asked) && _target.isResolved) unawaited(refresh());
     }
   }
 
@@ -950,7 +946,17 @@ class TvService extends ChangeNotifier {
   }) {
     if (tvs != null) _tvs = tvs;
     if (status != null) _status = status;
-    if (selectedId != null) _selectedId = selectedId;
+    if (selectedId != null) {
+      // El destino se nombra por device canónico; el id del aparato es lo que
+      // los tests tienen a mano, así que se traduce acá.
+      final tv = _tvs.where((t) => t.id == selectedId).firstOrNull;
+      _target = _target.next(
+        deviceId: tv?.canonicalDeviceId ?? 'dev_$selectedId',
+        // Un elegido que no está en la lista sembrada queda SIN resolver, igual
+        // que si lo hubiera descubierto [loadTvs]: no se cae al principal.
+        state: tv != null ? _TargetState.resolved : _TargetState.unresolved,
+      );
+    }
     _safeNotify();
   }
 

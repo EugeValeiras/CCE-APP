@@ -82,6 +82,9 @@ class _FakeApi extends ApiService {
   /// Hace fallar el PUT, para ejercitar el camino de revert.
   bool failPower = false;
 
+  /// Hace fallar GET /tv/status, para dejar el cartel de error puesto.
+  bool statusFalla = false;
+
   /// Si está, getTvStatus espera a que se complete antes de responder.
   Completer<void>? gate;
 
@@ -107,6 +110,7 @@ class _FakeApi extends ApiService {
     statusCalls.add(tvId);
     final g = gate;
     if (g != null) await g.future;
+    if (statusFalla) throw Exception('GET /tv/status falló');
     return statuses[tvId] ?? const TvStatus(online: false, power: 'off');
   }
 
@@ -368,12 +372,12 @@ void main() {
               'para siempre con el del televisor');
     });
 
-    test('una lista vieja no se lleva puesta la selección recién pedida',
+    test('una lista que no se pudo leer no se lleva puesta la recién pedida',
         () async {
       final api = _FakeApi();
-      // GET /tv/tvs #1 en vuelo; va a devolver [] (getTvs se traga cualquier
-      // error devolviendo la lista vacía).
-      final vieja = Completer<List<TvSummary>>();
+      // GET /tv/tvs #1 en vuelo; va a fallar (null, que ya NO es lo mismo que
+      // una lista vacía).
+      final vieja = Completer<List<TvSummary>?>();
       api.tvsGate = vieja;
       final s = _service(api);
       unawaited(s.loadTvs());
@@ -381,14 +385,17 @@ void main() {
       api.tvsGate = null;
       api.tvs = [_televisor(), _monitor()];
       s.selectDevice('dev_tv-ce588d39');
-      // La #1 resuelve DESPUÉS, con la lista vacía.
-      vieja.complete(const []);
+      // La #1 resuelve DESPUÉS, sin poder leerse.
+      vieja.complete(null);
       await _drain();
 
       expect(s.selectedDeviceId, 'dev_tv-ce588d39',
-          reason: 'la respuesta vieja pisaba la lista buena con la vacía y el '
-              'control del monitor terminaba abriendo el televisor, callado');
+          reason: 'una respuesta que no se pudo leer no decide nada sobre el '
+              'aparato que se acaba de pedir: antes volvía como lista vacía y '
+              'el control del monitor terminaba abriendo el televisor, callado');
       expect(s.tvs, hasLength(2));
+      expect(s.missingDevice, isFalse);
+      expect(s.error, isNull);
     });
 
     test('cambiar de aparato con un power en vuelo no revienta', () async {
@@ -551,6 +558,86 @@ void main() {
           reason: 'el aparato está prendido de verdad: el revert del comando '
               'fallido no puede escribir el valor viejo encima');
       expect(s.volume, 9);
+    });
+  });
+
+  // Vuelta 3 del review: "qué aparato quiere la pantalla" vivía en siete campos
+  // sueltos que había que mover juntos y a mano, y cada vuelta encontraba un
+  // subconjunto actualizado a medias. Ahora es UN token, y estos dos casos —los
+  // últimos dos bloqueantes— salen por construcción.
+  group('el destino es una sola pieza', () {
+    test('una lista buena despega el cartel que dejó una lectura fallida',
+        () async {
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      api.statuses['tv-ce588d39'] = _apagado;
+      final s = _service(api);
+
+      // Primer intento: la lista no se puede leer y deja el cartel puesto.
+      api.tvsIlegible = true;
+      s.selectDevice('dev_tv-ce588d39');
+      await _drain();
+      expect(s.error, isNotNull);
+      expect(s.missingDevice, isTrue);
+
+      // Segundo: cualquier lista buena posterior tiene que resolverlo, sin que
+      // nadie toque el botón de reintentar. Antes el cartel quedaba pegado con
+      // la lista correcta ya en memoria, y ni el polling ni el socket lo
+      // despegaban porque refresh salía temprano.
+      api.tvsIlegible = false;
+      await s.loadTvs(force: true);
+      await _drain();
+
+      expect(s.error, isNull);
+      expect(s.missingDevice, isFalse);
+      expect(s.selectedDeviceId, 'dev_tv-ce588d39');
+      expect(s.volume, 7, reason: 'y con SU estado, no el de otro');
+    });
+
+    test('reabrir un aparato válido no arrastra el cartel del intento anterior',
+        () async {
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      api.statuses['tv'] = _encendido;
+      final s = _service(api)..debugSeed(tvs: [_televisor(), _monitor()]);
+
+      // Un aparato que la lista no tiene deja el cartel puesto.
+      s.selectDevice('dev_tv-borrado');
+      await _drain();
+      expect(s.error, isNotNull);
+
+      // Y ahora se abre el control del televisor, que está perfecto.
+      s.selectDevice('dev_tv');
+
+      expect(s.error, isNull,
+          reason: 'el cartel viejo se pintaba encima de un aparato válido '
+              'hasta que algo lo limpiara: en la tablet era un flash en cada '
+              'cambio de aparato');
+      expect(s.missingDevice, isFalse);
+    });
+
+    test('reabrir el aparato que YA se muestra tampoco arrastra su cartel',
+        () async {
+      // Camino distinto del anterior: acá el destino ya está resuelto y el
+      // cartel lo dejó un fallo de red, no un aparato que no estaba.
+      final api = _FakeApi()..tvs = [_televisor(), _monitor()];
+      final s = _service(api)..debugSeed(tvs: [_televisor(), _monitor()]);
+      // Se abre el control del monitor: el destino queda NOMBRADO con su
+      // device, que es la situación en la que está la pantalla abierta.
+      s.selectDevice('dev_tv-ce588d39');
+      await _drain();
+      expect(s.selectedDeviceId, 'dev_tv-ce588d39');
+
+      // Se cae la red y el cartel queda puesto.
+      api.statusFalla = true;
+      await s.refresh();
+      expect(s.error, isNotNull, reason: 'el cartel quedó puesto');
+
+      // El usuario vuelve y abre el control del MISMO aparato.
+      api.statusFalla = false;
+      s.selectDevice('dev_tv-ce588d39');
+
+      expect(s.error, isNull,
+          reason: 'volver a abrir lo que ya se estaba mostrando no puede '
+              'seguir pintando el error del intento anterior');
     });
   });
 

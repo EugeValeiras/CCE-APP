@@ -201,6 +201,9 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
   List<FeaturedItem> get _tvFeatured {
     if (widget.tv == null) return const [];
     final ids = _tvDeviceIds;
+    // La card genérica se ofrece SÓLO mientras no se sabe qué aparatos hay.
+    // Con la lista cargada, agregarla desde el editor volvía a meter una card
+    // que abre el que esté seleccionado — el bug que este issue vino a sacar.
     if (ids.isEmpty) return const [FeaturedItem(FeaturedKind.tv)];
     return [for (final id in ids) FeaturedItem(FeaturedKind.tv, id)];
   }
@@ -236,6 +239,12 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     final deviceIds = _tvDeviceIds;
     if (deviceIds.isEmpty) return;
     final migrated = FeaturedItem.expandLegacyTv(items, deviceIds);
+    // Se corre UNA vez y no se reintenta: expandido el `tv` legacy ya no queda
+    // nada que migrar, y un Samsung que se configure MÁS TARDE no tiene por qué
+    // meterse solo en los destacados de alguien que ya eligió los suyos. Eso
+    // deja un caso sin cubrir a propósito —una primera lista incompleta dejaría
+    // la home sin ese aparato—, que no se puede distinguir de "el usuario no lo
+    // quiere" sin recordar aparte qué se expandió.
     _tvMigrated = true;
     if (identical(migrated, items)) return;
     if (mounted) {
