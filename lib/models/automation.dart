@@ -172,6 +172,41 @@ class Automation {
     return const [];
   }
 
+  /// CCE#158 — EL GATE DEL INICIALIZADOR que esta automatización trajo escrito.
+  ///
+  /// `trigger.conditions` significa dos cosas distintas según de dónde venga.
+  /// Con flujo PROYECTADO es el `if` que el backend deriva: la misma condición,
+  /// contada dos veces. Con flujo PROPIO es un GATE que alguien escribió aparte
+  /// del árbol, y que el motor evalúa ANTES de que la corrida exista — el
+  /// evento que no lo cumple ni entra, y la corrida que estaba esperando
+  /// sobrevive. Las dos automatizaciones del living y del pasillo lo tienen
+  /// puesto y andando.
+  ///
+  /// La app NO lo edita: el sheet «Solo si» edita el `if` del árbol, que es
+  /// donde el wizard pone sus condiciones. Pero tampoco puede BORRARLO, que es
+  /// lo que hacía [toJson] con cualquier automatización de flujo propio.
+  ///
+  /// Se lee del ORIGINAL y no del draft a propósito: el draft pisa
+  /// `trigger.conditions` con las del `if` para poder mostrarlas
+  /// (`AutomationFlowDraft`), así que el único lugar donde el gate sigue entero
+  /// es lo que vino del servidor.
+  List<Map<String, dynamic>> get originalGate {
+    final origFlow = _original['flow'];
+    if (_original['flowDerived'] == true ||
+        origFlow is! List ||
+        origFlow.isEmpty) {
+      return const [];
+    }
+    final trig = _original['trigger'];
+    if (trig is! Map) return const [];
+    final conds = trig['conditions'];
+    if (conds is! List) return const [];
+    return [
+      for (final c in conds)
+        if (c is Map) _jsonCopy(c),
+    ];
+  }
+
   /// true a partir de [setOwnFlow]: [toJson] emite el modelo de flujo.
   bool _flowMode = false;
 
@@ -209,9 +244,17 @@ class Automation {
     final (trig, triggerFromOriginal) =
         _triggerJson(ignoreConditions: flowMode);
     if (flowMode) {
+      // CCE#158 — Las `conditions` del trigger se van SALVO que sean un gate
+      // escrito ([originalGate]). Cuando el flujo lo pone la app, la condición
+      // vive en el `if` del árbol y dejarla también acá la duplicaría; cuando
+      // el gate ya venía, borrarlo es destruir dato que la app no muestra.
+      final gate = originalGate;
       trig.remove('conditions');
+      if (gate.isNotEmpty) trig['conditions'] = gate;
       // El gate implícito viejo: con `conditions` vacío el engine vuelve a
-      // mirarlo, y la condición de luz ya está en el árbol.
+      // mirarlo, y la condición de luz ya está en el árbol. Se neutraliza
+      // también con un gate al lado, donde el engine ya lo ignora: si no,
+      // volvería a encenderse solo el día que el gate se quite.
       final brightness = trig['sensorBrightness'];
       if (brightness is String && brightness != 'any') {
         trig['sensorBrightness'] = 'any';
@@ -221,7 +264,7 @@ class Automation {
       out['when'] = triggerFromOriginal && origWhen is List && origWhen.isNotEmpty
           ? [
               for (final w in origWhen)
-                if (w is Map) _jsonCopy(w)..remove('conditions'),
+                if (w is Map) _whenWithGate(_jsonCopy(w), gate),
             ]
           : [deriveWhenEntry(trig)];
       final origFlow = _original['flow'];
@@ -248,6 +291,19 @@ class Automation {
   ///
   /// Con [ignoreConditions] las `conditions` no cuentan en la comparación:
   /// en modo flujo viven en el `if` del árbol y se sacan del trigger después.
+  /// Una entrada del `when` con el gate que se va a guardar. Sin gate se le
+  /// sacan las `conditions` —eran el `if` proyectado y ya viajaron al árbol—;
+  /// con gate se escriben las del gate, para que `when` y `trigger` no puedan
+  /// contar cosas distintas (el `when` es lo que leen el CLI y las listas).
+  Map<String, dynamic> _whenWithGate(
+    Map<String, dynamic> w,
+    List<Map<String, dynamic>> gate,
+  ) {
+    if (gate.isEmpty) return w..remove('conditions');
+    w['conditions'] = [for (final c in gate) _jsonCopy(c)];
+    return w;
+  }
+
   (Map<String, dynamic>, bool) _triggerJson({required bool ignoreConditions}) {
     final current = trigger.toJson();
     if (ignoreConditions) current.remove('conditions');

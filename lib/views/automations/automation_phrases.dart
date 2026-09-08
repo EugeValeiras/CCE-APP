@@ -656,6 +656,18 @@ String condClause(FlowCond c, DevicesService devices) {
   return conditionClause(c.leaf, devices);
 }
 
+/// CCE#158 — EL GATE DEL INICIALIZADOR como cláusula: "el televisor apagado y
+/// es entre las 19:00 y las 07:30".
+///
+/// El AND implícito de la lista se narra como el `and` del árbol —que es lo que
+/// el motor evalúa— y cada elemento con [condClause], el único narrador que
+/// sabe leer un `or` o un `not`. El gate puede tenerlos; la lista de
+/// condiciones del sheet, no.
+String gateClause(List<Map<String, dynamic>> gate, DevicesService devices) {
+  if (gate.isEmpty) return '';
+  return condClause(FlowCond({'and': gate}), devices);
+}
+
 /// "si está oscuro", "con alarma armada", primera + "+N" si hay más.
 String conditionsPhrase(Automation a, DevicesService devices) {
   final parts = <String>[

@@ -1416,6 +1416,7 @@ class _ReadOnlyView extends StatelessWidget {
     final color = triggerColor(a);
     final lines = flowNarration(a.flow, devices);
     final cond = conditionsPhrase(a, devices);
+    final gate = a.originalGate;
     return Scaffold(
       backgroundColor: CceColors.bg,
       appBar: AppBar(
@@ -1533,6 +1534,28 @@ class _ReadOnlyView extends StatelessWidget {
                         ),
                       ],
                     ),
+                    // CCE#158 — EL GATE del inicializador. No es un paso del
+                    // flujo ni una condición del `if`: decide si el disparo
+                    // entra siquiera, así que va pegado al CUÁNDO. Sin esto,
+                    // las dos automatizaciones de la casa que lo tienen puesto
+                    // se leían acá como si se dispararan siempre.
+                    if (gate.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const CceIcon(CceIcons.lockLocked,
+                              size: 18, color: CceColors.textTertiary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'sólo si ${gateClause(gate, devices)}',
+                              style: CceText.body
+                                  .copyWith(color: CceColors.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     Text('FLUJO', style: CceText.section),
                     const SizedBox(height: 10),

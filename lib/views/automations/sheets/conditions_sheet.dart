@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../models/automation.dart';
+import '../../../models/automation_flow.dart';
 import '../../../models/device.dart';
 import '../../../services/devices_service.dart';
 import '../../../theme/cce_icons.dart';
@@ -10,6 +11,14 @@ import '../automation_phrases.dart';
 
 /// Sheet SOLO SI: condiciones adicionales (AND) + condición de alarma.
 /// Muta `draft.trigger` directamente (el draft es una copia descartable).
+///
+/// CCE#158 — Lo que se edita acá es la condición DEL FLUJO: con flujo propio
+/// termina en el `if` del árbol, y con flujo proyectado es la lista que el
+/// backend convierte en ese mismo `if`. El GATE DEL INICIALIZADOR es otra cosa
+/// —se evalúa antes de que la corrida exista, así que el evento que no lo
+/// cumple ni entra— y la app NO lo edita: se muestra en lectura, para que se
+/// vea que está y por qué esta automatización a veces no arranca. Se edita en
+/// el panel web, que tiene el editor de and/or/not.
 Future<bool> showConditionsSheet(
   BuildContext context, {
   required Automation draft,
@@ -254,6 +263,43 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
     );
   }
 
+  /// El gate del inicializador, si esta automatización trae uno escrito.
+  List<FlowCond> get _gate =>
+      [for (final c in widget.draft.originalGate) FlowCond(c)];
+
+  /// Una condición del gate, en lectura: sin papelera y sin `onTap`. Se narra
+  /// con `condClause`, que es el mismo narrador del `if` del lienzo y el único
+  /// que sabe leer un `or` o un `not` — el gate puede tenerlos y el resto de
+  /// este sheet no.
+  Widget _gateRow(FlowCond c) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: CceColors.surfaceHigh,
+        borderRadius: BorderRadius.circular(CceRadii.control),
+        border: Border.all(color: CceColors.stroke),
+      ),
+      child: Row(
+        children: [
+          const CceIcon(
+            CceIcons.lockLocked,
+            size: 18,
+            color: CceColors.textTertiary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              condClause(c, widget.devices),
+              style: CceText.body,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -304,6 +350,21 @@ class _ConditionsSheetState extends State<_ConditionsSheet> {
                 ],
                 onChanged: (v) => setState(() => trigger.alarmCondition = v),
               ),
+              if (_gate.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Text('CONDICIÓN DEL DISPARO', style: CceText.section),
+                const SizedBox(height: 10),
+                for (final c in _gate) _gateRow(c),
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Text(
+                    'El evento que no la cumpla se descarta: la automatización '
+                    'no arranca, y lo que esté esperando sigue. Se edita desde '
+                    'el panel web.',
+                    style: CceText.caption,
+                  ),
+                ),
+              ],
               const SizedBox(height: 24),
               Text('CONDICIONES', style: CceText.section),
               const SizedBox(height: 10),
