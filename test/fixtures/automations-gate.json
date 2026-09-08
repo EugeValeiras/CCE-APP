@@ -1,0 +1,355 @@
+[
+  {
+    "id": "auto_mtown9gwxntnevjvj7p",
+    "name": "Prender luz pasillo",
+    "icon": "⚡",
+    "enabled": true,
+    "source": "custom",
+    "mode": "toggle",
+    "trigger": {
+      "type": "sensor",
+      "sensorId": "dev_a4c13819aaa6ffff",
+      "sensorField": "motion",
+      "sensorValue": true,
+      "sensorTriggers": [
+        {
+          "sensorId": "dev_a4c13819aaa6ffff",
+          "sensorField": "motion",
+          "sensorValue": true
+        }
+      ],
+      "conditions": [
+        {
+          "type": "sensor",
+          "sensorId": "dev_a4c13819aaa6ffff",
+          "field": "lux",
+          "operator": "lt",
+          "value": 40
+        }
+      ]
+    },
+    "actions": [
+      {
+        "lightId": "__hueroom__d388666b-7585-4b52-9693-d0fb99ecc15f",
+        "on": "hueRoom",
+        "hueRoomId": "d388666b-7585-4b52-9693-d0fb99ecc15f",
+        "hueRoomAction": "on"
+      }
+    ],
+    "when": [
+      {
+        "type": "sensor",
+        "sensorTriggers": [
+          {
+            "sensorId": "dev_a4c13819aaa6ffff",
+            "sensorField": "motion",
+            "sensorValue": true
+          }
+        ],
+        "conditions": [
+          {
+            "type": "sensor",
+            "sensorId": "dev_a4c13819aaa6ffff",
+            "field": "lux",
+            "operator": "lt",
+            "value": 40
+          }
+        ]
+      }
+    ],
+    "flow": [
+      {
+        "type": "if",
+        "cond": {
+          "type": "timeWindow",
+          "fromTime": "19:00",
+          "toTime": "23:00"
+        },
+        "then": [
+          {
+            "type": "do",
+            "actions": [
+              {
+                "kind": "hueRoom",
+                "hueRoomId": "d388666b-7585-4b52-9693-d0fb99ecc15f",
+                "action": "on"
+              }
+            ]
+          }
+        ],
+        "else": [
+          {
+            "type": "do",
+            "actions": [
+              {
+                "kind": "hueRoom",
+                "hueRoomId": "835bb15e-c7c9-4190-a3e6-2eddae598d58",
+                "action": "on"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "waitFor",
+        "cond": {
+          "type": "sensor",
+          "sensorId": "dev_a4c13819aaa6ffff",
+          "field": "motion",
+          "value": false
+        },
+        "timeoutSeconds": 3600
+      },
+      {
+        "type": "waitFor",
+        "cond": {
+          "type": "sensor",
+          "sensorId": "dev_a4c13819aaa6ffff",
+          "field": "motion",
+          "value": true
+        },
+        "timeoutSeconds": 10,
+        "onTimeout": [
+          {
+            "type": "do",
+            "actions": [
+              {
+                "kind": "hueRoom",
+                "hueRoomId": "d388666b-7585-4b52-9693-d0fb99ecc15f",
+                "action": "off"
+              },
+              {
+                "kind": "hueRoom",
+                "hueRoomId": "835bb15e-c7c9-4190-a3e6-2eddae598d58",
+                "action": "off"
+              }
+            ]
+          },
+          {
+            "type": "stop"
+          }
+        ]
+      }
+    ],
+    "flowLayout": {
+      "trigger": {
+        "x": 0,
+        "y": 186
+      },
+      "root#0": {
+        "x": 336,
+        "y": 186
+      },
+      "0.then#0@0": {
+        "x": 672,
+        "y": 100
+      },
+      "0.else#0@0": {
+        "x": 672,
+        "y": 280
+      },
+      "root#1": {
+        "x": 1008,
+        "y": 186
+      },
+      "root#2": {
+        "x": 1344,
+        "y": 186
+      },
+      "2.onTimeout#0@0": {
+        "x": 1680,
+        "y": 130
+      },
+      "2.onTimeout#0@1": {
+        "x": 1680,
+        "y": 250
+      },
+      "2.onTimeout#1": {
+        "x": 2016,
+        "y": 186
+      }
+    },
+    "onRetrigger": "restart",
+    "planIds": [
+      "c31f4ab4-8f06-4801-aa09-a7a6fccf61d9"
+    ],
+    "planId": "c31f4ab4-8f06-4801-aa09-a7a6fccf61d9"
+  },
+  {
+    "id": "auto_mtrxnz073scodx6hwx",
+    "name": "Living con movimiento: prender y apagar (por horario)",
+    "icon": "mdi:motion-sensor",
+    "enabled": true,
+    "source": "custom",
+    "sourceId": "C42996FFFECB8971::d0972c8b-4400-4414-80c1-715553147141",
+    "sourceAction": "on",
+    "mode": "toggle",
+    "trigger": {
+      "type": "sensor",
+      "sensorId": "dev_a4c13819bd9fffff",
+      "sensorField": "motion",
+      "sensorValue": true,
+      "sensorTriggers": [
+        {
+          "sensorId": "dev_a4c13819bd9fffff",
+          "sensorField": "motion",
+          "sensorValue": true
+        },
+        {
+          "sensorId": "dev_a4c1381712f0ffff",
+          "sensorField": "motion",
+          "sensorValue": true
+        }
+      ],
+      "sensorDelay": 0,
+      "alarmCondition": "any",
+      "conditions": [
+        {
+          "type": "deviceState",
+          "deviceId": "dev_tv-1ca02124",
+          "field": "on",
+          "value": false
+        },
+        {
+          "type": "timeWindow",
+          "fromTime": "19:00",
+          "toTime": "07:30"
+        }
+      ]
+    },
+    "actions": [
+      {
+        "lightId": "__hueroom__d0972c8b-4400-4414-80c1-715553147141",
+        "on": "hueRoom",
+        "hueRoomId": "d0972c8b-4400-4414-80c1-715553147141",
+        "hueRoomAction": "on"
+      }
+    ],
+    "when": [
+      {
+        "type": "sensor",
+        "sensorTriggers": [
+          {
+            "sensorId": "dev_a4c13819bd9fffff",
+            "sensorField": "motion",
+            "sensorValue": true
+          },
+          {
+            "sensorId": "dev_a4c1381712f0ffff",
+            "sensorField": "motion",
+            "sensorValue": true
+          }
+        ],
+        "sensorDelay": 0,
+        "alarmCondition": "any",
+        "conditions": [
+          {
+            "type": "deviceState",
+            "deviceId": "dev_tv-1ca02124",
+            "field": "on",
+            "value": false
+          },
+          {
+            "type": "timeWindow",
+            "fromTime": "19:00",
+            "toTime": "07:30"
+          }
+        ]
+      }
+    ],
+    "flow": [
+      {
+        "type": "do",
+        "actions": [
+          {
+            "kind": "hueRoom",
+            "hueRoomId": "d0972c8b-4400-4414-80c1-715553147141",
+            "action": "on"
+          }
+        ]
+      },
+      {
+        "type": "waitFor",
+        "cond": {
+          "and": [
+            {
+              "type": "sensor",
+              "sensorId": "dev_a4c13819bd9fffff",
+              "field": "motion",
+              "value": false
+            },
+            {
+              "type": "sensor",
+              "sensorId": "dev_a4c1381712f0ffff",
+              "field": "motion",
+              "value": false
+            }
+          ]
+        },
+        "timeoutSeconds": 3600
+      },
+      {
+        "type": "waitFor",
+        "cond": {
+          "or": [
+            {
+              "type": "sensor",
+              "sensorId": "dev_a4c13819bd9fffff",
+              "field": "motion",
+              "value": true
+            },
+            {
+              "type": "sensor",
+              "sensorId": "dev_a4c1381712f0ffff",
+              "field": "motion",
+              "value": true
+            }
+          ]
+        },
+        "timeoutSeconds": 300,
+        "onTimeout": [
+          {
+            "type": "do",
+            "actions": [
+              {
+                "kind": "hueRoom",
+                "hueRoomId": "d0972c8b-4400-4414-80c1-715553147141",
+                "action": "off"
+              }
+            ]
+          },
+          {
+            "type": "stop"
+          }
+        ]
+      }
+    ],
+    "flowLayout": {
+      "trigger": {
+        "x": 0,
+        "y": 186
+      },
+      "root#0@0": {
+        "x": 336,
+        "y": 186
+      },
+      "root#1": {
+        "x": 672,
+        "y": 186
+      },
+      "root#2": {
+        "x": 1008,
+        "y": 186
+      },
+      "2.onTimeout#0@0": {
+        "x": 1344,
+        "y": 186
+      },
+      "2.onTimeout#1": {
+        "x": 1680,
+        "y": 186
+      }
+    },
+    "planId": "edafc1f9-f85e-4a73-a08d-1de662cd89a7"
+  }
+]

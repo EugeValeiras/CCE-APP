@@ -751,11 +751,17 @@ class WizardDraft {
 
     // Las cuatro secciones, ya en el shape legacy que los sheets editan.
     //
-    // Con flujo PROPIO las condiciones y las acciones se toman del árbol:
-    // `trigger.conditions` viene vacío y `actions` es sólo un espejo que otro
-    // cliente pudo dejar viejo. Con flujo PROYECTADO (o sin `flow`) se dejan
-    // las que vinieron: son, por construcción, las mismas que el árbol
+    // Con flujo PROPIO las condiciones y las acciones se toman del árbol: lo
+    // que el sheet SOLO SI edita es el `if`, y `actions` es sólo un espejo que
+    // otro cliente pudo dejar viejo. Con flujo PROYECTADO (o sin `flow`) se
+    // dejan las que vinieron: son, por construcción, las mismas que el árbol
     // derivado — y así un draft sin tocar re-serializa byte a byte.
+    //
+    // CCE#158 — Esta línea PISA `trigger.conditions`, y con flujo propio ahí
+    // puede haber un GATE del inicializador, que es otra cosa que el `if`. No
+    // se pierde: el gate se guarda leyéndolo del original
+    // (`Automation.originalGate`), justamente porque acá deja de estar. El
+    // sheet lo muestra en lectura desde la misma fuente.
     if (automation.hasOwnFlow) {
       automation.trigger.conditions = [
         for (final c in shape.conditions)
