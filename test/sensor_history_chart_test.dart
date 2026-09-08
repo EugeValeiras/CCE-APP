@@ -409,6 +409,22 @@ void main() {
       }, api.client);
     });
 
+    testWidgets('un device sin bindings no dibuja nada ni pide nada',
+        (tester) async {
+      // El event store se indexa por binding: sin ninguno no hay historial que
+      // pedir. Antes lo cortaba la pantalla con un `if`; ahora el componente se
+      // oculta solo, y tiene que hacerlo SIN salir a la red.
+      final api = _FakeApi(series: conHumedad());
+      await http.runWithClient(() async {
+        await pumpTermometro(tester, termometro(humidity: 28, bindings: const []));
+        expect(api.urls, isEmpty);
+        expect(find.text('24 H'), findsNothing);
+        expect(find.text('Sin lecturas en este rango'), findsNothing);
+        // Y la pantalla sigue mostrando la lectura de ahora.
+        expect(find.text('21.9°'), findsOneWidget);
+      }, api.client);
+    });
+
     testWidgets('un rango sin lecturas lo dice, no deja el gráfico en blanco',
         (tester) async {
       final api = _FakeApi(series: [
