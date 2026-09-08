@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/alarm_event.dart';
+import '../models/alarm_mode.dart';
 import '../models/device.dart';
 import '../models/server_config.dart';
 import '../services/api_service.dart';
@@ -13,6 +14,7 @@ import '../services/siren_service.dart';
 import '../services/notification_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
+import '../theme/components/cce_segmented.dart';
 import '../theme/components/section_header.dart';
 import '../utils/alarm_triggers.dart';
 import '../utils/contact_words.dart';
@@ -74,6 +76,15 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
 
   bool _isArmed = false;
 
+  /// TIPO de alarma elegido (CCE#133): qué protege cuando está armada.
+  ///
+  /// `null` = **el backend no conoce los tipos**, que no es lo mismo que
+  /// «total». Contra una API vieja el selector no se dibuja y la pantalla
+  /// sigue diciendo ARMADA/DESARMADA a secas — el mismo criterio que el
+  /// `testMode: bool?` de `api_service`: no dibujar lo que no se pudo leer.
+  AlarmMode? _mode;
+  bool _isChangingMode = false;
+
   /// Modo prueba (CCE#122): la alarma sigue armada y sigue disparando, pero el
   /// aviso llega mudo. Va al lado del estado en la pantalla porque un dial que
   /// dice "ARMADA" a secas mientras esto está prendido es una trampa.
@@ -93,6 +104,12 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
   /// fuente de "qué protege". null = todavía no se leyó: la lista espera en
   /// vez de mostrar de más (todos) o de menos (ninguno).
   Map<String, bool>? _alarmTriggers;
+
+  /// En qué tipo de alarma participa cada sensor (CCE#133). Con el tipo
+  /// elegido, es lo que decide qué entra a "qué protege": con la perimetral
+  /// puesta, listar el movimiento del pasillo sería prometer una protección
+  /// que no existe.
+  Map<String, String> _alarmLevels = const {};
 
   StreamSubscription? _alarmSub;
   StreamSubscription? _armedSub;
@@ -182,13 +199,17 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       _socket.connect(_config);
 
       _alarmSub = _socket.onAlarm.listen(_onAlarmTriggered);
-      _armedSub = _socket.onArmedChanged.listen((armed) {
+      _armedSub = _socket.onArmedChanged.listen((ev) {
         if (!mounted) return;
         setState(() {
-          if (armed != _isArmed) _armedSince = DateTime.now();
-          _isArmed = armed;
+          if (ev.armed != _isArmed) _armedSince = DateTime.now();
+          _isArmed = ev.armed;
+          // El tipo viaja en el mismo evento (CCE#133), también al desarmar:
+          // así el cambio hecho desde el dashboard o el CLI se ve acá sin
+          // recargar. Un backend viejo no lo manda y el selector no aparece.
+          if (ev.mode != null) _mode = ev.mode;
         });
-        if (!armed && _activeAlarm != null) {
+        if (!ev.armed && _activeAlarm != null) {
           _dismissAlarm();
         }
       });
@@ -237,6 +258,9 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
         // sensores sí distingue el null, porque ahí un toggle que no se puede
         // guardar sería una mentira.
         _isTestMode = status.testMode ?? false;
+        // El tipo SÍ conserva el null: es un selector que escribe, y ofrecer
+        // uno cuyo PUT 404ea siempre es peor que no ofrecerlo.
+        _mode = status.mode;
         _error = null;
         _isLoading = false;
       });
@@ -287,6 +311,50 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('📱 [Flutter] Sin mapa de disparos de alarma: $e');
     }
+    // Los niveles van aparte y son best-effort: contra una API vieja el mapa
+    // queda vacío, todo vale `interior` y "qué protege" se comporta como
+    // antes de CCE#133 (que es lo mismo que la alarma total).
+    try {
+      final levels = await api.getSensorAlarmLevels();
+      if (!mounted) return;
+      setState(() => _alarmLevels = levels);
+    } catch (e) {
+      debugPrint('📱 [Flutter] Sin niveles de alarma: $e');
+    }
+  }
+
+  /// Cambia el TIPO de alarma (CCE#133).
+  ///
+  /// NO arma: el selector elige qué protegería, el dial es el que arma. Con la
+  /// alarma ya armada sí cambia en caliente lo que dispara —el backend lo
+  /// avisa como si fuera un armado—, que es el caso de «me voy a dormir y
+  /// paso de total a perimetral» sin desarmar la casa en el medio.
+  Future<void> _setMode(AlarmMode mode) async {
+    final api = _api;
+    if (api == null || _isChangingMode || mode == _mode || !mounted) return;
+
+    final previous = _mode;
+    setState(() {
+      _mode = mode;
+      _isChangingMode = true;
+    });
+    HapticFeedback.selectionClick();
+    try {
+      final saved = await api.setAlarmMode(mode);
+      if (!mounted) return;
+      setState(() => _mode = saved);
+    } catch (e) {
+      if (!mounted) return;
+      // Revertir importa: dejar el selector en «perimetral» sin que el backend
+      // lo haya guardado hace creer que se puede dormir con el movimiento
+      // desactivado cuando en realidad va a sonar.
+      setState(() {
+        _mode = previous;
+        _error = 'No pude cambiar el tipo de alarma';
+      });
+    } finally {
+      if (mounted) setState(() => _isChangingMode = false);
+    }
   }
 
   Future<void> _toggleArmed() async {
@@ -298,10 +366,13 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
     HapticFeedback.heavyImpact();
 
     try {
-      final result = await _api!.setAlarmArmed(newState);
+      // El tipo viaja SÓLO si esta pantalla lo conoce: contra una API vieja se
+      // manda el armado pelado, exactamente como antes.
+      final result = await _api!.setAlarmArmed(newState, mode: _mode);
       if (!mounted) return;
       setState(() {
-        _isArmed = result;
+        _isArmed = result.armed;
+        if (result.mode != null) _mode = result.mode;
         _armedSince = DateTime.now();
         _error = null;
       });
@@ -519,7 +590,15 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
           if (!_config.isConfigured)
             Center(child: _buildSetupPrompt())
           else if (widget.devices == null)
-            Center(child: _buildAlarmButton())
+            // Scrolleable, no un Center pelado: con el selector de tipo
+            // (CCE#133) sumado al dial, al chip del modo prueba y al «armada
+            // desde», el bloque ya no entra en un teléfono chico — y un
+            // overflow acá se come justo el renglón que dice qué protege.
+            SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                  horizontal: CceSpace.lg, vertical: CceSpace.xl),
+              child: Center(child: _buildAlarmButton()),
+            )
           else
             // Dial arriba y, debajo, qué protege la alarma. Scrolleable: en
             // una casa con muchos sensores la lista no entra bajo el dial.
@@ -531,6 +610,8 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                 ProtectedList(
                   devices: widget.devices!,
                   triggers: _alarmTriggers,
+                  levels: _alarmLevels,
+                  mode: _mode,
                   onConfigure: _openGear,
                 ),
               ],
@@ -591,7 +672,13 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
       );
     }
 
-    final label = _isArmed ? 'ARMADA' : 'DESARMADA';
+    // El estado grande DICE EL TIPO cuando está armada (CCE#133). «ARMADA» a
+    // secas es información incompleta el día que hay dos formas de armarla: no
+    // es lo mismo poder caminar por casa que no poder.
+    final mode = _mode;
+    final label = _isArmed
+        ? (mode == null ? 'ARMADA' : 'ARMADA\n${mode.shout}')
+        : 'DESARMADA';
     final icon = _isArmed ? Icons.shield : Icons.shield_outlined;
     // Legacy (sin neo): rojo danger / gris + borde hairline.
     final fg = _isArmed ? CceColors.danger : CceColors.textTertiary;
@@ -654,11 +741,13 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                       SizedBox(height: isTablet ? 14 : 8),
                       Text(
                         label,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
                           color: fg,
                           fontSize: labelSize,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 2,
+                          height: 1.35,
                         ),
                       ),
                     ],
@@ -666,6 +755,21 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
                 ),
         ),
         SizedBox(height: isTablet ? CceSpace.xxxl : CceSpace.xxl),
+        // TIPO DE ALARMA (CCE#133): elegir NO arma — el dial es el que arma.
+        // Separarlos es deliberado: un segmentado que armara la casa de un
+        // toque convertiría un cambio de preferencia en un armado accidental.
+        // Con la alarma ya armada, cambiar acá cambia en caliente qué dispara
+        // (el backend lo avisa), que es el caso de pasar a perimetral para
+        // dormir sin desarmar en el medio.
+        if (mode != null) ...[
+          _ModePicker(
+            mode: mode,
+            armed: _isArmed,
+            busy: _isChangingMode,
+            onChanged: _setMode,
+          ),
+          SizedBox(height: CceSpace.lg),
+        ],
         // MODO PRUEBA (CCE#122): va PEGADO al dial y no escondido en el
         // engranaje. El toggle es manual y no vence solo: la única defensa
         // contra olvidarlo prendido es verlo cada vez que se mira la alarma.
@@ -692,6 +796,55 @@ class _AlarmViewState extends State<AlarmView> with WidgetsBindingObserver {
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+/// El selector del TIPO de alarma, bajo el dial (CCE#133).
+///
+/// Dos opciones y una línea que dice qué promete cada una: «perimetral» no
+/// significa nada por sí solo, y el que lo toca tiene que poder saber ANTES
+/// del toque si va a poder caminar por la casa.
+///
+/// NO arma. Elegir es elegir; armar es el dial. Con la alarma ya armada, el
+/// texto cambia a lo que efectivamente está protegiendo la casa en este
+/// momento — que es cuando la frase importa de verdad.
+class _ModePicker extends StatelessWidget {
+  const _ModePicker({
+    required this.mode,
+    required this.armed,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  final AlarmMode mode;
+  final bool armed;
+  final bool busy;
+  final ValueChanged<AlarmMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CceSegmented<AlarmMode>(
+          value: mode,
+          segments: const [
+            CceSegment(value: AlarmMode.perimeter, label: 'Perimetral'),
+            CceSegment(value: AlarmMode.total, label: 'Total'),
+          ],
+          onChanged: busy ? (_) {} : onChanged,
+        ),
+        SizedBox(height: CceSpace.sm),
+        Text(
+          armed ? 'Ahora protege: ${mode.blurb}' : mode.blurb,
+          textAlign: TextAlign.center,
+          style: CceText.caption.copyWith(
+            color: armed ? CceColors.textSecondary : CceColors.textTertiary,
+          ),
+        ),
       ],
     );
   }
@@ -880,8 +1033,12 @@ class _AlarmDialState extends State<_AlarmDial>
                 ),
               ),
               SizedBox(height: s * 0.045),
+              // Dos renglones cuando el label trae el TIPO (CCE#133):
+              // "ARMADA / PERIMETRAL". El segundo va más chico y con menos
+              // tracking — es la aclaración, no el estado.
               Text(
-                widget.label,
+                widget.label.split('\n').first,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: armed ? const Color(0xFFFF6B6B) : const Color(0xFF9BA0AB),
                   fontSize: widget.labelSize,
@@ -895,6 +1052,25 @@ class _AlarmDialState extends State<_AlarmDial>
                   ],
                 ),
               ),
+              if (widget.label.contains('\n'))
+                Text(
+                  widget.label.split('\n').last,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: armed
+                        ? const Color(0xFFFF6B6B)
+                        : const Color(0xFF9BA0AB),
+                    fontSize: widget.labelSize * 0.72,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    shadows: const [
+                      Shadow(
+                          color: Color(0x99000000),
+                          offset: Offset(0, 1),
+                          blurRadius: 3),
+                    ],
+                  ),
+                ),
             ],
           ),
         ],
@@ -1030,6 +1206,11 @@ DateTime? lastTriggerAt(Device d) {
 /// que prueba el id canónico Y los bindings, porque el mapa mezcla las dos
 /// familias de ids.
 ///
+/// Y desde CCE#133 decide también el TIPO: con la perimetral elegida, un
+/// sensor de movimiento interior sigue marcado pero NO va a sonar. Listarlo
+/// sería exactamente la mentira que esta sección vino a sacar de la pantalla,
+/// sólo que más cara: es la lista que uno mira antes de irse a dormir.
+///
 /// Pública por el mismo motivo que [protectedSensors]: el criterio se prueba
 /// sin montar la pantalla (que abre sockets y HTTP al construirse).
 class ProtectedList extends StatelessWidget {
@@ -1038,6 +1219,8 @@ class ProtectedList extends StatelessWidget {
     required this.devices,
     required this.triggers,
     required this.onConfigure,
+    this.levels = const {},
+    this.mode,
   });
 
   final DevicesService devices;
@@ -1045,6 +1228,14 @@ class ProtectedList extends StatelessWidget {
   /// null = todavía no se leyó el mapa. La sección no se dibuja: con una
   /// lista de seguridad, esperar un instante es mejor que afirmar algo falso.
   final Map<String, bool>? triggers;
+
+  /// En qué tipo de alarma participa cada sensor. Vacío = todos en `interior`,
+  /// que con [mode] en total (o null) no cambia nada.
+  final Map<String, String> levels;
+
+  /// El tipo elegido. `null` = el backend no conoce los tipos: la lista
+  /// muestra todo lo marcado, igual que antes de CCE#133.
+  final AlarmMode? mode;
 
   /// Abre la pantalla donde se elige qué sensores disparan la alarma.
   final VoidCallback onConfigure;
@@ -1063,8 +1254,12 @@ class ProtectedList extends StatelessWidget {
         // explicar: no hay decisión que ofrecer.
         if (candidates.isEmpty) return const SizedBox.shrink();
 
-        final sensors =
-            candidates.where((d) => firesAlarm(d, triggers)).toList();
+        final mode = this.mode;
+        final sensors = candidates
+            .where((d) => mode == null
+                ? firesAlarm(d, triggers)
+                : firesAlarmInMode(d, triggers, levels, mode))
+            .toList();
         // El contador cuenta sobre lo que se muestra: decir "2 abiertas" por
         // puertas que no van a sonar es exactamente el ruido que esta tarea
         // saca de la pantalla.
@@ -1076,11 +1271,16 @@ class ProtectedList extends StatelessWidget {
           children: [
             SizedBox(height: CceSpace.lg),
             SectionHeader(
-              title: 'Qué protege',
+              // El título DICE EL TIPO: la misma lista significa cosas
+              // distintas según qué esté armado, y sin decirlo el que la mira
+              // no tiene forma de saber cuál está viendo.
+              title: mode == null
+                  ? 'Qué protege'
+                  : 'Qué protege la alarma ${mode.label}',
               counter: ContactWords.openCount(open),
             ),
             if (sensors.isEmpty)
-              _emptyRow(context)
+              _emptyRow(context, mode)
             else
               for (final d in sensors) _row_(context, d),
           ],
@@ -1093,7 +1293,12 @@ class ProtectedList extends StatelessWidget {
   /// donde nunca se configuró nada se quedaría sin explicación, leyendo la
   /// ausencia como "todo en orden". Dice por qué está vacía y lleva a
   /// arreglarlo.
-  Widget _emptyRow(BuildContext context) {
+  Widget _emptyRow(BuildContext context, AlarmMode? mode) {
+    // Con la perimetral elegida y cero sensores de perímetro, el vacío tiene
+    // una causa concreta y otra salida: no es que nadie configuró nada, es que
+    // ninguno de los marcados entra en ESTA alarma. Decir «ningún sensor
+    // dispara la alarma» ahí sería falso y mandaría a marcar sensores de más.
+    final soloPerimetro = mode == AlarmMode.perimeter;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1114,13 +1319,20 @@ class ProtectedList extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Ningún sensor dispara la alarma',
+                      soloPerimetro
+                          ? 'Ningún sensor está en el perímetro'
+                          : 'Ningún sensor dispara la alarma',
                       style: CceText.body,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    Text('Tocá para elegir cuáles', style: CceText.caption),
+                    Text(
+                      soloPerimetro
+                          ? 'Tocá para poner alguno en «Perímetro»'
+                          : 'Tocá para elegir cuáles',
+                      style: CceText.caption,
+                    ),
                   ],
                 ),
               ),

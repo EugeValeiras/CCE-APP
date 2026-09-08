@@ -32,6 +32,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cce_app/models/alarm_mode.dart';
 import 'package:cce_app/models/automation.dart';
 import 'package:cce_app/models/device.dart';
 import 'package:cce_app/models/event_record.dart';
@@ -214,8 +215,8 @@ class _ApiQuieta extends ApiService {
   Future<Map<String, bool>> getSensorAlarmTriggers() async => const {_id: true};
 
   @override
-  Future<({bool armed, bool? testMode})> getAlarmStatus() async =>
-      (armed: false, testMode: false);
+  Future<({bool armed, AlarmMode? mode, bool? testMode})> getAlarmStatus() async =>
+      (armed: false, mode: AlarmMode.total, testMode: false);
 }
 
 EventRecord _evento(bool abierta) => EventRecord(

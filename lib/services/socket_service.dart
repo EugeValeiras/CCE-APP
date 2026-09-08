@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/alarm_event.dart';
+import '../models/alarm_mode.dart';
 import '../models/server_config.dart';
 
 class DeviceStateEvent {
@@ -35,6 +36,18 @@ class PhoneSmsEvent {
   PhoneSmsEvent({required this.payload});
 }
 
+/// Evento del canal `alarm:armed-changed`: la alarma se armó, se desarmó o
+/// cambió de TIPO (CCE#133).
+///
+/// `mode` es `AlarmMode?` a propósito: **null = el backend no dice el tipo**,
+/// que no es lo mismo que «total». Contra una API vieja, quien escuche esto no
+/// puede dibujar un tipo que nadie le dijo — el mismo criterio que `testMode`.
+class AlarmArmedEvent {
+  final bool armed;
+  final AlarmMode? mode;
+  AlarmArmedEvent({required this.armed, this.mode});
+}
+
 class LiveEvent {
   final String eventName;
   final Map<String, dynamic> payload;
@@ -45,7 +58,8 @@ class LiveEvent {
 class SocketService {
   io.Socket? _socket;
   StreamController<AlarmEvent> _alarmController = StreamController<AlarmEvent>.broadcast();
-  StreamController<bool> _armedController = StreamController<bool>.broadcast();
+  StreamController<AlarmArmedEvent> _armedController =
+      StreamController<AlarmArmedEvent>.broadcast();
   StreamController<bool> _connectionController = StreamController<bool>.broadcast();
   StreamController<DeviceStateEvent> _deviceController = StreamController<DeviceStateEvent>.broadcast();
   StreamController<LiveEvent> _liveController = StreamController<LiveEvent>.broadcast();
@@ -56,7 +70,7 @@ class SocketService {
   bool _isConnected = false;
 
   Stream<AlarmEvent> get onAlarm => _alarmController.stream;
-  Stream<bool> get onArmedChanged => _armedController.stream;
+  Stream<AlarmArmedEvent> get onArmedChanged => _armedController.stream;
   Stream<bool> get onConnectionChanged => _connectionController.stream;
   Stream<DeviceStateEvent> get onDeviceChanged => _deviceController.stream;
   Stream<LiveEvent> get onLiveEvent => _liveController.stream;
@@ -82,7 +96,7 @@ class SocketService {
       _alarmController = StreamController<AlarmEvent>.broadcast();
     }
     if (_armedController.isClosed) {
-      _armedController = StreamController<bool>.broadcast();
+      _armedController = StreamController<AlarmArmedEvent>.broadcast();
     }
     if (_connectionController.isClosed) {
       _connectionController = StreamController<bool>.broadcast();
@@ -142,8 +156,10 @@ class SocketService {
       _emitLive('alarm:armed-changed', data);
       if (_armedController.isClosed) return;
       if (data is Map) {
-        final armed = data['armed'] == true;
-        _armedController.add(armed);
+        _armedController.add(AlarmArmedEvent(
+          armed: data['armed'] == true,
+          mode: AlarmMode.fromWire(data['mode']),
+        ));
       }
     });
 
@@ -203,6 +219,12 @@ class SocketService {
   @visibleForTesting
   void debugEmitLive(String name, Map<String, dynamic> payload) =>
       _emitLive(name, payload);
+
+  /// SÓLO TESTS: la alarma cambió de estado o de TIPO (CCE#133). Es el camino
+  /// por el que llega un armado hecho desde el dashboard o el CLI.
+  @visibleForTesting
+  void debugEmitArmed({required bool armed, AlarmMode? mode}) =>
+      _armedController.add(AlarmArmedEvent(armed: armed, mode: mode));
 
   void dispose() {
     disconnect();

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/alarm_mode.dart';
 import '../models/device.dart';
 import '../services/api_service.dart';
 import '../services/devices_service.dart';
@@ -10,11 +11,17 @@ import '../theme/components/section_header.dart';
 import '../utils/alarm_triggers.dart';
 import 'alarm_view.dart' show protectedSensors;
 
-/// Qué sensores pueden hacer sonar la alarma, con un switch por sensor.
+/// Qué sensores pueden hacer sonar la alarma, y EN QUÉ TIPO de alarma.
 ///
 /// Es la pantalla del engranaje de la alarma. Lista TODOS los sensores de
 /// apertura y movimiento de la casa (sin filtrar por el flag: acá se elige),
 /// mientras que "qué protege" muestra sólo los marcados.
+///
+/// Cada sensor marcado responde DOS preguntas (CCE#133): si participa —el
+/// switch— y en cuál de las dos alarmas —el chip—. «Perímetro» suena en las
+/// dos; «Interior», sólo en la total. El chip aparece únicamente cuando el
+/// switch está prendido: un nivel para un sensor que no participa no
+/// significa nada y sólo agrega una decisión falsa a la pantalla.
 ///
 /// El mapa de disparos se lee UNA vez al abrir y alimenta toda la lista: una
 /// lectura por fila serían quince GET idénticos para el mismo mapa. Mientras
@@ -37,6 +44,15 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
 
   /// null = todavía no se sabe (cargando o falló la lectura).
   Map<String, bool>? _triggers;
+
+  /// En qué tipo de alarma participa cada sensor (CCE#133). Vacío contra una
+  /// API vieja: sin niveles todo vale `interior`, que es como era antes.
+  Map<String, String> _levels = const {};
+
+  /// ¿El backend conoce los tipos de alarma? null = todavía no se sabe.
+  /// Contra una API vieja los chips NO se dibujan: un selector cuyo PUT 404ea
+  /// siempre es peor que no ofrecerlo.
+  bool? _supportsModes;
   bool _failed = false;
 
   /// Modo prueba (CCE#122). null = todavía no se leyó: el switch espera en vez
@@ -60,6 +76,7 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     // El modo prueba se lee aparte y es best-effort: que un backend viejo no
     // conozca el endpoint no puede dejar sin configurar los sensores.
     _loadTestMode();
+    _loadLevels();
     try {
       final triggers = await _api.getSensorAlarmTriggers();
       if (!mounted) return;
@@ -70,11 +87,30 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     }
   }
 
+  /// Los niveles, best-effort y aparte: un backend viejo no conoce el
+  /// endpoint, y eso no puede dejar sin configurar la participación — que es
+  /// lo que ya funcionaba antes de CCE#133.
+  Future<void> _loadLevels() async {
+    try {
+      final levels = await _api.getSensorAlarmLevels();
+      if (!mounted) return;
+      setState(() => _levels = levels);
+    } catch (_) {
+      // Se queda vacío; el soporte lo decide `_loadTestMode` con el estado.
+    }
+  }
+
   Future<void> _loadTestMode() async {
     try {
       final status = await _api.getAlarmStatus();
       if (!mounted) return;
-      setState(() => _testMode = status.testMode);
+      setState(() {
+        _testMode = status.testMode;
+        // El ESTADO es lo que dice si el backend conoce los tipos: que el mapa
+        // de niveles venga vacío es ambiguo —puede ser una casa sin nada
+        // configurado—, pero un `mode` en la respuesta no lo es.
+        _supportsModes = status.mode != null;
+      });
     } catch (_) {
       // Se queda en null: el switch no se dibuja antes que la verdad.
     }
@@ -109,32 +145,107 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
     final current = _triggers;
     if (current == null || _saving.contains(device.id)) return;
 
+    // Al PRENDER se manda el nivel SUGERIDO por lo que el sensor mide —una
+    // apertura es perímetro, un movimiento es interior—, no el default. Sin
+    // esto una puerta recién marcada quedaría en `interior`, o sea fuera de la
+    // alarma perimetral, que es justo la que uno arma para dormir.
+    final level = fires ? suggestedLevel(device) : null;
+
     // Optimista: el switch salta ya y se revierte si el PUT falla.
     final optimistic = Map<String, bool>.from(current);
+    final optimisticLevels = Map<String, String>.from(_levels);
+    final previousLevels = _levels;
     if (fires) {
       optimistic[device.id] = true;
+      if (level != null) optimisticLevels[device.id] = level.wire;
     } else {
+      // El nivel se va con la marca, en el mismo movimiento: es la contracara
+      // de lo que hace el backend al recibir `fires:false`. No se ve —el chip
+      // ya desaparece porque el switch quedó apagado—, pero dejar el mapa
+      // local diciendo algo distinto del config es la clase de desfasaje que
+      // muerde recién cuando alguien lo lee desde otro lado.
       for (final key in firingKeys(device, current)) {
         optimistic.remove(key);
+        optimisticLevels.remove(key);
       }
       optimistic.remove(device.id);
+      optimisticLevels.remove(device.id);
     }
     setState(() {
       _triggers = optimistic;
+      _levels = optimisticLevels;
       _saving.add(device.id);
     });
 
     try {
-      final saved = await writeFiresAlarm(_api, device, current, fires: fires);
+      final saved = await writeFiresAlarm(
+        _api,
+        device,
+        current,
+        fires: fires,
+        level: level,
+      );
       if (!mounted) return;
       setState(() => _triggers = saved);
     } catch (_) {
       if (!mounted) return;
-      setState(() => _triggers = current); // revert
+      setState(() {
+        _triggers = current; // revert
+        _levels = previousLevels;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'No pude cambiar «${widget.devices.displayName(device)}»',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _saving.remove(device.id));
+    }
+  }
+
+  /// Alterna el nivel de un sensor entre perímetro e interior (CCE#133).
+  ///
+  /// Sólo hay dos valores, así que el chip es un toggle: no hay menú que
+  /// abrir ni valor oculto. Lo que cambia es a qué alarma responde el sensor,
+  /// y el chip lo dice con todas las letras antes y después del toque.
+  Future<void> _cycleLevel(Device device) async {
+    final triggers = _triggers;
+    if (triggers == null || _saving.contains(device.id)) return;
+
+    final actual = levelOf(device, _levels);
+    final siguiente = actual == SensorAlarmLevel.perimeter
+        ? SensorAlarmLevel.interior
+        : SensorAlarmLevel.perimeter;
+
+    final previous = _levels;
+    final optimistic = Map<String, String>.from(_levels);
+    optimistic[device.id] = siguiente.wire;
+    for (final binding in device.bindingIds) {
+      optimistic.remove(binding);
+    }
+    setState(() {
+      _levels = optimistic;
+      _saving.add(device.id);
+    });
+
+    try {
+      final saved = await writeSensorAlarmLevel(
+        _api,
+        device,
+        previous,
+        level: siguiente,
+      );
+      if (!mounted) return;
+      setState(() => _levels = saved);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _levels = previous); // revert
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'No pude cambiar el nivel de «${widget.devices.displayName(device)}»',
           ),
         ),
       );
@@ -206,7 +317,10 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
           )
         else ...[
           Text(
-            'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
+            _supportsModes == true
+                ? 'Sólo estos sensores hacen sonar la sirena. «Perímetro» suena '
+                    'en las dos alarmas; «Interior», sólo en la total.'
+                : 'Con la alarma armada, sólo estos sensores hacen sonar la sirena.',
             style: CceText.caption,
           ),
           if (contacts.isNotEmpty) ..._section('Aperturas', contacts),
@@ -324,6 +438,18 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
               style: CceText.body,
             ),
           ),
+          // El nivel SÓLO para los que participan, y sólo si el backend
+          // conoce los tipos: un chip sobre un sensor apagado ofrecería una
+          // decisión que no hace nada.
+          if (fires && _supportsModes == true) ...[
+            SizedBox(width: CceSpace.sm),
+            _LevelChip(
+              level: levelOf(device, _levels),
+              onTap: _saving.contains(device.id)
+                  ? null
+                  : () => _cycleLevel(device),
+            ),
+          ],
           SizedBox(width: CceSpace.sm),
           CceSwitch(
             value: fires,
@@ -335,6 +461,53 @@ class _AlarmSensorsScreenState extends State<AlarmSensorsScreen> {
                 : (v) => _toggle(device, v),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// El nivel de un sensor, como chip tocable (CCE#133).
+///
+/// Toggle y no menú: hay exactamente dos valores, y el chip muestra SIEMPRE el
+/// vigente con su nombre completo. Los colores separan las dos ideas —el
+/// perímetro es lo que protege con gente adentro, el interior es lo que sólo
+/// entra con la casa vacía— sin usar el rojo, que en esta pantalla ya
+/// significa "dispara la alarma".
+class _LevelChip extends StatelessWidget {
+  const _LevelChip({required this.level, required this.onTap});
+
+  final SensorAlarmLevel level;
+  final VoidCallback? onTap;
+
+  static const Color _perimetro = Color(0xFF4DB6AC);
+  static const Color _interior = Color(0xFF9575CD);
+
+  @override
+  Widget build(BuildContext context) {
+    final esPerimetro = level == SensorAlarmLevel.perimeter;
+    final color = esPerimetro ? _perimetro : _interior;
+    return Semantics(
+      button: true,
+      label: 'Nivel: ${level.label}. ${level.blurb}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CceRadii.pill),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: CceSpace.sm, vertical: CceSpace.xs),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(CceRadii.pill),
+              border: Border.all(color: color.withValues(alpha: 0.5)),
+            ),
+            child: Text(
+              level.label,
+              style: CceText.label.copyWith(color: color),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -20,6 +20,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:cce_app/models/alarm_event.dart';
+import 'package:cce_app/models/alarm_mode.dart';
 import 'package:cce_app/models/device.dart';
 import 'package:cce_app/models/event_record.dart';
 import 'package:cce_app/models/server_config.dart';
@@ -38,9 +39,16 @@ import 'package:cce_app/views/alarm_view.dart';
 ServerConfig _nowhere() => ServerConfig(host: '127.0.0.1', port: 1);
 
 class _FakeApi extends ApiService {
-  _FakeApi(super.config, {this.armed = false, this.testMode = false});
+  _FakeApi(
+    super.config, {
+    this.armed = false,
+    this.testMode = false,
+    this.mode = AlarmMode.total,
+  });
 
   bool armed;
+  /// El tipo de alarma (CCE#133). `null` = backend viejo, sin tipos.
+  AlarmMode? mode;
   /// `null` = el backend no conoce la clave (uno viejo).
   bool? testMode;
   bool failTestModePut = false;
@@ -50,9 +58,9 @@ class _FakeApi extends ApiService {
   int statusReads = 0;
 
   @override
-  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
+  Future<({bool armed, AlarmMode? mode, bool? testMode})> getAlarmStatus() async {
     statusReads++;
-    return (armed: armed, testMode: testMode);
+    return (armed: armed, mode: mode, testMode: testMode);
   }
 
   @override
@@ -233,7 +241,9 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('ARMADA'), findsOneWidget);
+      // CCE#133: el estado grande dice el TIPO, así que ya no es 'ARMADA'
+      // pelado. Lo que este test fija sigue siendo el chip del modo prueba.
+      expect(find.textContaining('ARMADA'), findsOneWidget);
       expect(find.text('MODO PRUEBA · no va a sonar'), findsOneWidget,
           reason: '"ARMADA" a secas mientras no suena es una trampa');
     });
@@ -250,7 +260,7 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('ARMADA'), findsOneWidget);
+      expect(find.textContaining('ARMADA'), findsOneWidget);
       expect(find.textContaining('MODO PRUEBA'), findsNothing);
     });
 
@@ -276,6 +286,34 @@ void main() {
 
       expect(find.text('MODO PRUEBA · no va a sonar'), findsOneWidget);
     });
+  });
+
+  /// CCE#133 — «modo prueba» y «tipo de alarma» son DOS cosas y ahora las dos
+  /// se llaman «modo». Si alguien cree que armó en total y estaba en modo
+  /// prueba, la alarma no suena: la pantalla tiene que decir las dos.
+  testWidgets('el modo prueba y el TIPO conviven sin pisarse', (tester) async {
+    final api = _FakeApi(
+      _nowhere(),
+      armed: true,
+      testMode: true,
+      mode: AlarmMode.perimeter,
+    );
+    await tester.pumpWidget(_app(AlarmView(
+      initialConfig: _nowhere(),
+      api: api,
+      socket: _FakeSocket(),
+      siren: _FakeSiren(),
+    )));
+    await tester.pump();
+    await tester.pump();
+
+    // El tipo, en el dial. El modo prueba, en su chip. Las dos a la vez.
+    final label =
+        tester.widgetList<Text>(find.textContaining('ARMADA')).first.data;
+    expect(label, 'ARMADA\nPERIMETRAL');
+    expect(find.text('MODO PRUEBA · no va a sonar'), findsOneWidget,
+        reason: 'armada en perimetral y muda son dos hechos distintos, y '
+            'los dos tienen que estar a la vista');
   });
 
   group('el toggle, en la pantalla de sensores de la alarma', () {
@@ -494,8 +532,8 @@ class _ApiSinTestMode extends _FakeApi {
   _ApiSinTestMode(super.config);
 
   @override
-  Future<({bool armed, bool? testMode})> getAlarmStatus() async =>
-      (armed: true, testMode: null);
+  Future<({bool armed, AlarmMode? mode, bool? testMode})> getAlarmStatus() async =>
+      (armed: true, mode: AlarmMode.total, testMode: null);
 }
 
 /// Backend caído para la lectura del estado.
@@ -503,7 +541,7 @@ class _ApiQueFalla extends _FakeApi {
   _ApiQueFalla(super.config);
 
   @override
-  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
+  Future<({bool armed, AlarmMode? mode, bool? testMode})> getAlarmStatus() async {
     throw Exception('500');
   }
 }
