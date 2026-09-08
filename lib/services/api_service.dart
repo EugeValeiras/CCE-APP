@@ -1495,10 +1495,19 @@ class ApiService {
 
   /// Los Samsung configurados (GET /tv/tvs → { tvs: [...] }).
   ///
-  /// DEFENSIVO como getInstalledTvApps: contra un backend que todavía no tenga
-  /// la ruta (404) devuelve [] en vez de tirar, y la app cae al comportamiento
-  /// de un solo aparato — sin selector y sin `?tv=`, igual que antes de CCE#45.
-  Future<List<TvSummary>> getTvs() async {
+  /// Los Samsung configurados, o **null si no se pudo leer la lista**.
+  ///
+  /// La diferencia importa y antes no existía: devolver `[]` ante cualquier
+  /// error hacía que un timeout de 6 s fuera indistinguible de "este backend no
+  /// tiene el endpoint", y quien abría el control de un aparato terminaba
+  /// comandando OTRO sin ningún aviso (CCE#130).
+  ///
+  ///  - `[]`  ⇒ el backend contestó y no hay lista: 404 (ruta que todavía no
+  ///            existe, el caso de un solo aparato de antes de CCE#45) o una
+  ///            lista efectivamente vacía. Se puede confiar en ese vacío.
+  ///  - null  ⇒ no se sabe: timeout, red caída, 5xx o un cuerpo que no se puede
+  ///            leer. Quien llama NO debe concluir nada de acá.
+  Future<List<TvSummary>?> getTvs() async {
     try {
       final resp = await http
           .get(
@@ -1506,18 +1515,31 @@ class ApiService {
             headers: ServerConfig.tokenHeaders,
           )
           .timeout(const Duration(seconds: 6));
-      if (resp.statusCode != 200) return const [];
-      final data = jsonDecode(resp.body);
-      final raw = data is Map ? data['tvs'] : data;
-      if (raw is! List) return const [];
-      return raw
-          .whereType<Map>()
-          .map((e) => TvSummary.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      return parseTvsResponse(resp.statusCode, resp.body);
     } catch (e) {
+      // Timeout, red caída, JSON roto: NO se sabe qué aparatos hay.
       debugPrint('getTvs error: $e');
-      return const [];
+      return null;
     }
+  }
+
+  /// Cómo se lee una respuesta de GET /tv/tvs. Vive aparte para poder fijar en
+  /// un test la diferencia entre "no hay lista" y "no se pudo leer": de
+  /// colapsar las dos salían dos caminos al aparato equivocado (CCE#130).
+  @visibleForTesting
+  static List<TvSummary>? parseTvsResponse(int statusCode, String body) {
+    // 404 es el backend viejo que no tiene la ruta: ES una respuesta, y dice
+    // que no hay lista. Cualquier otro no-200 es un fallo del que no se puede
+    // concluir nada.
+    if (statusCode == 404) return const [];
+    if (statusCode != 200) return null;
+    final data = jsonDecode(body);
+    final raw = data is Map ? data['tvs'] : data;
+    if (raw is! List) return null;
+    return raw
+        .whereType<Map>()
+        .map((e) => TvSummary.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   /// Dispara el pairing Tizen de un aparato (POST /tv/pair).

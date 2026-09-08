@@ -94,7 +94,6 @@ void main() {
     test('sin lista se comporta como cuando había uno solo', () {
       final s = fresh();
       expect(s.tvs, isEmpty);
-      expect(s.hasMultipleTvs, isFalse);
       expect(s.selectedTv, isNull);
       expect(s.selectedTvId, isNull,
           reason: 'sin id no se manda ?tv= y el backend usa su aparato por '
@@ -112,8 +111,9 @@ void main() {
           TvSummary.fromJson(Map<String, dynamic>.from(_televisorJson)),
           TvSummary.fromJson(Map<String, dynamic>.from(_monitorJson)),
         ]);
-      expect(s.hasMultipleTvs, isTrue, reason: 'la UI muestra el selector');
-      expect(s.selectedTv?.id, 'tv');
+      expect(s.tvs, hasLength(2));
+      expect(s.selectedTv?.id, 'tv',
+          reason: 'sin que nadie elija, manda el principal');
       expect(s.selectedTvId, 'tv');
       expect(s.selectedDeviceId, 'dev_tv');
       expect(s.displayName, '65" OLED');
@@ -155,15 +155,20 @@ void main() {
           reason: 'sin pairing hay que ir hasta el aparato: la app lo avisa');
     });
 
-    test('un elegido que ya no existe cae al principal', () {
+    // CCE#130 cambió esto a propósito: antes caía al principal, y eso era
+    // mandarle las teclas a OTRO Samsung sin decirlo. Ahora la pantalla lo
+    // dice y no comanda nada.
+    test('un elegido que ya no existe NO se reemplaza por el principal', () {
       final s = fresh()
         ..debugSeed(
           tvs: [TvSummary.fromJson(Map<String, dynamic>.from(_televisorJson))],
           selectedId: 'tv-borrado',
         );
-      expect(s.selectedTv?.id, 'tv',
-          reason: 'no puede quedar apuntando a un aparato inexistente');
-      expect(s.selectedDeviceId, 'dev_tv');
+      expect(s.selectedTv, isNull,
+          reason: 'no puede quedar apuntando a un aparato inexistente, y '
+              'tampoco a uno distinto del que se pidió');
+      expect(s.selectedTvId, isNull, reason: 'así no viaja ningún ?tv=');
+      expect(s.missingDevice, isTrue);
     });
   });
 

@@ -435,6 +435,36 @@ class DevicesService extends ChangeNotifier {
     }
   }
 
+  /// Pisa el `on` de un device del inventario SIN mandar nada a la red, y
+  /// devuelve el valor previo para poder revertir. Lo usa quien manda el
+  /// comando por OTRA ruta —el Samsung va por `/tv/power?tv=…`, no por
+  /// `/devices/:id/state`— y necesita que su card se mueva sin esperar al
+  /// `device:state-changed`. Null si ese device no está en el inventario.
+  /// Lo que [applyLocalOn] escribió, para poder revertirlo si el comando falla:
+  /// el valor previo de `on` y el estado exacto que quedó aplicado.
+  ({bool on, DeviceState applied})? applyLocalOn(String deviceId, bool on) {
+    final d = _byId[deviceId];
+    if (d == null) return null;
+    final prev = d.state.on;
+    final applied = d.state = d.state.copyWith(on: on);
+    notifyListeners();
+    return (on: prev, applied: applied);
+  }
+
+  /// Devuelve `on` al valor que dio [applyLocalOn], cuando el comando falló.
+  ///
+  /// Sólo si el estado sigue siendo EXACTAMENTE el que se aplicó: mientras el
+  /// comando volaba pudo llegar un `device:state-changed` —incluido uno que
+  /// prende el aparato de verdad, desde el control físico— y revertir a ciegas
+  /// pisaba esa verdad fresca con el valor viejo. Misma guarda que
+  /// [_revertVacuumIfUntouched], que ya resolvía esto para el robot.
+  void restoreLocalOn(String deviceId, bool on, DeviceState applied) {
+    final d = _byId[deviceId];
+    if (d == null || !identical(d.state, applied)) return;
+    d.state = d.state.copyWith(on: on);
+    notifyListeners();
+  }
+
   /// Simula la pulsación de un botón de un switch/dial → dispara la acción
   /// configurada en el backend. Devuelve false si falló.
   Future<bool> simulateButton(Device d, {required int key, int? outlet}) async {

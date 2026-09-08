@@ -92,6 +92,11 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
         AutomationsService(config: widget.service.config, devices: widget.service);
     _loadOrder();
     _loadFeatured();
+    // El TvService NO va al merge del build: notifica con CADA delta del socket
+    // (volumen, canal, fuente) y la home entera se reconstruía con cada uno.
+    // Lo único que le importa a esta pantalla es cuándo cambia la LISTA de
+    // Samsung, que es de donde salen las cards y su migración.
+    widget.tv?.addListener(_onTvsChanged);
     // Termómetro elegido por habitación: alimenta el badge de cada RoomCard.
     // Se carga una vez y queda cacheado (el build lo necesita síncrono).
     TempSensorPrefs.instance.ensureLoaded();
@@ -99,8 +104,20 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
 
   @override
   void dispose() {
+    widget.tv?.removeListener(_onTvsChanged);
     _automations.dispose();
     super.dispose();
+  }
+
+  /// Los Samsung con los que se construyó la sección por última vez.
+  List<String> _tvIdsVistos = const [];
+
+  void _onTvsChanged() {
+    final ids = _tvDeviceIds;
+    if (const ListEquality<String>().equals(ids, _tvIdsVistos)) return;
+    _tvIdsVistos = ids;
+    _migrateFeaturedTv();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFeatured() async {
@@ -111,6 +128,10 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
       // await (primer acceso a prefs puede ser lento), no pisar su edición.
       if (raw != null && mounted && _featured == null) {
         setState(() => _featured = _dedupe(FeaturedItem.decodeList(raw)));
+        // La lista de Samsung puede haber llegado ANTES que las prefs: ahí el
+        // listener ya corrió sin nada que migrar. Se reintenta acá para cubrir
+        // los dos órdenes.
+        _migrateFeaturedTv();
       }
     } catch (_) {}
   }
@@ -166,15 +187,73 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
 
   // ── Destacados editable ───────────────────────────────────────────────────
 
+  /// Devices canónicos de los Samsung de la casa (`dev_tv`, `dev_tv-ce588d39`),
+  /// en el orden de GET /tv/tvs. Vacío mientras la lista no llegó o si el
+  /// backend no la ofrece.
+  List<String> get _tvDeviceIds =>
+      widget.tv?.tvs.map((t) => t.canonicalDeviceId).toList() ?? const [];
+
+  /// Los destacados de TV que la casa ofrece: uno por Samsung, o el histórico
+  /// mientras no hay lista (backend viejo, o todavía cargando).
+  ///
+  /// UN SOLO lugar: el default de la home y el catálogo del editor tienen que
+  /// ofrecer lo mismo, y con el bloque escrito dos veces nada lo obligaba.
+  List<FeaturedItem> get _tvFeatured {
+    if (widget.tv == null) return const [];
+    final ids = _tvDeviceIds;
+    // La card genérica se ofrece SÓLO mientras no se sabe qué aparatos hay.
+    // Con la lista cargada, agregarla desde el editor volvía a meter una card
+    // que abre el que esté seleccionado — el bug que este issue vino a sacar.
+    if (ids.isEmpty) return const [FeaturedItem(FeaturedKind.tv)];
+    return [for (final id in ids) FeaturedItem(FeaturedKind.tv, id)];
+  }
+
   /// Default histórico cuando el usuario nunca editó: TV → JBL → termostato →
-  /// robot (los que existan).
+  /// robot (los que existan). Desde CCE#130, UNA CARD POR SAMSUNG: la casa
+  /// tiene más de uno y una card genérica no dejaba llegar al segundo.
   List<FeaturedItem> _defaultFeatured(Device? thermostat, Device? vacuum) => [
-        if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+        ..._tvFeatured,
         if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
         if (thermostat != null)
           FeaturedItem(FeaturedKind.thermostat, thermostat.id),
         if (vacuum != null) FeaturedItem(FeaturedKind.vacuum, vacuum.id),
       ];
+
+  /// ¿Ya se intentó migrar la card "TV" única con la lista de aparatos cargada?
+  bool _tvMigrated = false;
+
+  /// Migra el destacado `tv` sin aparato a uno por Samsung (CCE#130) y lo
+  /// persiste. Lo disparan las DOS señales de las que depende —que lleguen los
+  /// destacados de prefs y que llegue GET /tv/tvs—, en el orden que sea; nunca
+  /// desde el build, que es donde escribía prefs y mutaba estado durante el
+  /// paint.
+  ///
+  /// Es conservadora a propósito: sin lista de aparatos NO toca nada y la card
+  /// histórica se sigue mostrando. Quien ya tenía "TV" destacado no puede
+  /// quedarse sin card por una migración que se apuró.
+  void _migrateFeaturedTv() {
+    if (_tvMigrated) return;
+    final items = _featured;
+    // `null` = el usuario nunca editó: su default ya es una card por aparato.
+    if (items == null) return;
+    final deviceIds = _tvDeviceIds;
+    if (deviceIds.isEmpty) return;
+    final migrated = FeaturedItem.expandLegacyTv(items, deviceIds);
+    // Se corre UNA vez y no se reintenta: expandido el `tv` legacy ya no queda
+    // nada que migrar, y un Samsung que se configure MÁS TARDE no tiene por qué
+    // meterse solo en los destacados de alguien que ya eligió los suyos. Eso
+    // deja un caso sin cubrir a propósito —una primera lista incompleta dejaría
+    // la home sin ese aparato—, que no se puede distinguir de "el usuario no lo
+    // quiere" sin recordar aparte qué se expandió.
+    _tvMigrated = true;
+    if (identical(migrated, items)) return;
+    if (mounted) {
+      setState(() => _featured = migrated);
+    } else {
+      _featured = migrated;
+    }
+    _saveFeatured(migrated);
+  }
 
   List<FeaturedItem> _effectiveFeatured(Device? thermostat, Device? vacuum) =>
       _featured ?? _defaultFeatured(thermostat, vacuum);
@@ -274,10 +353,23 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     switch (item.kind) {
       case FeaturedKind.tv:
         final tv = widget.tv;
-        return tv == null
-            ? null
-            : TvHomeCard(
-                service: tv, neo: true, trailing: trailing, tile: tile);
+        if (tv == null) return null;
+        // Un aparato que el backend ya no lista se saltea como cualquier
+        // destacado stale — pero SÓLO con la lista cargada: mientras no llegó,
+        // la card se muestra igual (si no, la home arrancaría sin sus cards).
+        if (item.id != null &&
+            tv.tvs.isNotEmpty &&
+            tv.tvForDeviceId(item.id!) == null) {
+          return null;
+        }
+        return TvHomeCard(
+          service: tv,
+          deviceId: item.id,
+          devices: service,
+          neo: true,
+          trailing: trailing,
+          tile: tile,
+        );
       case FeaturedKind.jbl:
         final jbl = widget.jbl;
         return jbl == null
@@ -374,7 +466,15 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
     final service = widget.service;
     switch (item.kind) {
       case FeaturedKind.tv:
-        return 'Samsung TV';
+        final id = item.id;
+        if (id == null) return 'Samsung TV';
+        // El nombre del aparato: el de GET /tv/tvs primero (`65" OLED`), el del
+        // inventario si el device está, y el genérico mientras no haya ninguno
+        // — nunca "(ya no existe)", que sería falso durante la carga.
+        final named = widget.tv?.nameForDeviceId(id);
+        if (named != null) return named;
+        final d = service.byId(id);
+        return d != null ? service.displayName(d) : 'Samsung TV';
       case FeaturedKind.jbl:
         return 'JBL Soundbar';
       case FeaturedKind.thermostat:
@@ -475,7 +575,7 @@ class _RoomsListScreenState extends State<RoomsListScreen> {
           // dueño): dedicados + luces + botones + cerraduras + sensores,
           // ordenados por nombre para encontrarlos rápido.
           final devices = <FeaturedItem>[
-            if (widget.tv != null) const FeaturedItem(FeaturedKind.tv),
+            ..._tvFeatured,
             if (widget.jbl != null) const FeaturedItem(FeaturedKind.jbl),
             for (final d in service.thermostats)
               FeaturedItem(FeaturedKind.thermostat, d.id),

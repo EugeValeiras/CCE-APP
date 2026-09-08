@@ -32,10 +32,23 @@ class TvScreen extends StatefulWidget {
   const TvScreen({
     super.key,
     required this.service,
+    this.deviceId,
   });
 
   /// El shell lo crea/dispone; la screen NO lo dispone.
   final TvService service;
+
+  /// Device canónico del aparato que se abrió (`dev_tv`, `dev_tv-ce588d39`).
+  ///
+  /// Es lo que hace que esta pantalla controle EL APARATO QUE SE TOCÓ y no el
+  /// que quedó elegido desde otra pantalla (CCE#130). Quien abre el control ya
+  /// llamó a [TvService.selectDevice] antes de navegar —la selección es
+  /// síncrona, así que el primer frame ya es el del aparato correcto—; acá se
+  /// reafirma por si algo cambió mientras se abría, y es idempotente.
+  ///
+  /// null ⇒ el aparato que el servicio tenga elegido (backend sin GET /tv/tvs,
+  /// o una entrada vieja que todavía no nombra aparato).
+  final String? deviceId;
 
   @override
   State<TvScreen> createState() => _TvScreenState();
@@ -45,9 +58,25 @@ class _TvScreenState extends State<TvScreen> {
   @override
   void initState() {
     super.initState();
-    // Refresh defensivo de cortesía (one-shot). El polling lo posee el shell.
+    // En el post-frame y no acá: `selectDevice`/`refresh` notifican, y hacerlo
+    // durante la construcción del árbol le pide un rebuild a los que ya están
+    // montados (la card de la home queda viva detrás de esta ruta).
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) widget.service.refresh();
+      if (!mounted) return;
+      final deviceId = widget.deviceId;
+      // Reafirma el aparato pedido; si ya es el que se muestra no toca nada (y
+      // en particular NO descarta su estado, que sería el parpadeo).
+      final yaPidioEstado =
+          deviceId != null && widget.service.selectDevice(deviceId);
+      // Refresh defensivo de cortesía (one-shot). El polling lo posee el shell.
+      //
+      // Se saltea SÓLO si el estado de este aparato ya se está leyendo: quien
+      // abrió el control lo eligió, y elegirlo lo lee — pedirlo igual hacía que
+      // abrir un control costara dos lecturas del mismo aparato. Cuando no hay
+      // nada en vuelo sí se pide, aunque ya haya estado: el seed trae los
+      // campos que el socket NO emite (inputs, nombre de canal, modos,
+      // disabled) y reabrir el control es el momento de refrescarlos.
+      if (!yaPidioEstado && !widget.service.loading) widget.service.refresh();
     });
   }
 
@@ -71,8 +100,14 @@ class _TvScreenState extends State<TvScreen> {
 
   Widget _buildBody(BuildContext context, TvService service) {
     // Fallo real de red/servidor (sin estado conocido): cartel + reintentar.
+    // Un aparato que el backend ya no lista tiene su propio texto: NO se cae al
+    // Samsung por defecto, porque cada tecla iría al aparato equivocado.
     if (service.error != null && service.status == null) {
-      return _ServerError(onRetry: service.refresh);
+      return _ServerError(
+        onRetry: service.retry,
+        title: service.error!,
+        detail: service.errorDetail ?? 'Revisá la conexión con la API CCE.',
+      );
     }
 
     // Primera carga, todavía sin estado.
@@ -94,12 +129,18 @@ class _TvScreenState extends State<TvScreen> {
       padding: const EdgeInsets.fromLTRB(8, 6, 8, 12),
       child: Column(
         children: [
-          // CCE#45: en la casa hay más de un Samsung. El selector va ARRIBA de
-          // todo: elegir cambia el aparato de TODOS los controles de abajo.
-          if (service.hasMultipleTvs) ...[
-            _TvPicker(service: service),
-            const SizedBox(height: 8),
-          ],
+          // Sin selector de aparato (CCE#130): el control abre el Samsung que
+          // se tocó y controla ése. Elegir se elige afuera —en la habitación,
+          // en el plano o en la card de la home—, que es donde el aparato tiene
+          // nombre y lugar; una fila de tabs acá era una forma de terminar
+          // apretando teclas en el aparato equivocado.
+          //
+          // Lo que SÍ queda es el NOMBRE, y no es interactivo: la pantalla no
+          // tiene AppBar ni ningún otro lugar donde diga qué se está
+          // comandando, y sin eso el primer aviso de estar en el aparato
+          // equivocado es el aparato equivocado reaccionando.
+          _TvName(service: service),
+          const SizedBox(height: 8),
           if (!online) ...[
             const _OfflineBanner(),
             const SizedBox(height: 8),
@@ -127,10 +168,10 @@ class _TvScreenState extends State<TvScreen> {
                 // minH 600 → 640 (CCE#45): 600 quedaba POR DEBAJO de lo que el
                 // contenido natural del control necesita (~611), así que el
                 // Column interno desbordaba 11px en cuanto algo comía alto
-                // arriba — con el selector de aparato y el aviso de pairing
-                // juntos se veía la franja amarilla. El FittedBox sigue
-                // achicando el conjunto en pantallas bajas; lo que se corrige es
-                // el piso, que nunca debió ser menor que el contenido.
+                // arriba — con los avisos de arriba juntos se veía la franja
+                // amarilla. El FittedBox sigue achicando el conjunto en
+                // pantallas bajas; lo que se corrige es el piso, que nunca debió
+                // ser menor que el contenido.
                 const double w = 360, minH = 640, maxH = 780;
                 final double target = c.maxHeight.clamp(minH, maxH);
                 return Center(
@@ -771,79 +812,6 @@ class _AppsWideButton extends StatelessWidget {
 //  BANNERS / ERRORES
 // ════════════════════════════════════════════════════════════════════════════
 
-/// Cartel "Sin conexión": el TV respondió pero está apagado/inalcanzable. El
-/// Selector del Samsung que se controla (EugeValeiras/CCE#45).
-///
-/// Sólo aparece cuando hay más de uno: con un único aparato la pantalla queda
-/// exactamente como estaba. Cada chip muestra el ícono según sea televisor o
-/// monitor, porque no son lo mismo y conviene que se note.
-class _TvPicker extends StatelessWidget {
-  const _TvPicker({required this.service});
-
-  final TvService service;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedId = service.selectedTv?.id;
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: service.tvs.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
-          final tv = service.tvs[i];
-          final active = tv.id == selectedId;
-          return Semantics(
-            button: true,
-            selected: active,
-            label: tv.name,
-            child: GestureDetector(
-              onTap: () {
-                if (active) return;
-                HapticFeedback.selectionClick();
-                service.selectTv(tv.id);
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  // El elegido se ve HUNDIDO (superficie sunken, sin sombra) y
-                  // el resto apoyado: la misma gramática que el resto de la app.
-                  color: active ? CceColors.surfaceSunken : CceColors.neoBase,
-                  borderRadius: BorderRadius.circular(999),
-                  boxShadow: active ? const [] : CceShadows.raised,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      tv.isMonitor
-                          ? Icons.desktop_windows_rounded
-                          : Icons.tv_rounded,
-                      size: 16,
-                      color: active ? CceColors.info : CceColors.textTertiary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      tv.name,
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: active ? CceColors.info : CceColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
 /// Aviso de pairing pendiente. El botón dispara el popup en la PANTALLA del
 /// aparato y espera a que alguien lo acepte allá (hasta ~1 minuto), así que
 /// muestra su propio estado de espera.
@@ -948,6 +916,50 @@ class _PairBannerState extends State<_PairBanner> {
   }
 }
 
+/// Nombre del Samsung que se está comandando. NO es un selector: no responde
+/// al tap y no hay forma de cambiar de aparato desde acá — eso se elige en la
+/// habitación, en el plano o en la card de la home. Sólo dice cuál es, que es
+/// lo único del selector viejo que hacía falta conservar (CCE#130).
+class _TvName extends StatelessWidget {
+  const _TvName({required this.service});
+
+  final TvService service;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      header: true,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            service.selectedTv?.isMonitor ?? false
+                ? Icons.desktop_windows_rounded
+                : Icons.tv_rounded,
+            size: 15,
+            color: CceColors.textTertiary,
+          ),
+          const SizedBox(width: 7),
+          Flexible(
+            child: Text(
+              service.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+                color: CceColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Cartel "Sin conexión": el TV respondió pero está apagado/inalcanzable. El
 /// control igual se monta (atenuado) porque varias teclas lo despiertan.
 class _OfflineBanner extends StatelessWidget {
   const _OfflineBanner();
@@ -1016,9 +1028,15 @@ class StatusDotFallback extends StatelessWidget {
 /// Pantalla de error de servidor (sin estado conocido): no se pudo hablar con la
 /// API CCE. Cartel + reintentar.
 class _ServerError extends StatelessWidget {
-  const _ServerError({required this.onRetry});
+  const _ServerError({
+    required this.onRetry,
+    this.title = 'No se pudo conectar al servidor',
+    this.detail = 'Revisá la conexión con la API CCE.',
+  });
 
   final VoidCallback onRetry;
+  final String title;
+  final String detail;
 
   @override
   Widget build(BuildContext context) {
@@ -1031,21 +1049,17 @@ class _ServerError extends StatelessWidget {
             const CceIcon(CceIcons.tv,
                 size: 48, color: CceColors.textTertiary),
             const SizedBox(height: 16),
-            const Text(
-              'No se pudo conectar al servidor',
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: CceColors.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Revisá la conexión con la API CCE.',
-              textAlign: TextAlign.center,
-              style: CceText.caption,
-            ),
+            Text(detail, textAlign: TextAlign.center, style: CceText.caption),
             const SizedBox(height: 20),
             TextButton.icon(
               onPressed: onRetry,

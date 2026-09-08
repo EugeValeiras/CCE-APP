@@ -264,9 +264,62 @@ class _CasaSplit extends StatefulWidget {
 class _CasaSplitState extends State<_CasaSplit> {
   String? _selectedRoomId; // null = Toda la casa
   // Device dedicado seleccionado para mostrar su control INLINE en el panel
-  // derecho ('tv' | 'jbl' | null). La tablet no tiene swipe-back, así que el
-  // control va en el panel (se vuelve tocando "Toda la casa" o una sala).
+  // derecho ('tv' | 'tv:<deviceId>' | 'jbl' | 'thermostat:<id>' | null). La
+  // tablet no tiene swipe-back, así que el control va en el panel (se vuelve
+  // tocando "Toda la casa" o una sala).
+  //
+  // El Samsung lleva SU device canónico pegado (CCE#130): en la casa hay más de
+  // uno y el panel tiene que abrir el que se tocó. Sin el id abre el que el
+  // servicio tenga elegido, que es lo que valía cuando había uno solo.
   String? _selectedDevice;
+
+  /// Aparato del control de TV abierto en el panel, o null si el seleccionado
+  /// no es un Samsung.
+  String? get _selectedTvDeviceId {
+    final sel = _selectedDevice;
+    if (sel == null || !sel.startsWith('tv')) return null;
+    return sel.startsWith('tv:') ? sel.substring('tv:'.length) : null;
+  }
+
+  /// ¿El panel derecho muestra el control de un Samsung?
+  bool get _tvSelected =>
+      _selectedDevice == 'tv' || (_selectedDevice?.startsWith('tv:') ?? false);
+
+  /// Cards de la sidebar: UNA POR SAMSUNG (CCE#130), cada una con su aparato.
+  /// Van dentro de su propio AnimatedBuilder para que la lista aparezca cuando
+  /// llegue GET /tv/tvs sin re-construir el split entero con cada delta del TV.
+  Widget _tvSidebarCards() {
+    return AnimatedBuilder(
+      animation: widget.tv,
+      builder: (context, _) {
+        final tvs = widget.tv.tvs;
+        // Sin lista (backend viejo) la card histórica del aparato elegido:
+        // exactamente lo que se veía antes de que hubiera varios.
+        if (tvs.isEmpty) {
+          return TvHomeCard(
+            service: widget.tv,
+            neo: true,
+            onOpen: () => setState(() => _selectedDevice = 'tv'),
+          );
+        }
+        return Column(
+          children: [
+            for (var i = 0; i < tvs.length; i++) ...[
+              if (i > 0) const SizedBox(height: 12),
+              TvHomeCard(
+                service: widget.tv,
+                deviceId: tvs[i].canonicalDeviceId,
+                devices: widget.devices,
+                neo: true,
+                onOpen: () => setState(
+                    () => _selectedDevice = 'tv:${tvs[i].canonicalDeviceId}'),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
 
   IconData _sizeIcon(TileSize s) {
     switch (s) {
@@ -308,8 +361,15 @@ class _CasaSplitState extends State<_CasaSplit> {
             (_selectedDevice != null && _selectedDevice!.startsWith('thermostat:'))
                 ? _selectedDevice!.substring('thermostat:'.length)
                 : null;
-        if (_selectedDevice == 'tv') {
-          panel = TvScreen(service: widget.tv);
+        if (_tvSelected) {
+          panel = TvScreen(
+            service: widget.tv,
+            deviceId: _selectedTvDeviceId,
+            // La key hace que cambiar de Samsung REMONTE el control: su
+            // initState es el que reafirma el aparato, y sin remontar pasar
+            // del televisor al monitor dejaba la pantalla en el anterior.
+            key: ValueKey(_selectedDevice),
+          );
         } else if (_selectedDevice == 'jbl') {
           panel = SoundbarScreen(service: widget.jbl);
         } else if (thermostatId != null) {
@@ -335,7 +395,8 @@ class _CasaSplitState extends State<_CasaSplit> {
             // cards y que "Toda la casa").
             tv: widget.tv,
             jbl: widget.jbl,
-            onOpenTv: () => setState(() => _selectedDevice = 'tv'),
+            onOpenTv: (deviceId) => setState(
+                () => _selectedDevice = deviceId == null ? 'tv' : 'tv:$deviceId'),
             onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
             onOpenThermostat: (d) =>
                 setState(() => _selectedDevice = 'thermostat:${d.id}'),
@@ -359,11 +420,7 @@ class _CasaSplitState extends State<_CasaSplit> {
                 }),
                 neo: true,
                 deviceCards: [
-                  TvHomeCard(
-                    service: widget.tv,
-                    neo: true,
-                    onOpen: () => setState(() => _selectedDevice = 'tv'),
-                  ),
+                  _tvSidebarCards(),
                   SoundbarHomeCard(
                     service: widget.jbl,
                     neo: true,
@@ -476,7 +533,8 @@ class _CasaSplitState extends State<_CasaSplit> {
                     // derecho (item 5), mismo destino que las cards.
                     tv: widget.tv,
                     jbl: widget.jbl,
-                    onOpenTv: () => setState(() => _selectedDevice = 'tv'),
+                    onOpenTv: (deviceId) => setState(() =>
+                        _selectedDevice = deviceId == null ? 'tv' : 'tv:$deviceId'),
                     onOpenJbl: () => setState(() => _selectedDevice = 'jbl'),
                     onOpenThermostat: (d) => setState(
                         () => _selectedDevice = 'thermostat:${d.id}'),
