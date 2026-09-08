@@ -7,6 +7,7 @@ import '../models/jbl_status.dart';
 import '../models/tv_status.dart';
 import '../models/ezviz_lock.dart';
 import '../models/event_record.dart';
+import '../models/event_series.dart';
 import '../models/floor_plan.dart';
 import '../models/scene.dart';
 import '../models/hue_room.dart';
@@ -437,6 +438,43 @@ class ApiService {
         .timeout(const Duration(seconds: 8));
     if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
     return EventsPage.fromJson(
+      Map<String, dynamic>.from(jsonDecode(resp.body) as Map),
+    );
+  }
+
+  /// Series agregadas del event store (CCE#129): un punto por bucket, con el
+  /// promedio, el mínimo, el máximo y cuántas lecturas entraron.
+  ///
+  /// Reemplaza al patrón de traer los últimos N eventos crudos y recortarlos
+  /// acá: eso mostraba las últimas horas bajo un rótulo de siete días, porque
+  /// el recorte lo hacía el límite de filas y no el rango pedido. Ahora el
+  /// rango viaja al servidor y VUELVE en la respuesta (`from`/`to`), que es lo
+  /// que el gráfico rotula.
+  ///
+  /// [globalIds] son BINDINGS (`ewelink_…`, `matter_…`), no ids canónicos: un
+  /// device mergeado tiene varios y se piden todos en una sola llamada.
+  Future<EventSeriesPage> getEventSeries({
+    required List<String> globalIds,
+    required List<String> fields,
+    DateTime? from,
+    DateTime? to,
+    String bucket = 'auto',
+  }) async {
+    final query = <String, String>{
+      'globalIds': globalIds.join(','),
+      'fields': fields.join(','),
+      'bucket': bucket,
+      if (from != null) 'from': from.toUtc().toIso8601String(),
+      if (to != null) 'to': to.toUtc().toIso8601String(),
+    };
+    final uri = Uri.parse(
+      '${config.baseUrl}/events/series',
+    ).replace(queryParameters: query);
+    final resp = await http
+        .get(uri, headers: ServerConfig.tokenHeaders)
+        .timeout(const Duration(seconds: 12));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
+    return EventSeriesPage.fromJson(
       Map<String, dynamic>.from(jsonDecode(resp.body) as Map),
     );
   }

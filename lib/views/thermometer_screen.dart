@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../models/device.dart';
 import '../services/devices_service.dart';
 import '../theme/cce_tokens.dart';
-import '../widgets/temp_sparkline.dart';
+import '../widgets/sensor_history_chart.dart';
 
 /// Pantalla de detalle de un TERMÓMETRO (sensor ambiente de temperatura /
 /// humedad, distinto del termostato Tuya). Muestra la temperatura y la humedad
 /// grandes arriba, la batería si existe, y abajo el gráfico de historial
-/// ([TempSparkline]) reusando el mismo mecanismo (GET /api/events) que el
-/// termostato. Estilo neumórfico coherente con [ThermostatScreen]: fondo
+/// ([SensorHistoryChart], series agregadas por el servidor) reusando el mismo
+/// componente que el termostato. Estilo neumórfico coherente con [ThermostatScreen]: fondo
 /// neoBase, cápsulas hundidas con relieve.
 class ThermometerScreen extends StatelessWidget {
   final Device device;
@@ -73,20 +73,15 @@ class ThermometerScreen extends StatelessWidget {
                     const SizedBox(height: 14),
                     _BatteryChip(battery: battery),
                   ],
-                  // Gráfico de historial (últimos 7 días). Sin binding o sin
-                  // datos suficientes, TempSparkline se oculta solo.
-                  if (d.bindingIds.isNotEmpty)
-                    TempSparkline(
-                      config: service.config,
-                      globalId: d.bindingIds.first,
-                      // Termómetro: la temp viaja en payload.sensor.temperature.
-                      reader: (p) {
-                        final sensor = p['sensor'];
-                        final v =
-                            (sensor is Map) ? sensor['temperature'] : null;
-                        return v is num ? v.toDouble() : null;
-                      },
-                    ),
+                  // Gráfico del historial (CCE#129): temperatura y humedad
+                  // con ejes, y el rango que se elige. Se piden TODOS los
+                  // bindings —el termómetro está mergeado entre eWeLink y
+                  // Matter— y el servidor los agrega.
+                  SensorHistoryChart(
+                    config: service.config,
+                    globalIds: d.bindingIds,
+                    fields: const ['temperature', 'humidity'],
+                  ),
                 ],
               ),
             );
