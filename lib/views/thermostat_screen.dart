@@ -8,7 +8,7 @@ import '../services/devices_service.dart';
 import '../theme/cce_icons.dart';
 import '../theme/cce_tokens.dart';
 import '../theme/components/cce_neo_press.dart';
-import '../widgets/temp_sparkline.dart';
+import '../widgets/sensor_history_chart.dart';
 
 /// Pantalla de control de un termostato (Tuya cat 'wk'). Réplica EXACTA del
 /// rediseño neumórfico del dashboard (thermostat-sidebar):
@@ -223,19 +223,14 @@ class ThermostatScreen extends StatelessWidget {
           ),
         ],
 
-        // Sparkline del historial de temperatura ambiente (últimos 7 días).
-        // El widget maneja su propio espaciado (sin gap colgado si no hay datos).
-        if (d.bindingIds.isNotEmpty)
-          TempSparkline(
-            config: service.config,
-            globalId: d.bindingIds.first,
-            // Termostato: la temp ambiente viaja en payload.state.currentTemp.
-            reader: (p) {
-              final state = p['state'];
-              final v = (state is Map) ? state['currentTemp'] : null;
-              return v is num ? v.toDouble() : null;
-            },
-          ),
+        // Historial de la temperatura AMBIENTE (CCE#129). El termostato la
+        // publica en `state.currentTemp`, y ese mapeo vive en el servidor:
+        // acá sólo se nombra el campo. El widget maneja su propio espaciado.
+        SensorHistoryChart(
+          config: service.config,
+          globalIds: d.bindingIds,
+          fields: const ['currentTemp'],
+        ),
 
         // Modo (Manual / Program) = chips convexos sin borde.
         if (s.tempMode != null) ...[
