@@ -62,7 +62,15 @@ enum ChartRange {
 
 class _SensorHistoryChartState extends State<SensorHistoryChart> {
   ChartRange _preset = ChartRange.day;
-  DateTimeRange? _custom;
+
+  /// Los DÍAS que eligió el dueño en el calendario, tal cual los eligió.
+  ///
+  /// No se guarda acá el rango efectivo (que llega hasta la medianoche del día
+  /// siguiente, porque el pedido es semiabierto): ese valor volvía como
+  /// `initialDateRange` del calendario y, si el rango terminaba hoy, quedaba
+  /// un día en el FUTURO — `assert(!initialDateRange.end.isAfter(lastDate))`
+  /// y la pantalla se caía al abrir el calendario por segunda vez.
+  DateTimeRange? _pickedDays;
 
   EventSeriesPage? _page;
   bool _loading = true;
@@ -90,11 +98,33 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
     }
   }
 
+  /// El rango EFECTIVO que se le pide al servidor.
+  ///
+  /// Del calendario salen días; el pedido es semiabierto `[from, to)`, así que
+  /// el último día entero llega hasta la medianoche siguiente. Y ese fin se
+  /// recorta a AHORA cuando el día elegido es el de hoy: un `to` en el futuro
+  /// deja el último tramo del eje vacío garantizado, bajo un rótulo que
+  /// promete horas que todavía no pasaron.
   DateTimeRange get _range {
-    final custom = _custom;
-    if (custom != null) return custom;
-    final to = DateTime.now();
-    return DateTimeRange(start: to.subtract(_preset.span), end: to);
+    final dias = _pickedDays;
+    final ahora = DateTime.now();
+    if (dias != null) {
+      final desde = DateTime(dias.start.year, dias.start.month, dias.start.day);
+      final hasta = DateTime(dias.end.year, dias.end.month, dias.end.day)
+          .add(const Duration(days: 1));
+      return DateTimeRange(
+        start: desde,
+        end: hasta.isAfter(ahora) ? ahora : hasta,
+      );
+    }
+    return DateTimeRange(start: ahora.subtract(_preset.span), end: ahora);
+  }
+
+  /// Medio bucket: dos series están "en el mismo momento" si sus puntos caen
+  /// en el mismo bucket, y el servidor dice cuánto mide.
+  Duration get _tolerancia {
+    final segundos = _page?.bucketSeconds ?? 0;
+    return Duration(seconds: segundos > 0 ? (segundos / 2).ceil() : 60);
   }
 
   Future<void> _load() async {
@@ -135,27 +165,19 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
       // fechas donde el servidor ya borró los datos sería mentir otra vez.
       firstDate: now.subtract(const Duration(days: 180)),
       lastDate: now,
-      initialDateRange: _custom,
+      initialDateRange: _pickedDays,
       helpText: 'Rango del historial',
       saveText: 'Ver',
     );
-    if (picked == null) return;
-    setState(() {
-      // El día elegido va COMPLETO: un rango que termina a las 00:00 del
-      // último día deja afuera el día que el dueño acaba de pedir.
-      _custom = DateTimeRange(
-        start: picked.start,
-        end: DateTime(picked.end.year, picked.end.month, picked.end.day)
-            .add(const Duration(days: 1)),
-      );
-    });
+    if (picked == null || !mounted) return;
+    setState(() => _pickedDays = picked);
     await _load();
   }
 
   void _selectPreset(ChartRange r) {
     setState(() {
       _preset = r;
-      _custom = null;
+      _pickedDays = null;
     });
     _load();
   }
@@ -191,7 +213,7 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _RangeChips(
-              preset: _custom == null ? _preset : null,
+              preset: _pickedDays == null ? _preset : null,
               onPreset: _selectPreset,
               onPick: _pickRange,
             ),
@@ -266,6 +288,7 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
                     from: _page?.from ?? _range.start,
                     to: _page?.to ?? _range.end,
                     touched: _touched,
+                    tolerancia: _tolerancia,
                   ),
                 ),
               ),
@@ -274,7 +297,11 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: _Tooltip(lines: lines, index: _touched!),
+                  child: _Tooltip(
+                    lines: lines,
+                    index: _touched!,
+                    tolerancia: _tolerancia,
+                  ),
                 ),
               if (_loading)
                 const Positioned(
@@ -299,10 +326,16 @@ class _SensorHistoryChartState extends State<SensorHistoryChart> {
     final from = (_page?.from ?? _range.start).millisecondsSinceEpoch;
     final to = (_page?.to ?? _range.end).millisecondsSinceEpoch;
     final span = math.max(1, to - from);
-    final x = dx.clamp(_ChartPainter.padLeft, width - _ChartPainter.padRight);
+    // Los dos márgenes suman 72 px: en una pantalla más angosta que eso,
+    // `clamp(min, max)` con max < min tira ArgumentError. La línea de abajo ya
+    // se defendía con `math.max` y esta no.
     final usable = math.max(
       1.0,
       width - _ChartPainter.padLeft - _ChartPainter.padRight,
+    );
+    final x = dx.clamp(
+      _ChartPainter.padLeft,
+      _ChartPainter.padLeft + usable,
     );
     final at = from + ((x - _ChartPainter.padLeft) / usable * span).round();
     var best = 0;
@@ -364,6 +397,12 @@ class _ChartLine {
 
 /// El rótulo del rango, en castellano y con la fecha REAL que se está
 /// mostrando. Nunca dice "últimos 7 días": dice del 1 al 8 de septiembre.
+///
+/// El rango es SEMIABIERTO —`[from, to)`, igual que el filtro del servidor—,
+/// así que un `to` en la medianoche exacta NO es un día que se muestre: pedir
+/// del 1 al 8 se consulta hasta el 9 a las 00:00 y se lee «1 sep – 8 sep».
+/// Rotular ese 9 nombraría un día que el dueño no eligió y que además está
+/// vacío, que es la misma clase de mentira que este gráfico vino a sacar.
 String rangeLabel(DateTime from, DateTime to) {
   const meses = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun', //
@@ -373,15 +412,28 @@ String rangeLabel(DateTime from, DateTime to) {
   String hora(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-  final span = to.difference(from);
-  if (span.inHours <= 26) {
-    final mismoDia = from.year == to.year &&
-        from.month == to.month &&
-        from.day == to.day;
-    if (mismoDia) return '${dia(from)} · ${hora(from)} – ${hora(to)}';
+  bool esMedianoche(DateTime d) =>
+      d.hour == 0 &&
+      d.minute == 0 &&
+      d.second == 0 &&
+      d.millisecond == 0 &&
+      d.microsecond == 0;
+
+  final cierraEnMedianoche = esMedianoche(to);
+  final fin =
+      cierraEnMedianoche ? to.subtract(const Duration(microseconds: 1)) : to;
+  final mismoDia =
+      from.year == fin.year && from.month == fin.month && from.day == fin.day;
+
+  if (mismoDia) {
+    if (esMedianoche(from) && cierraEnMedianoche) return dia(from);
+    return '${dia(from)} · ${hora(from)} – '
+        '${cierraEnMedianoche ? '24:00' : hora(to)}';
+  }
+  if (fin.difference(from).inHours <= 26 && !cierraEnMedianoche) {
     return '${dia(from)} ${hora(from)} – ${dia(to)} ${hora(to)}';
   }
-  return '${dia(from)} – ${dia(to)}';
+  return '${dia(from)} – ${dia(fin)}';
 }
 
 /// 'prom. 1 h': qué representa cada punto. Sin esto, dos gráficos con la misma
@@ -568,10 +620,18 @@ class _Legend extends StatelessWidget {
 }
 
 class _Tooltip extends StatelessWidget {
-  const _Tooltip({required this.lines, required this.index});
+  const _Tooltip({
+    required this.lines,
+    required this.index,
+    required this.tolerancia,
+  });
 
   final List<_ChartLine> lines;
   final int index;
+
+  /// Hasta dónde puede estar el punto de OTRA serie para contar como "el
+  /// mismo momento": medio bucket.
+  final Duration tolerancia;
 
   @override
   Widget build(BuildContext context) {
@@ -580,7 +640,7 @@ class _Tooltip extends StatelessWidget {
     final at = base[index].t;
     final partes = <String>[];
     for (final l in lines) {
-      final p = _closest(l.points, at);
+      final p = closestPoint(l.points, at, tolerancia);
       if (p != null) partes.add(l.format(p.avg));
     }
     final hora = '${at.day}/${at.month} '
@@ -605,21 +665,33 @@ class _Tooltip extends StatelessWidget {
     );
   }
 
-  /// El punto del bucket más cercano: las dos series comparten el eje de
-  /// tiempo pero no tienen por qué tener los mismos buckets (la humedad puede
-  /// faltar en una hora en la que sí hubo temperatura).
-  static SeriesPoint? _closest(List<SeriesPoint> points, DateTime at) {
-    SeriesPoint? best;
-    var bestDist = 0;
-    for (final p in points) {
-      final d = p.t.difference(at).inMilliseconds.abs();
-      if (best == null || d < bestDist) {
-        best = p;
-        bestDist = d;
-      }
+}
+
+/// El punto del bucket más cercano a [at], o null si el más cercano está a más
+/// de [tolerancia].
+///
+/// Las dos series comparten el eje de tiempo pero no los buckets: la humedad
+/// puede faltar en una hora en la que sí hubo temperatura. SIN tolerancia, un
+/// sensor cuya humedad se calló el día 1 hacía que tocar el día 25 mostrara
+/// «41%» de veinticuatro días antes, con el círculo azul dibujado contra el
+/// borde izquierdo mientras la línea vertical estaba en el 25. Un dato viejo
+/// presentado como el de ese punto es peor que la ausencia del dato.
+SeriesPoint? closestPoint(
+  List<SeriesPoint> points,
+  DateTime at,
+  Duration tolerancia,
+) {
+  SeriesPoint? best;
+  var bestDist = 0;
+  for (final p in points) {
+    final d = p.t.difference(at).inMilliseconds.abs();
+    if (best == null || d < bestDist) {
+      best = p;
+      bestDist = d;
     }
-    return best;
   }
+  if (best == null || bestDist > tolerancia.inMilliseconds) return null;
+  return best;
 }
 
 class _Message extends StatelessWidget {
@@ -660,6 +732,7 @@ class _ChartPainter extends CustomPainter {
     required this.from,
     required this.to,
     required this.touched,
+    required this.tolerancia,
   });
 
   // Los márgenes los fijan las ETIQUETAS de los ejes, no la estética: a 9 px,
@@ -674,6 +747,7 @@ class _ChartPainter extends CustomPainter {
   final DateTime from;
   final DateTime to;
   final int? touched;
+  final Duration tolerancia;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -800,7 +874,7 @@ class _ChartPainter extends CustomPainter {
           ..strokeWidth = 1,
       );
       for (var i = 0; i < lines.length; i++) {
-        final p = _Tooltip._closest(lines[i].points, at);
+        final p = closestPoint(lines[i].points, at, tolerancia);
         if (p == null) continue;
         canvas.drawCircle(
           Offset(xOf(p.t), yOf(i, p.avg)),
@@ -844,5 +918,6 @@ class _ChartPainter extends CustomPainter {
       old.lines != lines ||
       old.from != from ||
       old.to != to ||
-      old.touched != touched;
+      old.touched != touched ||
+      old.tolerancia != tolerancia;
 }

@@ -147,8 +147,25 @@ void main() {
     });
 
     test('30 días cruzando el mes', () {
-      final label = rangeLabel(DateTime(2026, 8, 9), DateTime(2026, 9, 8));
+      // `to` a media tarde: el preset pide hasta AHORA, no hasta una medianoche.
+      final label =
+          rangeLabel(DateTime(2026, 8, 9, 15, 30), DateTime(2026, 9, 8, 15, 30));
       expect(label, '9 ago – 8 sep');
+    });
+
+    // El rango es SEMIABIERTO, igual que el filtro del servidor: pedir "del 1
+    // al 8" se consulta hasta el 9 a las 00:00. Rotular ese 9 nombraría un día
+    // que el dueño no eligió y que además está vacío — la misma clase de
+    // mentira que este gráfico vino a sacar.
+    test('un `to` en la medianoche exacta NO es un día que se muestre', () {
+      expect(
+        rangeLabel(DateTime(2026, 9, 1), DateTime(2026, 9, 9)),
+        '1 sep – 8 sep',
+      );
+    });
+
+    test('un solo día elegido se dice por su nombre, sin horas', () {
+      expect(rangeLabel(DateTime(2026, 9, 1), DateTime(2026, 9, 2)), '1 sep');
     });
   });
 
@@ -259,11 +276,60 @@ void main() {
       expect(p.unitOf('temperature'), '°C');
     });
 
-    test('la hora llega en UTC y se guarda en local', () {
+    test('la hora se guarda en la hora de pared de la zona que agregó', () {
+      // Sin `utcOffsetSeconds` (servidor viejo) se usa la del dispositivo, que
+      // es lo que hacía `.toLocal()`: mismo instante, mismos campos.
       final t = DateTime(2026, 9, 1, 10);
       final p = page([serie(bindingEwelink, 'temperature', '°C', [(t, 21)])]);
-      expect(p.merged('temperature').first.t, t);
-      expect(p.merged('temperature').first.t.isUtc, isFalse);
+      final punto = p.merged('temperature').first;
+      expect(punto.t.hour, t.hour);
+      expect(punto.t.day, t.day);
+      expect(
+        punto.t.millisecondsSinceEpoch -
+            p.utcOffset.inMilliseconds -
+            t.toUtc().millisecondsSinceEpoch,
+        0,
+        reason: 'el instante es el mismo, corrido por el offset declarado',
+      );
+    });
+
+    test('con el offset del servidor, la hora es la de LA CASA y no la del teléfono',
+        () {
+      // Un instante UTC fijo, agregado en una zona a +02:00. El punto tiene
+      // que leerse a las 02:00 del 1 de septiembre, no en la hora local de
+      // quien está mirando.
+      final instante = DateTime.utc(2026, 9, 1, 0);
+      final p = EventSeriesPage.fromJson({
+        'bucket': '1h',
+        'bucketSeconds': 3600,
+        'from': instante.toIso8601String(),
+        'to': instante.add(const Duration(days: 1)).toIso8601String(),
+        'timezone': 'Europe/Madrid',
+        'utcOffsetSeconds': 7200,
+        'series': [
+          {
+            'globalId': bindingEwelink,
+            'field': 'temperature',
+            'unit': '°C',
+            'points': [
+              {
+                't': instante.toIso8601String(),
+                'avg': 21.0,
+                'min': 21.0,
+                'max': 21.0,
+                'count': 1,
+              },
+            ],
+          },
+        ],
+        'enabled': true,
+      });
+      final punto = p.merged('temperature').first;
+      expect(punto.t.hour, 2);
+      expect(punto.t.day, 1);
+      expect(p.from.hour, 2);
+      expect(p.timezone, 'Europe/Madrid');
+      expect(p.utcOffset, const Duration(hours: 2));
     });
   });
 
@@ -469,6 +535,113 @@ void main() {
         await tester.tap(find.text('FECHAS'));
         await tester.pumpAndSettle();
         expect(find.text('Rango del historial'), findsOneWidget);
+      }, api.client);
+    });
+
+    testWidgets('elegir un rango que termina HOY y volver a abrir el calendario',
+        (tester) async {
+      // El bug: el fin se guardaba como el día SIGUIENTE al elegido (el rango
+      // es semiabierto) y ese valor volvía como `initialDateRange`. Si el
+      // rango terminaba hoy, quedaba un día en el futuro y al reabrir saltaba
+      // `assert(!initialDateRange.end.isAfter(lastDate))`.
+      tester.view.physicalSize = const Size(1179, 2556);
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+
+      final api = _FakeApi(series: conHumedad());
+      await http.runWithClient(() async {
+        await pumpTermometro(tester, termometro(humidity: 28));
+        final hoy = DateTime.now();
+        final desde = hoy.subtract(const Duration(days: 3));
+
+        await tester.tap(find.text('FECHAS'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('${desde.day}').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('${hoy.day}').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ver'));
+        await tester.pumpAndSettle();
+
+        expect(api.urls.length, greaterThan(1), reason: 'pidió el rango elegido');
+
+        // Y el pedido NO llega al futuro: un `to` de mañana deja el último
+        // tramo del eje vacío bajo un rótulo que promete horas que no pasaron.
+        final hasta = DateTime.parse(api.urls.last.queryParameters['to']!);
+        expect(
+          hasta.isAfter(DateTime.now().toUtc().add(const Duration(minutes: 1))),
+          isFalse,
+          reason: 'el `to` pedido no puede estar en el futuro',
+        );
+
+        // Reabrir: acá reventaba con
+        // `assert(!initialDateRange.end.isAfter(lastDate))`.
+        await tester.tap(find.text('FECHAS'));
+        await tester.pumpAndSettle();
+        expect(find.text('Rango del historial'), findsOneWidget,
+            reason: 'el calendario volvió a abrir');
+        // No se pide `takeException() == null`: el header del picker de
+        // Material desborda 29 px con la fuente de PRUEBA (el mismo número con
+        // un helpText de una letra o de cincuenta, así que no es nuestro
+        // texto). Lo que sí se exige es que no haya saltado el assert del
+        // rango inicial.
+        expect(
+          tester.takeException()?.toString() ?? '',
+          isNot(contains('initialDateRange')),
+        );
+      }, api.client);
+    });
+
+    testWidgets('el rótulo de un rango elegido no nombra el día siguiente',
+        (tester) async {
+      // El servidor devuelve el rango semiabierto [1 sep, 9 sep) — que es "del
+      // 1 al 8". Rotular el 9 nombraría un día que el dueño no eligió.
+      final api = _FakeApi(
+        bucket: '6h',
+        from: DateTime(2026, 9, 1),
+        to: DateTime(2026, 9, 9),
+        series: conHumedad(),
+      );
+      await http.runWithClient(() async {
+        await pumpTermometro(tester, termometro(humidity: 28));
+        expect(find.text('1 sep – 8 sep · prom. 6 h'), findsOneWidget);
+        expect(find.textContaining('9 sep'), findsNothing);
+      }, api.client);
+    });
+
+    testWidgets('el tooltip no empareja un punto de otra semana', (tester) async {
+      // La humedad se calló el primer día; la temperatura siguió. Tocando el
+      // final del rango, el valor de humedad más cercano está a días de
+      // distancia: mostrarlo como si fuera de ese momento es peor que no
+      // mostrarlo.
+      final t0 = DateTime(2026, 9, 1, 12);
+      final api = _FakeApi(
+        bucket: '6h',
+        from: DateTime(2026, 9, 1),
+        to: DateTime(2026, 9, 8),
+        series: [
+          serie(bindingEwelink, 'temperature', '°C', [
+            (t0, 20.0),
+            (DateTime(2026, 9, 7, 12), 23.0),
+          ]),
+          serie(bindingEwelink, 'humidity', '%', [(t0, 41.0)]),
+        ],
+      );
+      await http.runWithClient(() async {
+        await pumpTermometro(tester, termometro(humidity: 28));
+        final plot = find.byKey(const ValueKey('sensor-history-plot'));
+        final box = tester.getRect(plot);
+
+        // A la derecha: el punto de temperatura del día 7.
+        await tester.tapAt(Offset(box.right - 2, box.center.dy));
+        await tester.pump();
+        expect(find.text('7/9 12:00 · 23.0°'), findsOneWidget);
+        expect(find.textContaining('41%'), findsNothing);
+
+        // A la izquierda, donde las dos series SÍ tienen punto, salen las dos.
+        await tester.tapAt(Offset(box.left + 2, box.center.dy));
+        await tester.pump();
+        expect(find.text('1/9 12:00 · 20.0° · 41%'), findsOneWidget);
       }, api.client);
     });
   });
