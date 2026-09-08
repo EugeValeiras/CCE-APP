@@ -74,9 +74,9 @@ class DevicesService extends ChangeNotifier {
       _wasConnected = connected;
     });
     // Estado de la alarma en vivo: el header del home colorea el ícono con esto.
-    _armedSub = _socket.onArmedChanged.listen((armed) {
-      if (_alarmArmed != armed) {
-        _alarmArmed = armed;
+    _armedSub = _socket.onArmedChanged.listen((ev) {
+      if (_alarmArmed != ev.armed) {
+        _alarmArmed = ev.armed;
         notifyListeners();
       }
     });

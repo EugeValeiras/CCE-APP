@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import '../models/alarm_mode.dart';
 import '../models/server_config.dart';
 import '../models/device.dart';
 import '../models/jbl_status.dart';
@@ -236,7 +237,16 @@ class ApiService {
   }
 
   /// Prende/apaga que ESTE sensor dispare la alarma.
-  Future<void> setSensorAlarmTrigger(String deviceId, bool fires) async {
+  ///
+  /// `level` (CCE#133) viaja sólo al prender: dice en qué tipo de alarma
+  /// participa. Sin él el backend escribe el sugerido por la capability del
+  /// sensor, así que omitirlo no deja el nivel en el aire — pero mandarlo es
+  /// lo que hace que sea el que se está viendo en pantalla.
+  Future<void> setSensorAlarmTrigger(
+    String deviceId,
+    bool fires, {
+    SensorAlarmLevel? level,
+  }) async {
     await http
         .put(
           Uri.parse(
@@ -246,9 +256,48 @@ class ApiService {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
           },
-          body: jsonEncode({'fires': fires}),
+          body: jsonEncode({
+            'fires': fires,
+            if (level != null) 'level': level.wire,
+          }),
         )
         .timeout(const Duration(seconds: 5));
+  }
+
+  /// En qué tipo de alarma participa cada sensor: { deviceId → 'perimeter' |
+  /// 'interior' } (CCE#133). Vacío contra una API vieja: sin niveles, todo
+  /// vale `interior` y sólo existe la alarma total, que es como era antes.
+  Future<Map<String, String>> getSensorAlarmLevels() async {
+    final resp = await http
+        .get(
+          Uri.parse('${config.baseUrl}/config/sensor-alarm-levels'),
+          headers: ServerConfig.tokenHeaders,
+        )
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) return const {};
+    final data = jsonDecode(resp.body);
+    if (data is! Map) return const {};
+    return {for (final e in data.entries) e.key.toString(): e.value.toString()};
+  }
+
+  /// Cambia el nivel de UN sensor, sin tocar si participa.
+  Future<void> setSensorAlarmLevel(
+    String deviceId,
+    SensorAlarmLevel level,
+  ) async {
+    final resp = await http
+        .put(
+          Uri.parse(
+            '${config.baseUrl}/config/sensor-alarm-levels/${Uri.encodeComponent(deviceId)}',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'level': level.wire}),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (resp.statusCode != 200) throw Exception('Error ${resp.statusCode}');
   }
 
   /// Corre una escena CCE server-side (POST /config/scenes/:id/run): ejecuta
@@ -807,7 +856,7 @@ class ApiService {
   /// dibujara un switch que parece funcionar y cuyo PUT 404ea siempre; con
   /// null, la sección no se dibuja. Quien sólo quiera pintar un badge puede
   /// tratar el null como apagado, que ahí sí es el lado seguro.
-  Future<({bool armed, bool? testMode})> getAlarmStatus() async {
+  Future<({bool armed, AlarmMode? mode, bool? testMode})> getAlarmStatus() async {
     final response = await http
         .get(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
@@ -819,6 +868,7 @@ class ApiService {
       final raw = data['testMode'];
       return (
         armed: data['armed'] == true,
+        mode: AlarmMode.fromWire(data['mode']),
         testMode: raw is bool ? raw : null,
       );
     }
@@ -845,7 +895,15 @@ class ApiService {
     throw Exception('Error ${response.statusCode}');
   }
 
-  Future<bool> setAlarmArmed(bool armed) async {
+  /// Arma o desarma. `mode` (CCE#133) es OPCIONAL: sin él se arma el tipo que
+  /// esté elegido en el backend, que es lo que hacen Siri, las escenas y el
+  /// CLI. La App lo manda cuando el usuario eligió uno en pantalla.
+  ///
+  /// Devuelve lo que quedó guardado —armado y tipo—, no lo que se pidió.
+  Future<({bool armed, AlarmMode? mode})> setAlarmArmed(
+    bool armed, {
+    AlarmMode? mode,
+  }) async {
     final response = await http
         .put(
           Uri.parse('${config.baseUrl}/config/alarm-armed'),
@@ -853,12 +911,37 @@ class ApiService {
             'Content-Type': 'application/json',
             ...ServerConfig.tokenHeaders,
           },
-          body: jsonEncode({'armed': armed}),
+          body: jsonEncode({
+            'armed': armed,
+            if (mode != null) 'mode': mode.wire,
+          }),
         )
         .timeout(const Duration(seconds: 5));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return data['armed'] == true;
+      return (armed: data['armed'] == true, mode: AlarmMode.fromWire(data['mode']));
+    }
+    throw Exception('Error ${response.statusCode}');
+  }
+
+  /// Cambia el TIPO sin tocar el armado (CCE#133).
+  ///
+  /// Con la alarma ARMADA esto cambia qué dispara la casa, y el backend lo
+  /// avisa como si fuera un armado. Devuelve el tipo que quedó guardado.
+  Future<AlarmMode> setAlarmMode(AlarmMode mode) async {
+    final response = await http
+        .put(
+          Uri.parse('${config.baseUrl}/config/alarm-mode'),
+          headers: {
+            'Content-Type': 'application/json',
+            ...ServerConfig.tokenHeaders,
+          },
+          body: jsonEncode({'mode': mode.wire}),
+        )
+        .timeout(const Duration(seconds: 5));
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return AlarmMode.fromWire(data['mode']) ?? mode;
     }
     throw Exception('Error ${response.statusCode}');
   }
